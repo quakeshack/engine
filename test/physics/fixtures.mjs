@@ -16,6 +16,7 @@ import NET from '../../source/engine/network/Network.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 import { createRoomHull } from '../support/hulls.ts';
+import { setBspTree } from '../support/bspTree.ts';
 
 // ── Typedefs ────────────────────────────────────────────────────────────────
 
@@ -146,23 +147,15 @@ export function createBrushWorldModel({ axis = 0, center = [64, 0, 0], halfExten
   axisNormal[axis] = 1;
   const roomMins = new Vector(-2048, -2048, -2048);
   const roomMaxs = new Vector(2048, 2048, 2048);
-  const frontLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
-    contents: content.CONTENT_EMPTY,
-    firstleafbrush: 0,
-    numleafbrushes: 1,
-  });
-  const backLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
-    contents: content.CONTENT_EMPTY,
-    firstleafbrush: 1,
-    numleafbrushes: 0,
-  });
-
-  model.nodes = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([{
-    contents: 0,
-    plane: createAxisPlane(axisNormal, 0, axis),
-    children: [frontLeaf, backLeaf],
-  }]);
-  model.leafs = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([frontLeaf, backLeaf]);
+  model.planes.push(createAxisPlane(axisNormal, 0, axis));
+  setBspTree(
+    model,
+    [{ planeNum: model.planes.length - 1, children: [~0, ~1] }],
+    [
+      { contents: content.CONTENT_EMPTY, firstLeafBrush: 0, numLeafBrushes: 1 },
+      { contents: content.CONTENT_EMPTY, firstLeafBrush: 1, numLeafBrushes: 0 },
+    ],
+  );
   model.leafbrushes = [0];
   model.hulls = /** @type {BrushModel['hulls']} */ ([
     createRoomHullFromBounds(roomMins, roomMaxs),

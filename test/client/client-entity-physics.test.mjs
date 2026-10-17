@@ -10,6 +10,7 @@ import { BaseClientEdictHandler } from '../../source/shared/ClientEdict.ts';
 
 import { assertNear } from '../physics/fixtures.mjs';
 import { useClientStateOf } from '../support/clientState.ts';
+import { createSingleLeafWorld, createTreeModel } from '../support/bspTree.ts';
 import { useHostOf } from '../support/host.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
@@ -64,7 +65,7 @@ function floorWorld(floorZ) {
  * @param {{gravity?: number, paused?: boolean, worldmodel?: object|null, frametime?: number, trace: (start: Vector, end: Vector) => object}} world the world to run in
  * @param {() => void} callback
  */
-function withWorld({ gravity = 800, paused = false, worldmodel = { nodes: [{ contents: content.CONTENT_EMPTY, num: 0 }] }, frametime = 0.1, trace }, callback) {
+function withWorld({ gravity = 800, paused = false, worldmodel = createSingleLeafWorld(), frametime = 0.1, trace }, callback) {
   const previous = { CL: engineMocks.CL, Host: engineMocks.Host };
 
   engineMocks.CL = { pmove: { movevars: { gravity } }, state: { worldmodel, paused }, nolerp: { value: 0 }, collision: { traceStaticWorldLine: trace } };
@@ -273,15 +274,10 @@ void describe('ClientEntityPhysics.step', () => {
   void test('recomputes the BSP leafs when the entity crosses a leaf boundary', () => {
     // Regression test for the stale-PVS footgun: stepping by writing `origin` directly instead of
     // calling setOrigin() would leave `leafs` stale and the entity would be culled wrongly.
-    const frontLeaf = { contents: content.CONTENT_EMPTY, num: 10 };
-    const backLeaf = { contents: content.CONTENT_EMPTY, num: 20 };
-    const worldmodel = {
-      nodes: [{
-        contents: 0,
-        plane: { normal: new Vector(1, 0, 0), dist: 0, type: 0, signbits: 0 },
-        children: [frontLeaf, backLeaf],
-      }],
-    };
+    const leafs = Array.from({ length: 21 }, () => ({ contents: content.CONTENT_SOLID }));
+    leafs[10] = { contents: content.CONTENT_EMPTY };
+    leafs[20] = { contents: content.CONTENT_EMPTY };
+    const worldmodel = createTreeModel([{ normal: [1, 0, 0], dist: 0, type: 0 }], [{ planeNum: 0, children: [~10, ~20] }], leafs);
 
     withWorld({ gravity: 0, worldmodel, trace: emptyWorld() }, () => {
       const clent = createTossed(moveType.MOVETYPE_TOSS, new Vector(-50, 0, 0));

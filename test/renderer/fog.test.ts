@@ -3,13 +3,15 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import { content } from '../../source/shared/Defs.ts';
 import Vector from '../../source/shared/Vector.ts';
-import type { BrushModel, Node } from '../../source/engine/common/model/BSP.ts';
+import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
+import { WorldRenderState } from '../../source/engine/common/model/WorldRenderState.ts';
 import type Cvar from '../../source/engine/common/Cvar.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
 import Fog from '../../source/engine/client/renderer/scene/Fog.ts';
 import { patchMembers } from '../support/clientState.ts';
 import { assertNear } from '../support/assertions.ts';
+import { createSingleLeafWorld } from '../support/bspTree.ts';
 
 /** What a console variable does for the fog code: it keeps the last value that was set. */
 interface FakeCvar {
@@ -34,16 +36,17 @@ function createCvar(initial: number | string): FakeCvar {
 }
 
 /**
- * Builds a leaf with only what the underwater tint selection looks at.
+ * Makes the one leaf of a map what the underwater tint selection looks at: its contents and the first turbulent chain in view.
+ * @param world The map.
  * @param contents The leaf contents, a liquid for an underwater camera.
  * @param chainTexture Index of the texture of the first turbulent chain, `null` for none in view.
- * @returns The leaf.
+ * @returns Index of the leaf.
  */
-function createLeaf(contents: content, chainTexture: number | null): Node {
-  return {
-    contents,
-    turbulentChains: chainTexture === null ? [] : [{ texture: chainTexture }],
-  } as unknown as Node;
+function createLeaf(world: BrushModel, contents: content, chainTexture: number | null): number {
+  world.leafTable.contents[0] = contents;
+  WorldRenderState.of(world).turbulentChains[0] = chainTexture === null ? [] : [{ texture: chainTexture }] as never;
+
+  return 0;
 }
 
 /**
@@ -56,11 +59,13 @@ function createWorld(members: {
   readonly textures?: Array<{ fogTint: [number, number, number] | null }>;
   readonly liquidFogAnchors?: Array<{ center: Vector; fogTint: [number, number, number] }>;
 }): BrushModel {
-  return {
-    worldspawnInfo: members.worldspawnInfo ?? {},
-    textures: members.textures ?? [],
-    liquidFogAnchors: members.liquidFogAnchors ?? [],
-  } as unknown as BrushModel;
+  const world = createSingleLeafWorld();
+
+  world.worldspawnInfo = members.worldspawnInfo ?? {};
+  world.textures = (members.textures ?? []) as unknown as BrushModel['textures'];
+  world.liquidFogAnchors = members.liquidFogAnchors ?? [];
+
+  return world;
 }
 
 void describe('Fog', () => {
@@ -128,7 +133,7 @@ void describe('Fog', () => {
         liquidFogAnchors: [{ center: new Vector(1, 0, 0), fogTint: [0.3, 0.3, 0.3] }],
       });
 
-      Fog.SelectUnderwaterTint(world, createLeaf(content.CONTENT_WATER, 0), vieworg);
+      Fog.SelectUnderwaterTint(world, createLeaf(world, content.CONTENT_WATER, 0), vieworg);
 
       assert.deepEqual(Fog.underwaterFogColor, [0.9, 0.1, 0.2]);
     });
@@ -142,7 +147,7 @@ void describe('Fog', () => {
         ],
       });
 
-      Fog.SelectUnderwaterTint(world, createLeaf(content.CONTENT_WATER, null), vieworg);
+      Fog.SelectUnderwaterTint(world, createLeaf(world, content.CONTENT_WATER, null), vieworg);
 
       assert.deepEqual(Fog.underwaterFogColor, [0.4, 0.5, 0.6]);
     });
@@ -153,7 +158,7 @@ void describe('Fog', () => {
         liquidFogAnchors: [{ center: new Vector(10, 0, 0), fogTint: [0.2, 0.4, 0.8] }],
       });
 
-      Fog.SelectUnderwaterTint(world, createLeaf(content.CONTENT_WATER, 0), vieworg);
+      Fog.SelectUnderwaterTint(world, createLeaf(world, content.CONTENT_WATER, 0), vieworg);
 
       assert.deepEqual(Fog.underwaterFogColor, [0.2, 0.4, 0.8]);
     });
@@ -161,20 +166,22 @@ void describe('Fog', () => {
     void test('defaults to a color per liquid when the map has no tint at all', () => {
       const world = createWorld({});
 
-      Fog.SelectUnderwaterTint(world, createLeaf(content.CONTENT_LAVA, null), vieworg);
+      Fog.SelectUnderwaterTint(world, createLeaf(world, content.CONTENT_LAVA, null), vieworg);
       assert.deepEqual(Fog.underwaterFogColor, [0.25, 0.05, 0.0]);
 
-      Fog.SelectUnderwaterTint(world, createLeaf(content.CONTENT_SLIME, null), vieworg);
+      Fog.SelectUnderwaterTint(world, createLeaf(world, content.CONTENT_SLIME, null), vieworg);
       assert.deepEqual(Fog.underwaterFogColor, [0.02, 0.12, 0.0]);
 
-      Fog.SelectUnderwaterTint(world, createLeaf(content.CONTENT_WATER, null), vieworg);
+      Fog.SelectUnderwaterTint(world, createLeaf(world, content.CONTENT_WATER, null), vieworg);
       assert.deepEqual(Fog.underwaterFogColor, [0.05, 0.15, 0.2]);
     });
 
     void test('takes the density from r_underwater_fog_density', () => {
       underwaterDensity.value = 0.037;
 
-      Fog.SelectUnderwaterTint(createWorld({}), createLeaf(content.CONTENT_WATER, null), vieworg);
+      const world = createWorld({});
+
+      Fog.SelectUnderwaterTint(world, createLeaf(world, content.CONTENT_WATER, null), vieworg);
 
       assert.equal(Fog.underwaterFogDensity, 0.037);
     });

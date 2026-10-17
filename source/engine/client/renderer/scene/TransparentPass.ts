@@ -1,6 +1,6 @@
 import type Vector from '../../../../shared/Vector.ts';
 import { eventBus } from '../../../common/EventBus.ts';
-import { BrushModel, type FogVolumeInfo, type Node, type WorldTurbulentChainInfo } from '../../../common/model/BSP.ts';
+import { BrushModel, type FogVolumeInfo, type WorldTurbulentChainInfo } from '../../../common/model/BSP.ts';
 import { SpriteModel } from '../../../common/model/SpriteModel.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
@@ -49,7 +49,7 @@ export interface SortKindDistance {
  * One blended thing of a frame, with what it takes to draw it.
  */
 export interface TransparentItem extends SortKindDistance {
-  readonly data: Node | WorldTurbulentChainInfo | FogVolumeInfo | ClientEdict | Particle | Decal;
+  readonly data: number | WorldTurbulentChainInfo | FogVolumeInfo | ClientEdict | Particle | Decal;
 }
 
 /** Depths closer than this count as equal, so fog and the water that shares its boundary rank by kind. */
@@ -412,7 +412,7 @@ class TransparentPass {
         if (brushRenderer === null || worldmodel === null) {
           break;
         }
-        brushRenderer.renderWorldTransparentLeaf(worldmodel, item.data as Node);
+        brushRenderer.renderWorldTransparentLeaf(worldmodel, item.data as number);
         break;
       case TransparentKind.Turbulent:
         if (brushRenderer === null || worldmodel === null) {

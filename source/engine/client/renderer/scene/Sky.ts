@@ -2,7 +2,8 @@ import W from '../../../common/W.ts';
 import { BrushModel } from '../../../common/Mod.ts';
 import Host from '../../../common/Host.ts';
 import { eventBus } from '../../../common/EventBus.ts';
-import type Vector from '../../../../shared/Vector.ts';
+import Vector from '../../../../shared/Vector.ts';
+import { WorldRenderState } from '../../../common/model/WorldRenderState.ts';
 import GL, { ATTRIB_LOCATIONS, GLTexture, type GLCubeTexture, type GLRenderTexture } from '../../GL.ts';
 
 let gl: WebGL2RenderingContext = null!;
@@ -56,6 +57,10 @@ export interface SkyDrawContext {
  * Right now the BSP model loader sets up the desired sky renderer.
  */
 export class SkyRenderer {
+  /** Bounds of the leaf the sky loop looks at. */
+  static readonly #leafMins = new Vector();
+  static readonly #leafMaxs = new Vector();
+
   /** Current world model. */
   worldmodel: BrushModel;
 
@@ -76,22 +81,28 @@ export class SkyRenderer {
 
     // Render all visible sky surfaces from the BSP tree
     // This writes to the depth buffer, creating a stencil of where sky should appear
-    for (let i = 0; i < this.worldmodel.leafs.length; i++) {
-      const leaf = this.worldmodel.leafs[i];
+    const state = WorldRenderState.of(this.worldmodel);
+    const mins = SkyRenderer.#leafMins;
+    const maxs = SkyRenderer.#leafMaxs;
 
+    for (let leaf = 0; leaf < this.worldmodel.leafTable.count; leaf++) {
       // Skip leafs that aren't visible or don't have sky surfaces
-      if (leaf.visframe !== context.visframecount || leaf.skychain === leaf.waterchain) {
+      if (state.visframes[leaf] !== context.visframecount || state.skychains[leaf] === state.waterchains[leaf]) {
         continue;
       }
 
       // Frustum culling
-      if (context.cullBox(leaf.mins!, leaf.maxs!)) {
+      const base = leaf * 6;
+      mins.setTo(state.leafBounds[base], state.leafBounds[base + 1], state.leafBounds[base + 2]);
+      maxs.setTo(state.leafBounds[base + 3], state.leafBounds[base + 4], state.leafBounds[base + 5]);
+
+      if (context.cullBox(mins, maxs)) {
         continue;
       }
 
       // Draw all sky surface commands in this leaf
-      for (let j = leaf.skychain; j < leaf.waterchain; j++) {
-        const cmds = leaf.cmds[j];
+      for (let j = state.skychains[leaf]; j < state.waterchains[leaf]; j++) {
+        const cmds = state.cmds[leaf][j];
         gl.drawArrays(gl.TRIANGLES, cmds[0], cmds[1]);
       }
     }

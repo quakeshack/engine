@@ -195,7 +195,7 @@ class R {
     // Underwater warp is a post-process effect, active while the camera is inside a liquid.
     const warpEffect = PostProcess.getEffect('warp');
     if (warpEffect) {
-      warpEffect.active = (rendererCvars.waterwarp.value !== 0) && (viewleaf.contents <= content.CONTENT_WATER);
+      warpEffect.active = (rendererCvars.waterwarp.value !== 0) && (Visibility.viewContents <= content.CONTENT_WATER);
     }
 
     const bloomEnabled = rendererCvars.bloom.value !== 0;
@@ -210,7 +210,7 @@ class R {
     // Configure underwater fog when the camera is inside a liquid.
     // Opt-in per map: worldspawn key _qs_waterfog must be "1" to enable.
     const waterfogEnabled = worldmodel.worldspawnInfo._qs_waterfog === '1';
-    const isUnderwater = viewleaf.contents <= content.CONTENT_WATER;
+    const isUnderwater = Visibility.viewContents <= content.CONTENT_WATER;
     const underwaterFogEffect = PostProcess.getEffect('underwater-fog');
     if (underwaterFogEffect) {
       underwaterFogEffect.active = waterfogEnabled && isUnderwater && rendererCvars.drawturbulents.value !== 0;

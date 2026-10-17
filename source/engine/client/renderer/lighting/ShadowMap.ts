@@ -8,6 +8,7 @@ import { MaterialFlags } from '../models/Materials.ts';
 import { effect } from '../../../../shared/Defs.ts';
 import Vector from '../../../../shared/Vector.ts';
 import type { BrushModel } from '../../../common/model/BSP.ts';
+import { WorldRenderState } from '../../../common/model/WorldRenderState.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
 import { modelRendererRegistry } from '../models/ModelRendererRegistry.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
@@ -696,11 +697,11 @@ export default class ShadowMap {
       return ShadowMap._submodelLeafFlags;
     }
 
-    const flags = new Uint8Array(worldmodel.leafs.length);
-    for (let i = 0; i < worldmodel.leafs.length; i++) {
-      const leaf = worldmodel.leafs[i];
-      for (let k = 0; k < leaf.nummarksurfaces; k++) {
-        const face = worldmodel.faces[worldmodel.marksurfaces[leaf.firstmarksurface + k]];
+    const leafs = worldmodel.leafTable;
+    const flags = new Uint8Array(leafs.count);
+    for (let i = 0; i < leafs.count; i++) {
+      for (let k = 0; k < leafs.numMarkSurfaces[i]; k++) {
+        const face = worldmodel.faces[worldmodel.marksurfaces[leafs.firstMarkSurfaces[i] + k]];
         if (face.submodel) {
           flags[i] = 1;
           break;
@@ -754,6 +755,7 @@ export default class ShadowMap {
     const pointCasterCutoffDistSq = pointLightRadius * pointLightRadius;
 
     GL.BindVAO(worldmodel.opaqueVAO as WebGLVertexArrayObject);
+    const renderState = WorldRenderState.of(worldmodel);
     const program = GL.UseProgram('shadow-point')!;
 
     gl.uniform3f(program.uOrigin!, 0, 0, 0);
@@ -769,10 +771,8 @@ export default class ShadowMap {
       ShadowMap.buildPointFaceMatrix(face, slot);
       gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ShadowMap.pointFaceMatrix);
 
-      for (let i = 0; i < worldmodel.leafs.length; i++) {
-        const leaf = worldmodel.leafs[i];
-
-        if (leaf.skychain === 0) {
+      for (let i = 0; i < worldmodel.leafTable.count; i++) {
+        if (renderState.skychains[i] === 0) {
           continue;
         }
 
@@ -781,8 +781,8 @@ export default class ShadowMap {
           continue;
         }
 
-        for (let j = 0; j < leaf.skychain; j++) {
-          const cmds = leaf.cmds[j];
+        for (let j = 0; j < renderState.skychains[i]; j++) {
+          const cmds = renderState.cmds[i][j];
 
           const flags = (worldmodel.textures[cmds[0]] as { flags: number }).flags;
           if (flags & (MaterialFlags.MF_SKIP | MaterialFlags.MF_TRANSPARENT)) {

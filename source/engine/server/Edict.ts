@@ -773,7 +773,7 @@ export class ServerEdict {
       return null;
     }
 
-    const leaf = this[SERVER].server.worldmodel!.getLeafForPoint(this.entity!.origin.copy().add(this.entity!.view_ofs)).num;
+    const leaf = this[SERVER].server.worldmodel!.getLeafIndexForPoint(this.entity!.origin.copy().add(this.entity!.view_ofs));
 
     if (leaf === 0 || !lastcheckpvs.isRevealed(leaf)) {
       return null;

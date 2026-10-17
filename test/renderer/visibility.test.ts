@@ -6,32 +6,18 @@ import Camera from '../../source/engine/client/renderer/scene/Camera.ts';
 import Visibility from '../../source/engine/client/renderer/scene/Visibility.ts';
 import type Cvar from '../../source/engine/common/Cvar.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
-import { BrushModel, Node } from '../../source/engine/common/model/BSP.ts';
+import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
+import { WorldRenderState } from '../../source/engine/common/model/WorldRenderState.ts';
 import { content } from '../../source/shared/Defs.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { createTreeModel } from '../support/bspTree.ts';
 
 interface FakeWorld {
   readonly worldmodel: BrushModel;
-  readonly root: Node;
-  readonly leafs: Node[];
+  readonly state: WorldRenderState;
   readonly revealedLeafs: Set<number>;
   connected: boolean;
-}
-
-/**
- * Creates a node or a leaf that is not attached to a real map.
- * @param num Node or leaf number.
- * @param contents Contents, `CONTENT_NONE` for a node and a negative value for a leaf.
- * @returns The node.
- */
-function createNode(num: number, contents: content): Node {
-  const node = new Node({} as BrushModel);
-
-  node.num = num;
-  node.contents = contents;
-
-  return node;
 }
 
 /**
@@ -40,37 +26,28 @@ function createNode(num: number, contents: content): Node {
  * @returns The fake world.
  */
 function createWorld(): FakeWorld {
-  const root = createNode(0, content.CONTENT_NONE);
-  const leafs = [
-    createNode(0, content.CONTENT_SOLID),
-    createNode(1, content.CONTENT_EMPTY),
-    createNode(2, content.CONTENT_EMPTY),
-  ];
-
-  leafs[1].parent = root;
-  leafs[2].parent = root;
-  root.children = [leafs[1], leafs[2]];
-
+  const worldmodel = createTreeModel(
+    [{ normal: [1, 0, 0], dist: 0, type: 0 }],
+    [{ planeNum: 0, children: [~1, ~2] }],
+    [{ contents: content.CONTENT_SOLID }, { contents: content.CONTENT_EMPTY }, { contents: content.CONTENT_EMPTY }],
+  );
   const revealedLeafs = new Set<number>();
   const visibility = { isRevealed: (leaf: number): boolean => revealedLeafs.has(leaf) };
 
   const world: FakeWorld = {
-    root,
-    leafs,
+    worldmodel,
+    state: WorldRenderState.of(worldmodel),
     revealedLeafs,
     connected: true,
-    worldmodel: null!,
   };
 
-  (world as { worldmodel: BrushModel }).worldmodel = {
-    nodes: [root],
-    leafs,
-    getPvsByLeaf: () => visibility,
-    getPhsByLeaf: () => visibility,
-    // the player stands in empty space, so the "just above/below the water line" lookup finds nothing new
-    getLeafForPoint: () => leafs[1],
-    areaPortals: { leafsConnected: () => world.connected },
-  } as unknown as BrushModel;
+  const overrides = worldmodel as unknown as Record<string, unknown>;
+
+  overrides.getPvsByLeaf = () => visibility;
+  overrides.getPhsByLeaf = () => visibility;
+  // the player stands in empty space, so the "just above/below the water line" lookup finds nothing new
+  overrides.getLeafIndexForPoint = () => 1;
+  overrides.leafsConnected = () => world.connected;
 
   return world;
 }
@@ -101,7 +78,7 @@ void describe('Visibility.MarkLeafs', () => {
     world = createWorld();
     areaportals = 0;
     Visibility.visframecount = 100;
-    Visibility.viewleaf = world.leafs[1];
+    Visibility.viewleaf = 1;
     Visibility.oldviewleaf = null;
     Visibility.skyVisible = false;
     rendererCvars.novis = { value: 0 } as unknown as Cvar;
@@ -121,7 +98,7 @@ void describe('Visibility.MarkLeafs', () => {
     Visibility.MarkLeafs();
 
     assert.equal(Visibility.visframecount, 101);
-    assert.equal(Visibility.oldviewleaf, world.leafs[1]);
+    assert.equal(Visibility.oldviewleaf, 1);
   });
 
   void test('does nothing while the view stays in the same leaf', () => {
@@ -145,8 +122,8 @@ void describe('Visibility.MarkLeafs', () => {
 
     Visibility.MarkLeafs();
 
-    assert.equal(world.leafs[1].visframe, Visibility.visframecount);
-    assert.notEqual(world.leafs[2].visframe, Visibility.visframecount);
+    assert.equal(world.state.visframes[1], Visibility.visframecount);
+    assert.notEqual(world.state.visframes[2], Visibility.visframecount);
   });
 
   void test('marks the parents of a revealed leaf so the BSP walk can reach it', () => {
@@ -154,9 +131,10 @@ void describe('Visibility.MarkLeafs', () => {
 
     Visibility.MarkLeafs();
 
-    assert.equal(world.root.markvisframe, Visibility.visframecount);
-    assert.equal(world.leafs[2].markvisframe, Visibility.visframecount);
-    assert.notEqual(world.leafs[1].markvisframe, Visibility.visframecount);
+    // the marks of the nodes come first, then those of the leafs
+    assert.equal(world.state.markframes[0], Visibility.visframecount);
+    assert.equal(world.state.markframes[world.state.nodeCount + 2], Visibility.visframecount);
+    assert.notEqual(world.state.markframes[world.state.nodeCount + 1], Visibility.visframecount);
   });
 
   void test('reveals every leaf when r_novis is 1', () => {
@@ -164,8 +142,8 @@ void describe('Visibility.MarkLeafs', () => {
 
     Visibility.MarkLeafs();
 
-    assert.equal(world.leafs[1].visframe, Visibility.visframecount);
-    assert.equal(world.leafs[2].visframe, Visibility.visframecount);
+    assert.equal(world.state.visframes[1], Visibility.visframecount);
+    assert.equal(world.state.visframes[2], Visibility.visframecount);
   });
 
   void test('skips leafs that the area portals cut off when cl_areaportals is on', () => {
@@ -178,8 +156,8 @@ void describe('Visibility.MarkLeafs', () => {
 
     Visibility.MarkLeafs();
 
-    assert.notEqual(world.leafs[1].visframe, Visibility.visframecount);
-    assert.notEqual(world.leafs[2].visframe, Visibility.visframecount);
+    assert.notEqual(world.state.visframes[1], Visibility.visframecount);
+    assert.notEqual(world.state.visframes[2], Visibility.visframecount);
   });
 
   void test('ignores the area portals when cl_areaportals is off', () => {
@@ -188,13 +166,13 @@ void describe('Visibility.MarkLeafs', () => {
 
     Visibility.MarkLeafs();
 
-    assert.equal(world.leafs[1].visframe, Visibility.visframecount);
+    assert.equal(world.state.visframes[1], Visibility.visframecount);
   });
 
   void test('asks for the sky when a visible leaf has sky surfaces', () => {
     world.revealedLeafs.add(1);
-    world.leafs[1].skychain = 0;
-    world.leafs[1].waterchain = 2;
+    world.state.skychains[1] = 0;
+    world.state.waterchains[1] = 2;
 
     Visibility.MarkLeafs();
 
@@ -227,12 +205,12 @@ void describe('Visibility view leaf', () => {
 
   void test('UpdateViewLeaf asks the world for the leaf at the view origin and returns it', () => {
     const asked: number[][] = [];
-    const leaf = createNode(5, content.CONTENT_WATER);
+    const leaf = 5;
 
     restoreClientState = useClientStateOf({
       state: {
         worldmodel: {
-          getLeafForPoint: (point: Vector) => {
+          getLeafIndexForPoint: (point: Vector) => {
             asked.push([point[0], point[1], point[2]]);
             return leaf;
           },
@@ -247,8 +225,8 @@ void describe('Visibility view leaf', () => {
   });
 
   void test('Reset forgets the view leaf and the marking so the next frame marks again', () => {
-    Visibility.viewleaf = createNode(1, content.CONTENT_EMPTY);
-    Visibility.oldviewleaf = createNode(1, content.CONTENT_EMPTY);
+    Visibility.viewleaf = 1;
+    Visibility.oldviewleaf = 1;
 
     Visibility.Reset();
 
@@ -261,7 +239,7 @@ void describe('view leaf invalidation', () => {
   const previousOldViewLeaf = Visibility.oldviewleaf;
 
   beforeEach(() => {
-    Visibility.oldviewleaf = createNode(1, content.CONTENT_EMPTY);
+    Visibility.oldviewleaf = 1;
   });
 
   afterEach(() => {

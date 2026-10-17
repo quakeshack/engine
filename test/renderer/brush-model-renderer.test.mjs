@@ -6,6 +6,8 @@ import { BrushModelRenderer, resolveBrushBloomContributionStrength } from '../..
 import { SimpleSkyBox } from '../../source/engine/client/renderer/scene/Sky.ts';
 import { useRendererOf } from '../support/renderer.ts';
 import { engineMocks } from '../support/engineMocks.ts';
+import { createRenderedWorld } from '../support/bspTree.ts';
+import { WorldRenderState } from '../../source/engine/common/model/WorldRenderState.ts';
 
 void describe('resolveBrushBloomContributionStrength', () => {
   void test('clamps invalid contribution strengths to zero', () => {
@@ -328,16 +330,8 @@ void describe('BrushModelRenderer.getWorldTurbulentChains', () => {
         mins: new Vector(96, -8, -8),
         maxs: new Vector(128, 8, 8),
       };
-      const model = /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ ({
-        leafs: [{
-          visframe: 7,
-          waterchain: 0,
-          cmds: [[0, 12, 6]],
-          turbulentChains: [chain],
-          mins: new Vector(-1024, -1024, -1024),
-          maxs: new Vector(1024, 1024, 1024),
-        }],
-      });
+      const model = createRenderedWorld([{ visframe: 7, waterchain: 0, cmds: [[0, 12, 6]], bounds: [-1024, -1024, -1024, 1024, 1024, 1024] }]);
+      WorldRenderState.of(model).turbulentChains[0] = [chain];
 
       const items = renderer.getWorldTurbulentChains(model, new Vector(0, 0, 0));
 
@@ -428,7 +422,7 @@ void describe('BrushModelRenderer._buildSurfaceDisplayList', () => {
 
 void describe('SimpleSkyBox.shutdown', () => {
   void test('does not free shared sky face textures', () => {
-    const skybox = new SimpleSkyBox(/** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ ({ cmds: null, leafs: [], skychain: 0 }));
+    const skybox = new SimpleSkyBox(/** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ ({ cmds: null, skychain: 0 }));
     const frees = [];
     const wraps = [];
     const makeTexture = (name) => /** @type {import('../../source/engine/client/GL.ts').GLTexture} */ ({

@@ -510,7 +510,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
      * @returns `CONTENT_EMPTY` before there is a view.
      */
     get viewContents(): content {
-      return Visibility.viewleaf?.contents ?? content.CONTENT_EMPTY;
+      return Visibility.viewContents;
     },
     get levelname(): string {
       return clientRuntimeState.levelname ?? '';

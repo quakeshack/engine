@@ -2014,7 +2014,7 @@ export class Pmove implements PlayerCollisionWorld { // pmove_t
       return content.CONTENT_SOLID;
     }
 
-    return this._normalizeStaticWorldContents(worldPhysEnt.brushWorldModel!.getLeafForPoint(point).contents);
+    return this._normalizeStaticWorldContents(worldPhysEnt.brushWorldModel!.leafTable.contents[worldPhysEnt.brushWorldModel!.getLeafIndexForPoint(point)]);
   }
 
   /**

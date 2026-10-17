@@ -14,7 +14,7 @@ import { DefaultClientEdictHandler } from './ClientLegacy.ts';
 import { BaseClientEdictHandler, type ClientSpawnParameters } from '../../shared/ClientEdict.ts';
 import GameModule from '../common/GameModule.ts';
 import { engineApi } from './PageServices.ts';
-import { revealedVisibility, type Node, type Visibility } from '../common/model/BSP.ts';
+import { revealedVisibility, type Visibility } from '../common/model/BSP.ts';
 import Con from '../common/Console.ts';
 import Mod from '../common/Mod.ts';
 import { clientRuntimeState } from './ClientState.ts';
@@ -408,9 +408,8 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
       return;
     }
 
-    const rootNode = worldmodel.nodes[0];
-    console.assert(rootNode !== undefined, 'worldmodel must have a root node before linking an entity');
-    if (rootNode === undefined) {
+    console.assert(worldmodel.nodeTable.count > 0, 'worldmodel must have a root node before linking an entity');
+    if (worldmodel.nodeTable.count === 0) {
       return;
     }
 
@@ -422,39 +421,35 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
 
     const emins = this.origin.copy().add(this.model.mins);
     const emaxs = this.origin.copy().add(this.model.maxs);
-    this.#splitEntityOnNode(rootNode, emins, emaxs);
+    this.#splitEntityOnNode(worldmodel, 0, emins, emaxs);
   }
 
   /**
-   * @param node BSP node to split the entity on
+   * @param worldmodel world model with the BSP tree
+   * @param reference BSP node to split the entity on (its index), or a leaf (`~index`)
    * @param emins entity mins
    * @param emaxs entity maxs
    */
-  #splitEntityOnNode(node: Node, emins: Vector, emaxs: Vector): void {
-    if (node.contents === content.CONTENT_SOLID) {
+  #splitEntityOnNode(worldmodel: BrushModel, reference: number, emins: Vector, emaxs: Vector): void {
+    if (reference < 0) {
+      const leaf = ~reference;
+
+      if (worldmodel.leafTable.contents[leaf] !== content.CONTENT_SOLID) {
+        this.leafs[this.leafs.length] = leaf;
+      }
+
       return;
     }
 
-    if (node.contents < content.CONTENT_NONE) {
-      this.leafs[this.leafs.length] = node.num;
-      return;
+    const nodes = worldmodel.nodeTable;
+    const sides = Vector.boxOnPlaneSide(emins, emaxs, worldmodel.planes[nodes.planeNums[reference]]);
+
+    if ((sides & 1) !== 0) {
+      this.#splitEntityOnNode(worldmodel, nodes.children[reference * 2], emins, emaxs);
     }
 
-    const plane = node.plane;
-    if (plane === null) {
-      return;
-    }
-
-    const sides = Vector.boxOnPlaneSide(emins, emaxs, plane);
-    const frontChild = node.children[0];
-    const backChild = node.children[1];
-
-    if ((sides & 1) !== 0 && frontChild !== null && typeof frontChild !== 'number') {
-      this.#splitEntityOnNode(frontChild, emins, emaxs);
-    }
-
-    if ((sides & 2) !== 0 && backChild !== null && typeof backChild !== 'number') {
-      this.#splitEntityOnNode(backChild, emins, emaxs);
+    if ((sides & 2) !== 0) {
+      this.#splitEntityOnNode(worldmodel, nodes.children[reference * 2 + 1], emins, emaxs);
     }
   }
 

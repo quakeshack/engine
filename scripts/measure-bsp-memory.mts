@@ -69,7 +69,7 @@ async function loadModel(file: string): Promise<{ model: BrushModel; fileSize: n
 const GROUPS: { name: string; members: (keyof BrushModel)[] }[] = [
   { name: 'submodels (views of the world arrays)', members: ['submodels'] },
   { name: 'hulls', members: ['hulls'] },
-  { name: 'nodes + leafs', members: ['nodes', 'leafs'] },
+  { name: 'nodes + leafs (typed)', members: ['nodeTable', 'leafTable'] },
   { name: 'clipnodes (typed tree)', members: ['clipTree'] },
   { name: 'plane table (typed)', members: ['planeTable'] },
   { name: 'planes', members: ['planes'] },
@@ -112,8 +112,8 @@ function dropMembers(model: BrushModel, members: (keyof BrushModel)[]): void {
 function countOf(model: BrushModel): string {
   return [
     `${model.planes.length} planes`,
-    `${model.nodes.length} nodes`,
-    `${model.leafs.length} leafs`,
+    `${model.nodeTable.count} nodes`,
+    `${model.leafTable.count} leafs`,
     `${model.clipTree.count} clipnodes`,
     `${model.faces.length} faces`,
     `${model.vertexes.length} vertexes`,

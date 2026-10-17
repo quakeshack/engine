@@ -7,6 +7,7 @@ import Vector from '../../source/shared/Vector.ts';
 import { content, effect } from '../../source/shared/Defs.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { createTreeModel } from '../support/bspTree.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { useRendererOf } from '../support/renderer.ts';
 import { useHostOf } from '../support/host.ts';
@@ -192,7 +193,7 @@ void describe('ClientEdict.dropOriginLerp', () => {
 /**
  * Runs a callback with a minimal `CL.state.worldmodel` installed so `ClientEdict.setOrigin()`/
  * `linkEdict()` can recompute `leafs` against a real (if tiny) BSP node tree.
- * @param {{nodes: unknown[]}} worldmodel worldmodel fixture with a root BSP node
+ * @param {import('../../source/engine/common/model/BSP.ts').BrushModel} worldmodel worldmodel fixture with a root BSP node
  * @param {() => void} callback
  */
 function withMockWorldmodelRegistry(worldmodel, callback) {
@@ -219,15 +220,12 @@ void describe('ClientEdict.linkEdict', () => {
     // Regression test: #splitEntityOnNode only ever appends to `leafs`, so without clearing it
     // first, a repeatedly-moved entity (e.g. ClientEntityPhysics.step() calling setOrigin() every
     // frame) would keep every leaf it had ever occupied instead of just its current one.
-    const leafA = { contents: content.CONTENT_EMPTY, num: 1 };
-    const leafB = { contents: content.CONTENT_EMPTY, num: 2 };
-    const worldmodel = {
-      nodes: [{
-        contents: 0,
-        plane: { normal: new Vector(1, 0, 0), dist: 0, type: 0, signbits: 0 },
-        children: [leafA, leafB],
-      }],
-    };
+    // leaf 0 is the outside leaf of every map
+    const worldmodel = createTreeModel(
+      [{ normal: [1, 0, 0], dist: 0, type: 0 }],
+      [{ planeNum: 0, children: [~1, ~2] }],
+      [{}, { contents: content.CONTENT_EMPTY }, { contents: content.CONTENT_EMPTY }],
+    );
 
     withMockWorldmodelRegistry(worldmodel, () => {
       const entity = new ClientEdict(-1);

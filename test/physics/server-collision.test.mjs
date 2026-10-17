@@ -1350,7 +1350,7 @@ void describe('ServerCollision', () => {
     void test('normalizes brush-backed current leaves to water', () => {
       const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
-      worldModel.leafs[1].contents = content.CONTENT_CURRENT_DOWN;
+      worldModel.leafTable.contents[1] = content.CONTENT_CURRENT_DOWN;
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
 
       void withMockEngine(defaultMockEngine({

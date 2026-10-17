@@ -11,7 +11,6 @@ import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { createModelLoadContext, createSilentConsole } from '../support/modelContext.ts';
 import { createRandom } from '../support/pmoveDeterminism.ts';
 import Vector from '../../source/shared/Vector.ts';
-import { content } from '../../source/shared/Defs.ts';
 
 /**
  * Read a real BSP2 fixture from data/id1/maps/ into an ArrayBuffer. All local
@@ -153,16 +152,14 @@ void describe('BSP29Loader (shared load() logic, exercised via BSP2Loader fixtur
       const hull = model.hulls[0];
 
       assert.equal(hull.planes, model.planeTable);
-      assert.equal(hull.tree.count, model.nodes.length);
+      assert.equal(hull.tree.count, model.nodeTable.count);
 
-      for (let index = 0; index < model.nodes.length; index++) {
-        const node = model.nodes[index];
-
-        assert.equal(hull.tree.planeNums[index], node.planenum);
+      for (let index = 0; index < model.nodeTable.count; index++) {
+        assert.equal(hull.tree.planeNums[index], model.nodeTable.planeNums[index]);
 
         for (let side = 0; side < 2; side++) {
-          const child = node.children[side] as typeof node;
-          const expected = child.contents < content.CONTENT_NONE ? child.contents : child.num;
+          const child = model.nodeTable.children[index * 2 + side];
+          const expected = child >= 0 ? child : model.leafTable.contents[~child];
 
           assert.equal(hull.tree.children[index * 2 + side], expected, `node ${index}, side ${side}`);
         }
@@ -180,7 +177,7 @@ void describe('BSP29Loader (shared load() logic, exercised via BSP2Loader fixtur
           model.mins[2] + random() * (model.maxs[2] - model.mins[2]),
         );
 
-        assert.equal(model.hulls[0].pointContents(point), model.getLeafForPoint(point).contents, `point ${[...point]}`);
+        assert.equal(model.hulls[0].pointContents(point), model.leafTable.contents[model.getLeafIndexForPoint(point)], `point ${[...point]}`);
       }
     });
 

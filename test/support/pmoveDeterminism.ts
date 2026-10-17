@@ -14,6 +14,7 @@ import { MoveVars, Pmove, PmovePlayer } from '../../source/engine/common/Pmove.t
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { createRoomHull } from './hulls.ts';
+import { setBspTree } from './bspTree.ts';
 
 /** The plane shape the brush model carries. */
 type ModelPlane = BrushModel['planes'][number];
@@ -181,19 +182,20 @@ export function createDeterminismWorld(): BrushModel {
 
   const brushCount = model.brushes!.length;
   const allBrushes = Array.from({ length: brushCount }, (_unused, index) => index);
-  const dryLeaf = { contents: content.CONTENT_EMPTY, firstleafbrush: 0, numleafbrushes: brushCount };
-  const waterLeaf = { contents: content.CONTENT_WATER, firstleafbrush: brushCount, numleafbrushes: brushCount };
   const roomMins = new Vector(-2048, -2048, -2048);
   const roomMaxs = new Vector(2048, 2048, 2048);
 
   model.numBrushes = brushCount;
   model.leafbrushes = [...allBrushes, ...allBrushes];
-  model.leafs = [dryLeaf, waterLeaf] as unknown as BrushModel['leafs'];
-  model.nodes = [{
-    contents: 0,
-    plane: { normal: new Vector(1, 0, 0), dist: WATER_EDGE_X, type: 0, signbits: 0 },
-    children: [dryLeaf, waterLeaf],
-  }] as unknown as BrushModel['nodes'];
+  model.planes.push({ normal: new Vector(1, 0, 0), dist: WATER_EDGE_X, type: 0, signbits: 0 } as unknown as ModelPlane);
+  setBspTree(
+    model,
+    [{ planeNum: model.planes.length - 1, children: [~0, ~1] }],
+    [
+      { contents: content.CONTENT_EMPTY, firstLeafBrush: 0, numLeafBrushes: brushCount },
+      { contents: content.CONTENT_WATER, firstLeafBrush: brushCount, numLeafBrushes: brushCount },
+    ],
+  );
   model.hulls = [
     createRoomHull(roomMins, roomMaxs),
     createRoomHull(roomMins, roomMaxs),

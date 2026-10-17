@@ -6,10 +6,11 @@ import { BaseClientEdictHandler } from '../../source/shared/ClientEdict.ts';
 import ClientSerialization from '../../source/shared/ClientSerialization.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';
 import Vector from '../../source/shared/Vector.ts';
-import { content, moveType } from '../../source/shared/Defs.ts';
+import { moveType } from '../../source/shared/Defs.ts';
 
 import { assertNear } from '../physics/fixtures.mjs';
 import { useClientStateOf } from '../support/clientState.ts';
+import { createSingleLeafWorld } from '../support/bspTree.ts';
 import { installPageServices } from '../../source/engine/client/PageServices.ts';
 import { createClientEngineApi } from '../support/clientEngineApi.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
@@ -77,7 +78,7 @@ function withMockClRegistry(time, callback) {
   engineMocks.CL = {
     state: {
       time,
-      worldmodel: { nodes: [{ contents: content.CONTENT_EMPTY, num: 0 }] },
+      worldmodel: createSingleLeafWorld(),
     },
   };
 

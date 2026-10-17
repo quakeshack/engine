@@ -1,4 +1,3 @@
-import type { Node } from '../../common/model/BSP.ts';
 import type { BaseEntity, ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
@@ -172,33 +171,38 @@ export class ServerArea {
   /**
    * Populates the leaf list for an entity by traversing the BSP tree.
    * @param ent Subject edict.
-   * @param node Current BSP node.
+   * @param reference Current BSP node (its index), or a leaf (`~index`).
    */
-  findTouchedLeafs(ent: ServerEdict, node: Node): void {
-    if (node.contents === Defs.content.CONTENT_SOLID) {
-      return;
-    }
+  findTouchedLeafs(ent: ServerEdict, reference: number): void {
+    const worldmodel = this.sv.server.worldmodel!;
 
-    if (node.contents < Defs.content.CONTENT_NONE) {
+    if (reference < 0) {
+      const leaf = ~reference;
+
+      if (worldmodel.leafTable.contents[leaf] === Defs.content.CONTENT_SOLID) {
+        return;
+      }
+
       if (ent.leafnums.length === 16) {
         return;
       }
 
-      ent.leafnums[ent.leafnums.length] = node.num;
+      ent.leafnums[ent.leafnums.length] = leaf;
       return;
     }
 
     console.assert(ent.entity !== null);
     const entity = ent.entity! as BaseEntity;
+    const nodes = worldmodel.nodeTable;
 
-    const sides = Vector.boxOnPlaneSide(entity.absmin, entity.absmax, node.plane!);
+    const sides = Vector.boxOnPlaneSide(entity.absmin, entity.absmax, worldmodel.planes[nodes.planeNums[reference]]);
 
     if ((sides & 1) !== 0) {
-      this.findTouchedLeafs(ent, node.children[0] as Node);
+      this.findTouchedLeafs(ent, nodes.children[reference * 2]);
     }
 
     if ((sides & 2) !== 0) {
-      this.findTouchedLeafs(ent, node.children[1] as Node);
+      this.findTouchedLeafs(ent, nodes.children[reference * 2 + 1]);
     }
   }
 
@@ -239,7 +243,7 @@ export class ServerArea {
 
     ent.leafnums = [];
     if (entity.modelindex !== 0) {
-      this.findTouchedLeafs(ent, this.sv.server.worldmodel!.nodes[0]);
+      this.findTouchedLeafs(ent, 0);
     }
 
     if (entity.solid === Defs.solid.SOLID_NOT) {

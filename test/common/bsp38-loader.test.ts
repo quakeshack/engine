@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
 import { content } from '../../source/shared/Defs.ts';
-import { BrushModel, Node } from '../../source/engine/common/model/BSP.ts';
+import { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { BrushTrace } from '../../source/engine/common/Pmove.ts';
 import { BSP38Loader } from '../../source/engine/common/model/loaders/BSP38Loader.ts';
 import { QSMatLoader } from '../../source/engine/common/model/QSMatLoader.ts';
@@ -53,25 +53,40 @@ void describe('BSP38Loader', () => {
       assert.equal(model.faces.length, 36);
     });
 
-    void test('loads and links BSP tree nodes to real Node instances', async () => {
+    void test('loads the BSP tree and links the children and the parents of its nodes', async () => {
       const model = await loadBSP38Map();
+      const { nodeTable, leafTable } = model;
 
-      assert.ok(model.nodes.length > 0);
-      assert.ok(model.leafs.length > 1);
+      assert.ok(nodeTable.count > 0);
+      assert.ok(leafTable.count > 1);
+      assert.ok(nodeTable.planeNums[0] < model.planes.length);
+      assert.equal(nodeTable.parents[0], -1);
 
-      const root = model.nodes[0];
-      assert.ok(root.plane !== null);
-      assert.ok(root.children[0] instanceof Node);
-      assert.ok(root.children[1] instanceof Node);
-      assert.equal(root.parent, null);
+      for (let node = 0; node < nodeTable.count; node++) {
+        // the nodes of inline models hang from nodes that nothing refers to, they have no parents
+        if (node !== 0 && nodeTable.parents[node] === -1) {
+          continue;
+        }
+
+        for (let side = 0; side < 2; side++) {
+          const child = nodeTable.children[node * 2 + side];
+
+          // a node index, or a leaf as ~index; each knows the node it hangs from. Leaf 0 is the solid leaf that many nodes share.
+          if (child >= 0 || ~child !== 0) {
+            assert.equal(child >= 0 ? nodeTable.parents[child] : leafTable.parents[~child], node);
+          }
+        }
+      }
     });
 
     void test('assigns leaf contents from the leafs lump, including the sentinel outside leaf', async () => {
       const model = await loadBSP38Map();
 
-      assert.equal(model.leafs[0].contents, content.CONTENT_SOLID);
-      assert.ok(model.leafs.some((leaf) => leaf.contents === content.CONTENT_SOLID));
-      assert.ok(model.leafs.some((leaf) => leaf.contents === content.CONTENT_EMPTY));
+      const contents = [...model.leafTable.contents];
+
+      assert.equal(contents[0], content.CONTENT_SOLID);
+      assert.ok(contents.includes(content.CONTENT_SOLID));
+      assert.ok(contents.includes(content.CONTENT_EMPTY));
     });
   });
 
@@ -201,11 +216,11 @@ void describe('BSP38Loader', () => {
     void test('reveals a leaf to itself via PVS', async () => {
       const model = await loadBSP38Map();
 
-      const leaf = model.getLeafForPoint(new Vector(-160, 0, 24));
-      assert.notEqual(leaf.cluster, -1);
+      const leaf = model.getLeafIndexForPoint(new Vector(-160, 0, 24));
+      assert.notEqual(model.leafTable.clusters[leaf], -1);
 
       const pvs = model.getPvsByPoint(new Vector(-160, 0, 24));
-      assert.ok(pvs.isRevealed(model.leafs.indexOf(leaf)));
+      assert.ok(pvs.isRevealed(leaf));
     });
   });
 
@@ -300,16 +315,16 @@ void describe('BSP38Loader', () => {
     void test('opening and closing the areaportal changes connectivity between the two sides', async () => {
       const model = await loadBSP38Map();
 
-      const leafA = model.getLeafForPoint(new Vector(-160, 0, 24));
-      const leafB = model.getLeafForPoint(new Vector(160, 0, 24));
+      const leafA = model.getLeafIndexForPoint(new Vector(-160, 0, 24));
+      const leafB = model.getLeafIndexForPoint(new Vector(160, 0, 24));
 
-      assert.notEqual(leafA.area, leafB.area);
+      assert.notEqual(model.leafTable.areas[leafA], model.leafTable.areas[leafB]);
 
       model.areaPortals.closeAll();
-      assert.equal(model.areaPortals.leafsConnected(leafA, leafB), false);
+      assert.equal(model.leafsConnected(leafA, leafB), false);
 
       model.areaPortals.openAll();
-      assert.equal(model.areaPortals.leafsConnected(leafA, leafB), true);
+      assert.equal(model.leafsConnected(leafA, leafB), true);
     });
   });
 

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { BrushModel, Visibility } from '../../source/engine/common/model/BSP.ts';
 import Vector from '../../source/shared/Vector.ts';
+import { setBspTree } from '../support/bspTree.ts';
 
 void describe('Visibility.mergeFrom', () => {
   /**
@@ -15,7 +16,7 @@ void describe('Visibility.mergeFrom', () => {
     const model = new BrushModel('test-model');
     model.numclusters = 8;
     model.visdata = new Uint8Array(0);
-    model.leafs = [{ cluster: 0 }, { cluster: 1 }, { cluster: 2 }];
+    setBspTree(model, [], [{ cluster: 0 }, { cluster: 1 }, { cluster: 2 }]);
 
     return model;
   }
@@ -66,12 +67,12 @@ void describe('BrushModel.getPhsByLeafs', () => {
     // cluster 0's PHS row reveals cluster 1 (0x02); cluster 1's PHS row reveals cluster 2 (0x04).
     model.phsdata = new Uint8Array([0x02, 0x04]);
     model.clusterPhsOffsets = [0, 1];
-    model.leafs = [
+    setBspTree(model, [], [
       { cluster: -1 }, // index 0: reserved outside/solid leaf, never contributes
       { cluster: 0 },  // index 1: entity-occupied leaf A
       { cluster: 1 },  // index 2: entity-occupied leaf B
       { cluster: 2 },  // index 3: a client leaf only reachable through leaf B's row
-    ];
+    ]);
 
     return model;
   }
@@ -111,15 +112,9 @@ void describe('BrushModel.getFatPhsByPoint', () => {
     model.clusterPhsOffsets = [0];
     model.phsdata = new Uint8Array([0x02]); // cluster 0's row reveals cluster 1
 
-    const solidLeaf = { cluster: -1, contents: -2 }; // CONTENT_SOLID, must never contribute
-    const openLeaf = { cluster: 0, contents: -1 }; // CONTENT_EMPTY, the room beside the wall
-
-    model.nodes = [{
-      contents: 0, // CONTENT_NONE: internal split node, not a leaf
-      plane: { normal: new Vector(1, 0, 0), dist: 0 },
-      children: [solidLeaf, openLeaf],
-    }];
-    model.leafs = [{ cluster: 1 }];
+    // leaf 0 is the one the test asks about (cluster 1), leaf 1 is solid and must never contribute, leaf 2 is the room beside the wall
+    model.planes = [{ normal: new Vector(1, 0, 0), dist: 0, type: 0, signbits: 0 }];
+    setBspTree(model, [{ planeNum: 0, children: [~1, ~2] }], [{ cluster: 1 }, { cluster: -1, contents: -2 }, { cluster: 0, contents: -1 }]);
 
     // 2 units past the plane, on the solid side: a strict single-path descent lands in the
     // solid leaf and yields nothing. Within the 8-unit fat-point fudge, both sides are merged,
@@ -136,15 +131,9 @@ void describe('BrushModel.getFatPhsByPoint', () => {
     model.clusterPhsOffsets = [0];
     model.phsdata = new Uint8Array([0x02]); // cluster 0's row reveals cluster 1
 
-    const solidLeaf = { cluster: -1, contents: -2 };
-    const openLeaf = { cluster: 0, contents: -1 };
-
-    model.nodes = [{
-      contents: 0,
-      plane: { normal: new Vector(1, 0, 0), dist: 0 },
-      children: [solidLeaf, openLeaf],
-    }];
-    model.leafs = [{ cluster: 1 }];
+    // leaf 0 is the one the test asks about (cluster 1), leaf 1 is solid and must never contribute, leaf 2 is the room beside the wall
+    model.planes = [{ normal: new Vector(1, 0, 0), dist: 0, type: 0, signbits: 0 }];
+    setBspTree(model, [{ planeNum: 0, children: [~1, ~2] }], [{ cluster: 1 }, { cluster: -1, contents: -2 }, { cluster: 0, contents: -1 }]);
 
     // 20 units past the plane, well outside the fudge: only the solid leaf is visited, which
     // never contributes, so the result stays fully hidden.

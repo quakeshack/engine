@@ -1,6 +1,7 @@
 import type Vector from '../../../../shared/Vector.ts';
 import { content } from '../../../../shared/Defs.ts';
-import type { BrushModel, Node } from '../../../common/model/BSP.ts';
+import type { BrushModel } from '../../../common/model/BSP.ts';
+import { WorldRenderState } from '../../../common/model/WorldRenderState.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
 
@@ -45,17 +46,17 @@ class Fog {
    * Picks the color and density of the underwater fog for a camera that is inside a liquid. Run once per frame,
    * and only while the view leaf is underwater.
    * @param worldmodel The current map.
-   * @param viewleaf The leaf the camera is in.
+   * @param viewleaf Index of the leaf the camera is in.
    * @param vieworg The camera origin.
    */
-  static SelectUnderwaterTint(worldmodel: BrushModel, viewleaf: Node, vieworg: Vector): void {
+  static SelectUnderwaterTint(worldmodel: BrushModel, viewleaf: number, vieworg: Vector): void {
     // Look up fog tint in priority order:
     //   1. First turbulent chain visible from the viewleaf (direct hit).
     //   2. Nearest spatial anchor built at load time — covers narrow passages
     //      where no surface is in view, and correctly distinguishes between
     //      multiple distinct liquid bodies of the same content type.
     //   3. Hardcoded content-type defaults as a last resort.
-    const firstChain = viewleaf.turbulentChains[0];
+    const firstChain = WorldRenderState.of(worldmodel).turbulentChains[viewleaf][0];
     const material = firstChain !== undefined
       ? worldmodel.textures[firstChain.texture]
       : undefined;
@@ -68,9 +69,9 @@ class Fog {
 
     if (fogTint !== null) {
       Fog.underwaterFogColor = fogTint;
-    } else if (viewleaf.contents <= content.CONTENT_LAVA) {
+    } else if (worldmodel.leafTable.contents[viewleaf] <= content.CONTENT_LAVA) {
       Fog.underwaterFogColor = [0.25, 0.05, 0.0];
-    } else if (viewleaf.contents <= content.CONTENT_SLIME) {
+    } else if (worldmodel.leafTable.contents[viewleaf] <= content.CONTENT_SLIME) {
       Fog.underwaterFogColor = [0.02, 0.12, 0.0];
     } else {
       Fog.underwaterFogColor = [0.05, 0.15, 0.2];

@@ -700,7 +700,7 @@ export default class ClientHost {
     }
 
     if (clientStaticState.signon === 4) {
-      S.Update(Camera.refdef.vieworg, Camera.vpn, Camera.vright, Camera.vup, Visibility.viewleaf ? Visibility.viewleaf.contents <= content.CONTENT_WATER : false);
+      S.Update(Camera.refdef.vieworg, Camera.vpn, Camera.vright, Camera.vup, Visibility.viewContents <= content.CONTENT_WATER);
     } else {
       S.Update(Vector.origin, Vector.origin, Vector.origin, Vector.origin, false);
     }

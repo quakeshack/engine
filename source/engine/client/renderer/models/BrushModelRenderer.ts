@@ -4,7 +4,8 @@ import { eventBus } from '../../../common/EventBus.ts';
 import GL, { type GLProgramInfo, type GLRenderTexture, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE, GLVolumeTexture } from '../../GL.ts';
 import { getEntityBloomEmissiveScale } from '../postprocess/BloomEffect.ts';
 import { MaterialFlags, type BaseMaterial } from './Materials.ts';
-import { BrushModel, type Node, type FogVolumeInfo, type WorldTurbulentChainInfo } from '../../../common/model/BSP.ts';
+import { BrushModel, type FogVolumeInfo, type WorldTurbulentChainInfo } from '../../../common/model/BSP.ts';
+import { WorldRenderState } from '../../../common/model/WorldRenderState.ts';
 import type { Face, BaseModel } from '../../../common/model/BaseModel.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
 import Mesh from './Mesh.ts';
@@ -112,6 +113,10 @@ export class BrushModelRenderer extends ModelRenderer {
   static MAX_FOG_DLIGHTS = 8;
 
   /** Reused by `getEntityViewDistance()`, once per transparent brush entity and frame. */
+  /** Bounds of the leaf a loop looks at, see `#loadLeafBounds()`. */
+  static readonly #leafMins = new Vector();
+  static readonly #leafMaxs = new Vector();
+
   static readonly #scratchMins: [number, number, number] = [0, 0, 0];
   static readonly #scratchMaxs: [number, number, number] = [0, 0, 0];
 
@@ -542,19 +547,21 @@ export class BrushModelRenderer extends ModelRenderer {
     LightStyles.lightstyle_texture_b.bind(program.tLightStyleB!);
     const hasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
-    for (let i = 0; i < clmodel.leafs.length; i++) {
-      const leaf = clmodel.leafs[i];
+    const state = WorldRenderState.of(clmodel);
 
-      if (leaf.visframe !== Visibility.visframecount || leaf.skychain === 0) {
+    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
+      if (state.visframes[leaf] !== Visibility.visframecount || state.skychains[leaf] === 0) {
         continue;
       }
 
-      if (Camera.CullBox(leaf.mins!, leaf.maxs!)) {
+      BrushModelRenderer.#loadLeafBounds(state, leaf);
+
+      if (Camera.CullBox(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs)) {
         continue;
       }
 
-      for (let j = 0; j < leaf.skychain; j++) {
-        const cmds = leaf.cmds[j];
+      for (let j = 0; j < state.skychains[leaf]; j++) {
+        const cmds = state.cmds[leaf][j];
         const material = clmodel.textures[cmds[0]] as BaseMaterial;
 
         if (material.flags & MaterialFlags.MF_SKIP) {
@@ -584,14 +591,19 @@ export class BrushModelRenderer extends ModelRenderer {
    */
   renderWorldTransparent(clmodel: BrushModel): void {
     this.beginWorldTransparentPass(clmodel);
-    for (let i = 0; i < clmodel.leafs.length; i++) {
-      const leaf = clmodel.leafs[i];
-      if (leaf.visframe !== Visibility.visframecount || leaf.skychain === 0) {
+    const state = WorldRenderState.of(clmodel);
+
+    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
+      if (state.visframes[leaf] !== Visibility.visframecount || state.skychains[leaf] === 0) {
         continue;
       }
-      if (Camera.CullBox(leaf.mins!, leaf.maxs!)) {
+
+      BrushModelRenderer.#loadLeafBounds(state, leaf);
+
+      if (Camera.CullBox(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs)) {
         continue;
       }
+
       this.renderWorldTransparentLeaf(clmodel, leaf);
     }
     this.endWorldTransparentPass();
@@ -602,19 +614,23 @@ export class BrushModelRenderer extends ModelRenderer {
    * squared distance from the given viewpoint for back-to-front sorting.
    * @returns Leaf entries with squared view distances for back-to-front sorting.
    */
-  getWorldTransparentLeaves(clmodel: BrushModel, vieworg: Float32Array | number[]): { leaf: Node; dist: number }[] {
-    const items: { leaf: Node; dist: number }[] = [];
-    for (let i = 0; i < clmodel.leafs.length; i++) {
-      const leaf = clmodel.leafs[i];
-      if (leaf.visframe !== Visibility.visframecount || leaf.skychain === 0) {
+  getWorldTransparentLeaves(clmodel: BrushModel, vieworg: Float32Array | number[]): { leaf: number; dist: number }[] {
+    const items: { leaf: number; dist: number }[] = [];
+    const state = WorldRenderState.of(clmodel);
+
+    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
+      if (state.visframes[leaf] !== Visibility.visframecount || state.skychains[leaf] === 0) {
         continue;
       }
-      if (Camera.CullBox(leaf.mins!, leaf.maxs!)) {
+
+      BrushModelRenderer.#loadLeafBounds(state, leaf);
+
+      if (Camera.CullBox(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs)) {
         continue;
       }
       let hasTransparent = false;
-      for (let j = 0; j < leaf.skychain; j++) {
-        if ((clmodel.textures[leaf.cmds[j][0]] as BaseMaterial).flags & MaterialFlags.MF_TRANSPARENT) {
+      for (let j = 0; j < state.skychains[leaf]; j++) {
+        if ((clmodel.textures[state.cmds[leaf][j][0]] as BaseMaterial).flags & MaterialFlags.MF_TRANSPARENT) {
           hasTransparent = true;
           break;
         }
@@ -622,7 +638,7 @@ export class BrushModelRenderer extends ModelRenderer {
       if (!hasTransparent) {
         continue;
       }
-      const dist = this._getBoundsDistanceToView(leaf.mins!, leaf.maxs!, vieworg);
+      const dist = this._getBoundsDistanceToView(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs, vieworg);
       items.push({ leaf, dist });
     }
     return items;
@@ -667,13 +683,14 @@ export class BrushModelRenderer extends ModelRenderer {
    * Render a single leaf's transparent surfaces.
    * Must be called between `beginWorldTransparentPass` and `endWorldTransparentPass`.
    */
-  renderWorldTransparentLeaf(clmodel: BrushModel, leaf: Node): void {
+  renderWorldTransparentLeaf(clmodel: BrushModel, leaf: number): void {
     const worldspawn = clientRuntimeState.clientEntities.getEntity(0);
     const program = this._worldTransparentProgram!;
     const hasDeluxemap = this._worldTransparentHasDeluxemap;
+    const state = WorldRenderState.of(clmodel);
 
-    for (let j = 0; j < leaf.skychain; j++) {
-      const cmds = leaf.cmds[j];
+    for (let j = 0; j < state.skychains[leaf]; j++) {
+      const cmds = state.cmds[leaf][j];
       const material = clmodel.textures[cmds[0]] as BaseMaterial;
 
       if (material.flags & MaterialFlags.MF_SKIP) {
@@ -711,14 +728,19 @@ export class BrushModelRenderer extends ModelRenderer {
    */
   renderWorldTurbolents(clmodel: BrushModel): void {
     this.beginWorldTurbulentPass(clmodel);
-    for (let i = 0; i < clmodel.leafs.length; i++) {
-      const leaf = clmodel.leafs[i];
-      if ((leaf.visframe !== Visibility.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
+    const state = WorldRenderState.of(clmodel);
+
+    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
+      if ((state.visframes[leaf] !== Visibility.visframecount) || (state.waterchains[leaf] === state.cmds[leaf].length)) {
         continue;
       }
-      if (Camera.CullBox(leaf.mins!, leaf.maxs!)) {
+
+      BrushModelRenderer.#loadLeafBounds(state, leaf);
+
+      if (Camera.CullBox(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs)) {
         continue;
       }
+
       this.renderWorldTurbulentLeaf(clmodel, leaf);
     }
     this.endWorldTurbulentPass();
@@ -729,17 +751,21 @@ export class BrushModelRenderer extends ModelRenderer {
    * distance from the given viewpoint (farthest first).
    * @returns Leaf entries with view distances for farthest-first rendering.
    */
-  getWorldTurbulentLeaves(clmodel: BrushModel, vieworg: Float32Array | number[]): { leaf: Node; dist: number }[] {
-    const items: { leaf: Node; dist: number }[] = [];
-    for (let i = 0; i < clmodel.leafs.length; i++) {
-      const leaf = clmodel.leafs[i];
-      if ((leaf.visframe !== Visibility.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
+  getWorldTurbulentLeaves(clmodel: BrushModel, vieworg: Float32Array | number[]): { leaf: number; dist: number }[] {
+    const items: { leaf: number; dist: number }[] = [];
+    const state = WorldRenderState.of(clmodel);
+
+    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
+      if ((state.visframes[leaf] !== Visibility.visframecount) || (state.waterchains[leaf] === state.cmds[leaf].length)) {
         continue;
       }
-      if (Camera.CullBox(leaf.mins!, leaf.maxs!)) {
+
+      BrushModelRenderer.#loadLeafBounds(state, leaf);
+
+      if (Camera.CullBox(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs)) {
         continue;
       }
-      const dist = this._getBoundsDistanceToView(leaf.mins!, leaf.maxs!, vieworg);
+      const dist = this._getBoundsDistanceToView(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs, vieworg);
       items.push({ leaf, dist });
     }
     return items;
@@ -753,17 +779,21 @@ export class BrushModelRenderer extends ModelRenderer {
   getWorldTurbulentChains(clmodel: BrushModel, vieworg: Float32Array | number[]): { chain: WorldTurbulentChainInfo; dist: number }[] {
     const items: { chain: WorldTurbulentChainInfo; dist: number }[] = [];
 
-    for (let i = 0; i < clmodel.leafs.length; i++) {
-      const leaf = clmodel.leafs[i];
-      if ((leaf.visframe !== Visibility.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
-        continue;
-      }
-      if (Camera.CullBox(leaf.mins!, leaf.maxs!)) {
+    const state = WorldRenderState.of(clmodel);
+
+    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
+      if ((state.visframes[leaf] !== Visibility.visframecount) || (state.waterchains[leaf] === state.cmds[leaf].length)) {
         continue;
       }
 
-      for (let j = 0; j < leaf.turbulentChains.length; j++) {
-        const chain = leaf.turbulentChains[j];
+      BrushModelRenderer.#loadLeafBounds(state, leaf);
+
+      if (Camera.CullBox(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs)) {
+        continue;
+      }
+
+      for (let j = 0; j < state.turbulentChains[leaf].length; j++) {
+        const chain = state.turbulentChains[leaf][j];
         if (Camera.CullBox(chain.mins!, chain.maxs!)) {
           continue;
         }
@@ -795,7 +825,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uBloomEmissiveScale!, 0.0);
     gl.uniform1f(program.uBloomDlightScale!, rendererCvars.bloomDlightStrength.value);
 
-    const cameraInside = Visibility.viewleaf !== null && Visibility.viewleaf.contents <= content.CONTENT_WATER ? 1.0 : 0.0;
+    const cameraInside = Visibility.viewContents <= content.CONTENT_WATER ? 1.0 : 0.0;
     gl.uniform1f(program.uCameraInside!, cameraInside);
 
     if (PostProcess.active) {
@@ -820,9 +850,12 @@ export class BrushModelRenderer extends ModelRenderer {
    * Render a single leaf's turbulent surfaces.
    * Must be called between `beginWorldTurbulentPass` and `endWorldTurbulentPass`.
    */
-  renderWorldTurbulentLeaf(clmodel: BrushModel, leaf: Node): void {
-    for (let j = leaf.waterchain; j < leaf.cmds.length; j++) {
-      const cmds = leaf.cmds[j];
+  renderWorldTurbulentLeaf(clmodel: BrushModel, leaf: number): void {
+    const state = WorldRenderState.of(clmodel);
+    const chains = state.cmds[leaf];
+
+    for (let j = state.waterchains[leaf]; j < chains.length; j++) {
+      const cmds = chains[j];
       this._renderWorldTurbulentBatch(clmodel, cmds[0], cmds[1], cmds[2]);
     }
   }
@@ -866,12 +899,14 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
     gl.uniform1f(program.uTime!, Host.realtime);
 
-    for (const leaf of clmodel.leafs) {
-      if ((leaf.visframe !== Visibility.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
+    const state = WorldRenderState.of(clmodel);
+
+    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
+      if ((state.visframes[leaf] !== Visibility.visframecount) || (state.waterchains[leaf] === state.cmds[leaf].length)) {
         continue;
       }
-      for (let j = leaf.waterchain; j < leaf.cmds.length; j++) {
-        const cmd = leaf.cmds[j];
+      for (let j = state.waterchains[leaf]; j < state.cmds[leaf].length; j++) {
+        const cmd = state.cmds[leaf][j];
         gl.drawArrays(gl.TRIANGLES, cmd[1], cmd[2]);
         RenderStats.c_brush_verts += cmd[2];
       }
@@ -1785,11 +1820,30 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
+   * Puts the bounds of a leaf, as the display lists grew them, into the scratch vectors the loops cull and measure with.
+   */
+  static #loadLeafBounds(state: WorldRenderState, leaf: number): void {
+    const bounds = state.leafBounds;
+    const base = leaf * 6;
+
+    BrushModelRenderer.#leafMins.setTo(bounds[base], bounds[base + 1], bounds[base + 2]);
+    BrushModelRenderer.#leafMaxs.setTo(bounds[base + 3], bounds[base + 4], bounds[base + 5]);
+  }
+
+  /**
    * Expand a leaf's bounding box to contain all vertices of a surface.
    * @private
    */
-  _expandLeafBoundsForSurface(leaf: Node, verts: number[][]): void {
-    this._expandBounds(leaf.mins!, leaf.maxs!, verts);
+  _expandLeafBoundsForSurface(state: WorldRenderState, leaf: number, verts: number[][]): void {
+    const bounds = state.leafBounds;
+    const base = leaf * 6;
+
+    for (const vert of verts) {
+      for (let axis = 0; axis < 3; axis++) {
+        bounds[base + axis] = Math.min(bounds[base + axis], vert[axis]);
+        bounds[base + 3 + axis] = Math.max(bounds[base + 3 + axis], vert[axis]);
+      }
+    }
   }
 
   /**
@@ -1801,7 +1855,11 @@ export class BrushModelRenderer extends ModelRenderer {
       return;
     }
 
-    m.resetWorldRenderState();
+    const state = WorldRenderState.of(m);
+    const leafs = m.leafTable;
+
+    state.reset();
+    m._resetScopedFaces();
 
     const cmds: number[] = [];
     const styles = [0.0, 0.0, 0.0, 0.0];
@@ -1817,11 +1875,10 @@ export class BrushModelRenderer extends ModelRenderer {
       if ((texture.flags & MaterialFlags.MF_SKY) || (texture.flags & MaterialFlags.MF_TURBULENT)) {
         continue;
       }
-      for (let j = 0; j < m.leafs.length; j++) {
-        const leaf = m.leafs[j];
+      for (let j = 0; j < leafs.count; j++) {
         const chain = [i, verts, 0];
-        for (let k = 0; k < leaf.nummarksurfaces; k++) {
-          const surf = m.faces[m.marksurfaces[leaf.firstmarksurface + k]];
+        for (let k = 0; k < leafs.numMarkSurfaces[j]; k++) {
+          const surf = m.faces[m.marksurfaces[leafs.firstMarkSurfaces[j] + k]];
           if (surf.texture !== i) {
             continue;
           }
@@ -1830,7 +1887,7 @@ export class BrushModelRenderer extends ModelRenderer {
             styles[l] = surf.styles[l] * 0.015625 + 0.0078125;
           }
           console.assert(surf.verts !== null && Array.isArray(surf.verts));
-          this._expandLeafBoundsForSurface(leaf, surf.verts!);
+          this._expandLeafBoundsForSurface(state, j, surf.verts!);
           chain[2] += surf.verts!.length;
           for (let l = 0; l < surf.verts!.length; l++) {
             const vert = surf.verts![l];
@@ -1852,9 +1909,9 @@ export class BrushModelRenderer extends ModelRenderer {
           }
         }
         if (chain[2] !== 0) {
-          leaf.cmds.push(chain);
-          leaf.skychain++;
-          leaf.waterchain++;
+          state.cmds[j].push(chain);
+          state.skychains[j]++;
+          state.waterchains[j]++;
           verts += chain[2];
         }
       }
@@ -1869,16 +1926,15 @@ export class BrushModelRenderer extends ModelRenderer {
       if (!(texture.flags & MaterialFlags.MF_SKY)) {
         continue;
       }
-      for (let j = 0; j < m.leafs.length; j++) {
-        const leaf = m.leafs[j];
+      for (let j = 0; j < leafs.count; j++) {
         const chain = [verts, 0];
-        for (let k = 0; k < leaf.nummarksurfaces; k++) {
-          const surf = m.faces[m.marksurfaces[leaf.firstmarksurface + k]];
+        for (let k = 0; k < leafs.numMarkSurfaces[j]; k++) {
+          const surf = m.faces[m.marksurfaces[leafs.firstMarkSurfaces[j] + k]];
           if (surf.texture !== i) {
             continue;
           }
           console.assert(surf.verts !== null && Array.isArray(surf.verts));
-          this._expandLeafBoundsForSurface(leaf, surf.verts!);
+          this._expandLeafBoundsForSurface(state, j, surf.verts!);
           chain[1] += surf.verts!.length;
           for (let l = 0; l < surf.verts!.length; l++) {
             const vert = surf.verts![l];
@@ -1886,8 +1942,8 @@ export class BrushModelRenderer extends ModelRenderer {
           }
         }
         if (chain[1] !== 0) {
-          leaf.cmds.push(chain);
-          leaf.waterchain++;
+          state.cmds[j].push(chain);
+          state.waterchains[j]++;
           verts += chain[1];
         }
       }
@@ -1901,13 +1957,12 @@ export class BrushModelRenderer extends ModelRenderer {
       if (!(texture.flags & MaterialFlags.MF_TURBULENT)) {
         continue;
       }
-      for (let j = 0; j < m.leafs.length; j++) {
-        const leaf = m.leafs[j];
+      for (let j = 0; j < leafs.count; j++) {
         const chain = [i, verts, 0];
         const chainMins = new Vector(Infinity, Infinity, Infinity);
         const chainMaxs = new Vector(-Infinity, -Infinity, -Infinity);
-        for (let k = 0; k < leaf.nummarksurfaces; k++) {
-          const surf = m.faces[m.marksurfaces[leaf.firstmarksurface + k]];
+        for (let k = 0; k < leafs.numMarkSurfaces[j]; k++) {
+          const surf = m.faces[m.marksurfaces[leafs.firstMarkSurfaces[j] + k]];
           if (surf.texture !== i) {
             continue;
           }
@@ -1917,7 +1972,7 @@ export class BrushModelRenderer extends ModelRenderer {
           }
           const hasLightmap = this._surfaceHasTurbulentLightmap(m, surf);
           console.assert(surf.verts !== null && Array.isArray(surf.verts));
-          this._expandLeafBoundsForSurface(leaf, surf.verts!);
+          this._expandLeafBoundsForSurface(state, j, surf.verts!);
           this._expandBounds(chainMins, chainMaxs, surf.verts!);
           chain[2] += surf.verts!.length;
           for (let l = 0; l < surf.verts!.length; l++) {
@@ -1934,8 +1989,8 @@ export class BrushModelRenderer extends ModelRenderer {
           }
         }
         if (chain[2] !== 0) {
-          leaf.cmds.push(chain);
-          leaf.turbulentChains.push({
+          state.cmds[j].push(chain);
+          state.turbulentChains[j].push({
             texture: i,
             firstVertex: chain[1],
             vertexCount: chain[2],

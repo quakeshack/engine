@@ -5,13 +5,14 @@ import LightSampler from '../../source/engine/client/renderer/lighting/LightSamp
 import LightStyles from '../../source/engine/client/renderer/lighting/LightStyles.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
 import { Face, Plane } from '../../source/engine/common/model/BaseModel.ts';
-import { BrushModel, Node, type BrushTexInfo } from '../../source/engine/common/model/BSP.ts';
+import { BrushModel, type BrushTexInfo } from '../../source/engine/common/model/BSP.ts';
 import { Lightgrid } from '../../source/engine/common/model/Lightgrid.ts';
 import { content } from '../../source/shared/Defs.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { assertNear } from '../support/assertions.ts';
 import { patchMembers, useClientStateOf } from '../support/clientState.ts';
 import { createSilentConsole } from '../support/modelContext.ts';
+import { setBspTree } from '../support/bspTree.ts';
 import { encodeLightgridLump, LGNODE_LEAF, LGNODE_MISSING, singleLeafLightgrid } from '../support/lightgridLump.ts';
 
 const floorTexinfo = { vecs: [[1, 0, 0, 0], [0, 1, 0, 0]], texture: 0, flags: 0 } as unknown as BrushTexInfo;
@@ -92,9 +93,9 @@ void describe('LightSampler', () => {
     /**
      * Builds a minimal one-face BSP tree: a horizontal splitting plane at z=0 (an empty leaf above, a solid leaf
      * below), with a single lit face on the root node representing a plain floor with no deluxemap data.
-     * @returns The brush model and the root node of its BSP tree.
+     * @returns The brush model and the reference to the root node of its BSP tree.
      */
-    function makeFloorWorld(): { brushmodel: BrushModel; root: Node } {
+    function makeFloorWorld(): { brushmodel: BrushModel; root: number } {
       const brushmodel = new BrushModel('test');
       const surf = new Face();
 
@@ -112,22 +113,10 @@ void describe('LightSampler', () => {
       brushmodel.lightdata_rgb = new Uint8Array([128, 128, 128]);
       brushmodel.deluxemap = null;
 
-      const above = new Node(brushmodel);
-      above.contents = content.CONTENT_EMPTY;
+      brushmodel.planes = [new Plane(new Vector(0, 0, 1), 0)];
+      setBspTree(brushmodel, [{ planeNum: 0, children: [~0, ~1], firstFace: 0, numFaces: 1 }], [{ contents: content.CONTENT_EMPTY }, { contents: content.CONTENT_SOLID }]);
 
-      const below = new Node(brushmodel);
-      below.contents = content.CONTENT_SOLID;
-
-      const root = new Node(brushmodel);
-      root.contents = content.CONTENT_NONE;
-      root.plane = new Plane(new Vector(0, 0, 1), 0);
-      root.children = [above, below];
-      root.firstface = 0;
-      root.numfaces = 1;
-
-      brushmodel.nodes = [root];
-
-      return { brushmodel, root };
+      return { brushmodel, root: 0 };
     }
 
     void test('projects the top-down fallback origin far above the surface instead of gluing it to the model', () => {

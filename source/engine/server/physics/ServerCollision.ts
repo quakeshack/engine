@@ -457,7 +457,7 @@ export class ServerCollision {
       return Defs.content.CONTENT_SOLID;
     }
 
-    return this._normalizeStaticWorldContents(worldModel.getLeafForPoint(point).contents);
+    return this._normalizeStaticWorldContents(worldModel.leafTable.contents[worldModel.getLeafIndexForPoint(point)]);
   }
 
   /**

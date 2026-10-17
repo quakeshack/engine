@@ -94,8 +94,8 @@ export class Mod {
       scopedSubmodel.vertexes = scopedWorld.vertexes;
       scopedSubmodel.edges = scopedWorld.edges;
       scopedSubmodel.surfedges = scopedWorld.surfedges;
-      scopedSubmodel.nodes = scopedWorld.nodes;
-      scopedSubmodel.leafs = scopedWorld.leafs;
+      scopedSubmodel.nodeTable = scopedWorld.nodeTable;
+      scopedSubmodel.leafTable = scopedWorld.leafTable;
       scopedSubmodel.texinfo = scopedWorld.texinfo;
       scopedSubmodel.textures = scopedWorld.textures;
       scopedSubmodel.marksurfaces = scopedWorld.marksurfaces;

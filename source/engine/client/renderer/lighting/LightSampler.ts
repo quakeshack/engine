@@ -1,6 +1,5 @@
 import Vector from '../../../../shared/Vector.ts';
-import { content } from '../../../../shared/Defs.ts';
-import { type BrushTexInfo, type BrushTexVec, Node } from '../../../common/model/BSP.ts';
+import type { BrushTexInfo, BrushTexVec } from '../../../common/model/BSP.ts';
 import type { Face } from '../../../common/model/BaseModel.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
 import Interpolation from '../scene/Interpolation.ts';
@@ -28,23 +27,28 @@ export class LightSampler {
     return new Vector(texVec[0], texVec[1], texVec[2]);
   }
 
-  static RecursiveLightPoint(node: Node, start: Vector, end: Vector): LightPointResult | null {
-    if (node.contents < content.CONTENT_NONE) {
+  /**
+   * Traces a line down the BSP tree to the first lit surface and reads its light.
+   * @param reference The node to start at (its index), or a leaf (`~index`), which has no surfaces.
+   * @param start Start of the line.
+   * @param end End of the line.
+   * @returns The light and where it was found, or null when the line hits no lit surface.
+   */
+  static RecursiveLightPoint(reference: number, start: Vector, end: Vector): LightPointResult | null {
+    if (reference < 0) {
       return null;
     }
 
     const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
-    const plane = node.plane!;
-    console.assert(plane !== null, 'node plane required');
+    const nodes = worldmodel.nodeTable;
+    const plane = worldmodel.planes[nodes.planeNums[reference]];
     const normal = plane.normal;
     const front = start[0] * normal[0] + start[1] * normal[1] + start[2] * normal[2] - plane.dist;
     const back = end[0] * normal[0] + end[1] * normal[1] + end[2] * normal[2] - plane.dist;
     const side = front < 0;
-    const frontChild = node.children[side ? 1 : 0] as Node;
-    const backChild = node.children[side ? 0 : 1] as Node;
-    console.assert(frontChild instanceof Node, `LightSampler.RecursiveLightPoint expected linked front child on node ${node.num}`);
-    console.assert(backChild instanceof Node, `LightSampler.RecursiveLightPoint expected linked back child on node ${node.num}`);
+    const frontChild = nodes.children[reference * 2 + (side ? 1 : 0)];
+    const backChild = nodes.children[reference * 2 + (side ? 0 : 1)];
 
     if ((back < 0) === side) {
       return LightSampler.RecursiveLightPoint(frontChild, start, end);
@@ -67,7 +71,9 @@ export class LightSampler {
       return null;
     }
 
-    for (const surf of node.facesIter()) {
+    for (let faceIndex = 0; faceIndex < nodes.numFaces[reference]; faceIndex++) {
+      const surf = worldmodel.faces[nodes.firstFaces[reference] + faceIndex];
+
       if (surf.sky) {
         continue;
       }
@@ -262,7 +268,7 @@ export class LightSampler {
         // Get a proper light origin from surface trace for directional shading.
         // The lightgrid provides correct color but has no surface information,
         // so we trace downward to find the surface below the entity.
-        const surfaceTrace = LightSampler.RecursiveLightPoint(worldmodel.nodes[0], p, new Vector(p[0], p[1], p[2] - 2048.0));
+        const surfaceTrace = LightSampler.RecursiveLightPoint(0, p, new Vector(p[0], p[1], p[2] - 2048.0));
         if (surfaceTrace !== null) {
           gridResult[1] = surfaceTrace[1];
         }
@@ -270,7 +276,7 @@ export class LightSampler {
       }
     }
 
-    const r = LightSampler.RecursiveLightPoint(worldmodel.nodes[0], p, new Vector(p[0], p[1], p[2] - 2048.0));
+    const r = LightSampler.RecursiveLightPoint(0, p, new Vector(p[0], p[1], p[2] - 2048.0));
 
     if (r === null) {
       return [new Vector(0, 0, 0), new Vector(0, 0, 0)];

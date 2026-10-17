@@ -7,6 +7,8 @@ import { SkyRenderer } from '../../client/renderer/scene/Sky.ts';
 import { AreaPortals, type PortalDefinition } from './AreaPortals.ts';
 import type { Lightgrid } from './Lightgrid.ts';
 import { ClipTree, PlaneTable, type Hull } from '../collision/Hull.ts';
+import { LeafTable, NodeTable } from './BspTree.ts';
+import type { WorldRenderState } from './WorldRenderState.ts';
 
 /**
  * Optional settings carried by the worldspawn entity, which may be used by the renderer etc.
@@ -99,8 +101,6 @@ export interface BrushTexInfo {
   /** Optional Quake 2 linked texture-info index. */
   readonly nexttexinfo?: number;
 }
-
-type NodeChild = Node | number | null;
 
 const VISDATA_SIZE = 1024;
 
@@ -200,17 +200,24 @@ export class Visibility {
    * @param clusterOffsets Per-cluster byte offsets into `sourceData` (PVS or PHS).
    * @param sourceData Compressed visibility data to merge from (PVS or PHS).
    */
-  #addToFatPoint(p: Vector, node: Node, clusterOffsets: number[] | null, sourceData: Uint8Array | null): void {
+  #addToFatPoint(p: Vector, reference: number, clusterOffsets: number[] | null, sourceData: Uint8Array | null): void {
     const model = this.#model;
 
     if (model === null) {
       return;
     }
 
+    const nodes = model.nodeTable;
+    const leafs = model.leafTable;
+    const planes = model.planes;
+
     while (true) {
-      if (node.contents < content.CONTENT_NONE) {
-        if (node.contents !== content.CONTENT_SOLID && node.cluster >= 0 && clusterOffsets !== null) {
-          const visofs = clusterOffsets[node.cluster];
+      if (reference < 0) {
+        const leaf = ~reference;
+        const cluster = leafs.clusters[leaf];
+
+        if (leafs.contents[leaf] !== content.CONTENT_SOLID && cluster >= 0 && clusterOffsets !== null) {
+          const visofs = clusterOffsets[cluster];
           const vis = Visibility.fromBrushModel(model, visofs, sourceData);
 
           for (let index = 0; index < this.#data.length; index++) {
@@ -221,21 +228,21 @@ export class Visibility {
         return;
       }
 
-      const plane = node.plane as Plane;
+      const plane = planes[nodes.planeNums[reference]];
       const d = p.dot(plane.normal) - plane.dist;
 
       if (d > 8.0) {
-        node = node.children[0] as Node;
+        reference = nodes.children[reference * 2];
         continue;
       }
 
       if (d < -8.0) {
-        node = node.children[1] as Node;
+        reference = nodes.children[reference * 2 + 1];
         continue;
       }
 
-      this.#addToFatPoint(p, node.children[0] as Node, clusterOffsets, sourceData);
-      node = node.children[1] as Node;
+      this.#addToFatPoint(p, nodes.children[reference * 2], clusterOffsets, sourceData);
+      reference = nodes.children[reference * 2 + 1];
     }
   }
 
@@ -248,7 +255,7 @@ export class Visibility {
     const model = this.#model;
 
     if (model !== null) {
-      this.#addToFatPoint(p, model.nodes[0] as Node, model.clusterPvsOffsets, model.visdata);
+      this.#addToFatPoint(p, 0, model.clusterPvsOffsets, model.visdata);
     }
 
     return this;
@@ -263,7 +270,7 @@ export class Visibility {
     const model = this.#model;
 
     if (model !== null && model.phsdata !== null) {
-      this.#addToFatPoint(p, model.nodes[0] as Node, model.clusterPhsOffsets, model.phsdata);
+      this.#addToFatPoint(p, 0, model.clusterPhsOffsets, model.phsdata);
     }
 
     return this;
@@ -289,7 +296,7 @@ export class Visibility {
 
   /**
    * Check whether any of the given leaf indices have visible clusters.
-   * @param leafIndices Leaf array indices (`Node.num` values).
+   * @param leafIndices Leaf indices.
    * @returns True when any of the given leafs are revealed.
    */
   areRevealed(leafIndices: number[]): boolean {
@@ -310,7 +317,7 @@ export class Visibility {
     }
 
     for (let index = 0; index < leafIndices.length; index++) {
-      const cluster = model.leafs[leafIndices[index]]?.cluster ?? -1;
+      const cluster = model.leafTable.clusters[leafIndices[index]] ?? -1;
 
       if (cluster < 0) {
         continue;
@@ -326,7 +333,7 @@ export class Visibility {
 
   /**
    * Check whether a given leaf is revealed via its cluster.
-   * @param leafIndex Leaf array index (`Node.num`).
+   * @param leafIndex Leaf index.
    * @returns True when the given leaf is revealed.
    */
   isRevealed(leafIndex: number): boolean {
@@ -340,7 +347,7 @@ export class Visibility {
       return (this.#data[leafIndex >> 3] & (1 << (leafIndex & 7))) !== 0;
     }
 
-    const cluster = model.leafs[leafIndex]?.cluster ?? -1;
+    const cluster = model.leafTable.clusters[leafIndex] ?? -1;
 
     if (cluster < 0) {
       return false;
@@ -359,116 +366,6 @@ export class BrushModelComponent {
 
   constructor(brushmodel: BrushModel) {
     this._brushmodel = brushmodel;
-  }
-}
-
-/**
- * BSP tree node, also reused for BSP leafs.
- */
-export class Node extends BrushModelComponent {
-  /** Node index in the nodes array. */
-  num = 0;
-
-  contents: content = content.CONTENT_NONE;
-
-  /** Index into planes array. */
-  planenum = 0;
-
-  /** Splitting plane. */
-  plane: Plane | null = null;
-
-  /** Parent node. */
-  parent: Node | null = null;
-
-  /** Frontside/backside, numbers during loading and `Node` refs after linking. */
-  children: [NodeChild, NodeChild] = [null, null];
-
-  /** Visibility offset for PVS. */
-  visofs = 0;
-
-  /** Minimum bounding box. */
-  mins: Vector | null = null;
-
-  /** Maximum bounding box. */
-  maxs: Vector | null = null;
-
-  /** Immutable bounds loaded from BSP data. */
-  baseMins: Vector | null = null;
-
-  /** Immutable bounds loaded from BSP data. */
-  baseMaxs: Vector | null = null;
-
-  /** First marksurface index for leafs, aka `firstleafface`. */
-  firstmarksurface = 0;
-
-  /** Number of marksurfaces for leafs, aka `numleaffaces`. */
-  nummarksurfaces = 0;
-
-  /** First face index for nodes. */
-  firstface = 0;
-
-  /** Number of faces for nodes. */
-  numfaces = 0;
-
-  /** Ambient sound levels `[water, sky, slime, lava]`. */
-  ambient_level: [number, number, number, number] = [0, 0, 0, 0];
-
-  /** Used by the renderer to determine what to draw. */
-  markvisframe = 0;
-
-  /** Used by the renderer to determine what to draw. */
-  visframe = 0;
-
-  /** Index into skychain list. */
-  skychain = 0;
-
-  /** Index into waterchain list. */
-  waterchain = 0;
-
-  /** Render command list. */
-  cmds: number[][] = [];
-
-  /** Tight turbulent draw batches for sorted world rendering. */
-  turbulentChains: WorldTurbulentChainInfo[] = [];
-
-  /** Cluster for PVS. */
-  cluster = 0;
-
-  /** Area id for area portals. */
-  area = 0;
-
-  /** First leaf brush index. */
-  firstleafbrush = 0;
-
-  /** Number of leaf brushes. */
-  numleafbrushes = 0;
-
-  *facesIter(): Generator<Face, void, void> {
-    for (let index = 0; index < this.numfaces; index++) {
-      yield this._brushmodel.faces[this.firstface + index] as Face;
-    }
-  }
-
-  /**
-   * Reset renderer-owned runtime state on this BSP node or leaf.
-   * Leaf bounds may be expanded during display-list packing, so restore them
-   * from the immutable BSP bounds before rebuilding world render chains.
-   */
-  resetRenderState(): void {
-    this.markvisframe = 0;
-    this.visframe = 0;
-    this.skychain = 0;
-    this.waterchain = 0;
-    this.cmds.length = 0;
-    this.turbulentChains.length = 0;
-
-    if (this.mins !== null && this.baseMins !== null) {
-      this.mins.set(this.baseMins);
-    }
-
-    if (this.maxs !== null && this.baseMaxs !== null) {
-      this.maxs.set(this.baseMaxs);
-    }
   }
 }
 
@@ -533,10 +430,13 @@ export class BrushModel extends BaseModel {
   surfedges: number[] = [];
 
   /** BSP tree nodes. */
-  nodes: Node[] = [];
+  nodeTable = new NodeTable(0);
 
-  /** BSP leaf nodes. */
-  leafs: Node[] = [];
+  /** BSP leafs. */
+  leafTable = new LeafTable(0);
+
+  /** What the renderer keeps per node and leaf of this view of the map, `null` on a server and before the display lists exist. */
+  renderState: WorldRenderState | null = null;
 
   /** Texture materials. */
   textures: BaseMaterial[] = [];
@@ -697,26 +597,32 @@ export class BrushModel extends BaseModel {
   }
 
   /**
-   * Find the leaf node for a given point in 3D space.
+   * Find the leaf for a given point in 3D space.
    * @param p Position.
-   * @returns The leaf node containing the point.
+   * @returns Index of the leaf containing the point.
    */
-  getLeafForPoint(p: Vector): Node {
-    let node = this.nodes[0] as Node;
+  getLeafIndexForPoint(p: Vector): number {
+    const nodes = this.nodeTable;
+    const planes = this.planes;
+    let reference = 0;
 
-    while (true) {
-      if (node.contents < content.CONTENT_NONE) {
-        return node;
-      }
+    while (reference >= 0) {
+      const plane = planes[nodes.planeNums[reference]];
 
-      const plane = node.plane as Plane;
-
-      if (p.dot(plane.normal) - plane.dist > 0) {
-        node = node.children[0] as Node;
-      } else {
-        node = node.children[1] as Node;
-      }
+      reference = nodes.children[reference * 2 + (p.dot(plane.normal) - plane.dist > 0 ? 0 : 1)];
     }
+
+    return ~reference;
+  }
+
+  /**
+   * Whether two leafs are connected through open area portals.
+   * @param leaf0 Index of the first leaf.
+   * @param leaf1 Index of the second leaf.
+   * @returns True when the areas of the two leafs are mutually reachable.
+   */
+  leafsConnected(leaf0: number, leaf1: number): boolean {
+    return this.areaPortals.areasConnected(this.leafTable.areas[leaf0], this.leafTable.areas[leaf1]);
   }
 
   /**
@@ -724,19 +630,21 @@ export class BrushModel extends BaseModel {
    * @returns Visibility data for the leaf containing the point.
    */
   getPvsByPoint(point: Vector): Visibility {
-    return this.getPvsByLeaf(this.getLeafForPoint(point));
+    return this.getPvsByLeaf(this.getLeafIndexForPoint(point));
   }
 
   /**
-   * @param leaf Leaf node.
+   * @param leaf Leaf index.
    * @returns Visibility data for the given leaf.
    */
-  getPvsByLeaf(leaf: Node): Visibility {
-    if (leaf === this.leafs[0] || leaf.cluster < 0 || this.clusterPvsOffsets === null) {
+  getPvsByLeaf(leaf: number): Visibility {
+    const cluster = this.leafTable.clusters[leaf];
+
+    if (leaf === 0 || cluster < 0 || this.clusterPvsOffsets === null) {
       return hiddenVisibility;
     }
 
-    return Visibility.fromBrushModel(this, this.clusterPvsOffsets[leaf.cluster]);
+    return Visibility.fromBrushModel(this, this.clusterPvsOffsets[cluster]);
   }
 
   /**
@@ -756,21 +664,23 @@ export class BrushModel extends BaseModel {
    * @returns PHS data for the leaf containing the point.
    */
   getPhsByPoint(point: Vector): Visibility {
-    return this.getPhsByLeaf(this.getLeafForPoint(point));
+    return this.getPhsByLeaf(this.getLeafIndexForPoint(point));
   }
 
   /**
    * Get PHS for a given leaf.
    * Returns a `Visibility` where `isRevealed` and `areRevealed` check hearability.
-   * @param leaf Leaf node.
+   * @param leaf Leaf index.
    * @returns PHS data for the given leaf.
    */
-  getPhsByLeaf(leaf: Node): Visibility {
-    if (this.phsdata === null || leaf === this.leafs[0] || leaf.cluster < 0 || this.clusterPhsOffsets === null) {
+  getPhsByLeaf(leaf: number): Visibility {
+    const cluster = this.leafTable.clusters[leaf];
+
+    if (this.phsdata === null || leaf === 0 || cluster < 0 || this.clusterPhsOffsets === null) {
       return hiddenVisibility;
     }
 
-    return Visibility.fromBrushModel(this, this.clusterPhsOffsets[leaf.cluster], this.phsdata);
+    return Visibility.fromBrushModel(this, this.clusterPhsOffsets[cluster], this.phsdata);
   }
 
   /**
@@ -792,20 +702,18 @@ export class BrushModel extends BaseModel {
    * A single point (e.g. a bounding box center) can land in solid content or a leaf whose PHS
    * doesn't reflect the entity's actual extent, particularly for large or asymmetric movers
    * (doors, trains, platforms) whose origin can end up embedded in geometry after a move.
-   * @param leafIndices Leaf array indices (`Node.num` values) the entity is linked into.
+   * @param leafIndices Indices of the leafs the entity is linked into.
    * @returns Merged PHS data across all given leafs.
    */
   getPhsByLeafs(leafIndices: number[]): Visibility {
     const vis = new Visibility(this);
 
     for (const leafIndex of leafIndices) {
-      const leaf = this.leafs[leafIndex];
-
-      if (leaf === undefined) {
+      if (leafIndex < 0 || leafIndex >= this.leafTable.count) {
         continue;
       }
 
-      vis.mergeFrom(this.getPhsByLeaf(leaf));
+      vis.mergeFrom(this.getPhsByLeaf(leafIndex));
     }
 
     return vis;
@@ -832,23 +740,6 @@ export class BrushModel extends BaseModel {
   }
 
   /**
-   * Reset renderer-owned world BSP runtime state before rebuilding display lists.
-   * This clears stale per-leaf command chains and restores original BSP bounds
-   * without cloning the full node graph per scoped model view.
-   */
-  resetWorldRenderState(): void {
-    for (let index = 0; index < this.nodes.length; index++) {
-      this.nodes[index].resetRenderState();
-    }
-
-    for (let index = 0; index < this.leafs.length; index++) {
-      this.leafs[index].resetRenderState();
-    }
-
-    this._resetScopedFaces();
-  }
-
-  /**
    * @returns Scoped runtime view.
    */
   override createScopedView(): this {
@@ -858,6 +749,7 @@ export class BrushModel extends BaseModel {
     scopedView.chains = [];
     scopedView.waterchain = 0;
     scopedView.skychain = 0;
+    scopedView.renderState = null;
     scopedView.opaqueVAO = null;
     scopedView.turbulentVAO = null;
 

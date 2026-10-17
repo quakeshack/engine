@@ -12,6 +12,7 @@ import {
   createBoxBrushModel,
   createBrushWorldModel,
 } from './fixtures.mjs';
+import { setBspTree } from '../support/bspTree.ts';
 
 /**
  * Build a minimal two-brush submodel fixture with a gap between brushes.
@@ -90,29 +91,15 @@ function createPrunedLeafWorldModel() {
   model.brushes.push(distantBrush);
   model.numBrushes = model.brushes.length;
 
-  const frontLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
-    contents: content.CONTENT_EMPTY,
-    firstleafbrush: 0,
-    numleafbrushes: 1,
-    mins: new Vector(192, 0, -32),
-    maxs: new Vector(256, 32, 32),
-  });
-  const backLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
-    contents: content.CONTENT_EMPTY,
-    firstleafbrush: 1,
-    numleafbrushes: 1,
-    mins: new Vector(32, -32, -32),
-    maxs: new Vector(96, 0, 32),
-  });
-
-  model.nodes = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([{
-    contents: 0,
-    plane: createAxisPlane([0, 1, 0], 0, 1),
-    children: [frontLeaf, backLeaf],
-    mins: new Vector(32, -32, -32),
-    maxs: new Vector(256, 32, 32),
-  }]);
-  model.leafs = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([frontLeaf, backLeaf]);
+  model.planes.push(createAxisPlane([0, 1, 0], 0, 1));
+  setBspTree(
+    model,
+    [{ planeNum: model.planes.length - 1, children: [~0, ~1], bounds: [32, -32, -32, 256, 32, 32] }],
+    [
+      { contents: content.CONTENT_EMPTY, firstLeafBrush: 0, numLeafBrushes: 1, bounds: [192, 0, -32, 256, 32, 32] },
+      { contents: content.CONTENT_EMPTY, firstLeafBrush: 1, numLeafBrushes: 1, bounds: [32, -32, -32, 96, 0, 32] },
+    ],
+  );
   model.leafbrushes = [1, 0];
 
   return model;
@@ -505,14 +492,8 @@ describe('BrushTrace', () => {
 
     test('does not inherit allsolid from solid BSP leaves on tangent brush clips', () => {
       const worldModel = createBoxBrushModel({ center: [0, 0, 0], halfExtents: [16, 16, 16], submodel: false });
-      const solidLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
-        contents: content.CONTENT_SOLID,
-        firstleafbrush: 0,
-        numleafbrushes: 1,
-      });
-
-      worldModel.nodes = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([solidLeaf]);
-      worldModel.leafs = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([solidLeaf]);
+      // a tree needs a node at its root, both sides of this one lead into the same solid leaf
+      setBspTree(worldModel, [{ planeNum: 0, children: [~0, ~0] }], [{ contents: content.CONTENT_SOLID, firstLeafBrush: 0, numLeafBrushes: 1 }]);
       worldModel.leafbrushes = [0];
       worldModel.hulls = /** @type {typeof worldModel.hulls} */ ([{ firstClipNode: 0 }]);
 
@@ -537,7 +518,7 @@ describe('BrushTrace', () => {
     test('prunes BSP child bounds that miss a straddled world sweep', () => {
       const worldModel = createPrunedLeafWorldModel();
       const originalTraceToLeaf = BrushTrace._traceToLeaf;
-      /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */
+      /** @type {number[]} */
       const visitedLeafs = [];
 
       BrushTrace._traceToLeaf = (ctx, leaf) => {
@@ -564,7 +545,7 @@ describe('BrushTrace', () => {
       }
 
       assert.equal(visitedLeafs.length, 1);
-      assert.equal(visitedLeafs[0].firstleafbrush, 1);
+      assert.equal(worldModel.leafTable.firstLeafBrushes[visitedLeafs[0]], 1);
     });
   });
 });

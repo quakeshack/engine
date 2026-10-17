@@ -628,7 +628,7 @@ export class ServerEngineAPI {
   GetAreaForPoint(origin: Vector): number {
     const worldmodel = this.#sv.server.worldmodel;
     console.assert(worldmodel !== null, 'server worldmodel required for area queries');
-    return worldmodel!.getLeafForPoint(origin).area;
+    return worldmodel!.leafTable.areas[worldmodel!.getLeafIndexForPoint(origin)];
   }
 
   /**

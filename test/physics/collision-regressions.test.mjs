@@ -18,6 +18,8 @@ import Mod from '../../source/engine/common/Mod.ts';
 import { mockedSV, mockedCollisionModelSource } from './fixtures.mjs';
 import { createModelLoadContext } from '../support/modelContext.ts';
 import { createClipTree, createLegacyHull, createRoomHull } from '../support/hulls.ts';
+import { setBspTree } from '../support/bspTree.ts';
+import { NodeTable } from '../../source/engine/common/model/BspTree.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
 void test('PmovePlayer.DEBUG is disabled before Pmove.Init()', () => {
@@ -95,23 +97,15 @@ function createBrushWorldModel({ axis = 0, center = [64, 0, 0], halfExtents }) {
   axisNormal[axis] = 1;
   const roomMins = new Vector(-2048, -2048, -2048);
   const roomMaxs = new Vector(2048, 2048, 2048);
-  const frontLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
-    contents: content.CONTENT_EMPTY,
-    firstleafbrush: 0,
-    numleafbrushes: 1,
-  });
-  const backLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
-    contents: content.CONTENT_EMPTY,
-    firstleafbrush: 1,
-    numleafbrushes: 0,
-  });
-
-  model.nodes = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([{
-    contents: 0,
-    plane: createAxisPlane(axisNormal, 0, axis),
-    children: [frontLeaf, backLeaf],
-  }]);
-  model.leafs = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([frontLeaf, backLeaf]);
+  model.planes.push(createAxisPlane(axisNormal, 0, axis));
+  setBspTree(
+    model,
+    [{ planeNum: model.planes.length - 1, children: [~0, ~1] }],
+    [
+      { contents: content.CONTENT_EMPTY, firstLeafBrush: 0, numLeafBrushes: 1 },
+      { contents: content.CONTENT_EMPTY, firstLeafBrush: 1, numLeafBrushes: 0 },
+    ],
+  );
   model.leafbrushes = [0];
   model.hulls = /** @type {BrushModel['hulls']} */ ([
     createRoomHullFromBounds(roomMins, roomMaxs),
@@ -609,7 +603,7 @@ void test('BrushTrace.boxTrace traverses world brush lists through BSP nodes', (
 void test('BrushTrace.boxTrace returns a clean miss for empty world models', () => {
   const worldModel = new BrushModel();
   worldModel.name = 'empty-world';
-  worldModel.nodes = [];
+  worldModel.nodeTable = new NodeTable(0);
 
   const start = new Vector(1, 2, 3);
   const end = new Vector(10, 20, 30);
@@ -804,7 +798,7 @@ void test('Pmove.staticWorldContents uses brush-backed world solids before leaf 
   const worldModel = createBrushWorldModel({ center: [64, 0, 0], halfExtents: [16, 16, 16] });
   const pmove = new Pmove();
 
-  worldModel.leafs[0].contents = content.CONTENT_WATER;
+  worldModel.leafTable.contents[0] = content.CONTENT_WATER;
 
   pmove.setWorldmodel(worldModel);
 
@@ -816,7 +810,7 @@ void test('Pmove.staticWorldContents normalizes brush-backed current leaves to w
   const worldModel = createBrushWorldModel({ center: [64, 0, 0], halfExtents: [16, 16, 16] });
   const pmove = new Pmove();
 
-  worldModel.leafs[0].contents = content.CONTENT_CURRENT_UP;
+  worldModel.leafTable.contents[0] = content.CONTENT_CURRENT_UP;
 
   pmove.setWorldmodel(worldModel);
 
@@ -1030,24 +1024,12 @@ void test('BSP29Loader builds legacy clipnode masks from a model headnode subtre
 void test('BSP29Loader inserts BRUSHLIST brushes into both leaves when they touch a BSP split plane', () => {
   const loader = new BSP29Loader(createModelLoadContext());
   const loadmodel = new BrushModel();
-  const frontLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
-    contents: content.CONTENT_EMPTY,
-    firstleafbrush: 0,
-    numleafbrushes: 0,
-  });
-  const backLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
-    contents: content.CONTENT_EMPTY,
-    firstleafbrush: 0,
-    numleafbrushes: 0,
-  });
-
   loadmodel.planes = [createAxisPlane([1, 0, 0], 0, 0)];
-  loadmodel.nodes = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([{
-    contents: 0,
-    plane: loadmodel.planes[0],
-    children: [frontLeaf, backLeaf],
-  }]);
-  loadmodel.leafs = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([frontLeaf, backLeaf]);
+  setBspTree(
+    loadmodel,
+    [{ planeNum: 0, children: [~0, ~1] }],
+    [{ contents: content.CONTENT_EMPTY }, { contents: content.CONTENT_EMPTY }],
+  );
   loadmodel.bspxlumps = {
     BRUSHLIST: {
       fileofs: 0,
@@ -1078,8 +1060,8 @@ void test('BSP29Loader inserts BRUSHLIST brushes into both leaves when they touc
     loader._loadBrushList(loadmodel, buffer);
   });
 
-  assert.equal(loadmodel.leafs[0].numleafbrushes, 1);
-  assert.equal(loadmodel.leafs[1].numleafbrushes, 1);
+  assert.equal(loadmodel.leafTable.numLeafBrushes[0], 1);
+  assert.equal(loadmodel.leafTable.numLeafBrushes[1], 1);
   assert.deepEqual(loadmodel.leafbrushes, [0, 0]);
 });
 
@@ -1212,7 +1194,7 @@ void test('ServerCollision.staticWorldContents uses brush-backed world solids be
 void test('ServerCollision.staticWorldContents normalizes brush-backed current leaves to water', () => {
   const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
   const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
-  worldModel.leafs[1].contents = content.CONTENT_CURRENT_DOWN;
+  worldModel.leafTable.contents[1] = content.CONTENT_CURRENT_DOWN;
   const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
 
   withMockEngine({

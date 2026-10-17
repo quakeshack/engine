@@ -1,32 +1,31 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import Sound from '../../source/engine/client/Sound.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { createTreeModel } from '../support/bspTree.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
 void describe('Sound.IsPositionAudible', () => {
   /**
-   * Builds a minimal single-leaf BrushModel: `nodes[0]` IS the source leaf directly, no plane
-   * split needed. The listener sits in its own leaf (cluster 5) tracked separately in `leafs`.
+   * Builds a minimal BrushModel where every point is in the source leaf (cluster 0), the tree splits so far out that
+   * no test point reaches the other side. The listener sits in leaf 0 (cluster 5).
    * @param {boolean} sourceReveals whether the source leaf's PHS row reveals the listener's cluster
-   * @returns {{ model: BrushModel, listenerLeaf: object }} fixture.
+   * @returns {{ model: BrushModel, listenerLeaf: number }} fixture.
    */
   function buildSingleLeafFixture(sourceReveals) {
-    const model = new BrushModel('test-model');
+    const model = createTreeModel(
+      [{ normal: [1, 0, 0], dist: 1e8, type: 0 }],
+      [{ planeNum: 0, children: [~1, ~1] }],
+      [{ contents: -1, cluster: 5 }, { contents: -1, cluster: 0 }], // CONTENT_EMPTY leafs: the listener's, then the source's
+    );
     model.numclusters = 8;
     model.visdata = new Uint8Array(0);
     model.clusterPhsOffsets = [0];
     model.phsdata = new Uint8Array([sourceReveals ? 0x20 : 0x00]); // cluster 0's row; bit5 = listener's cluster
 
-    model.nodes = [{ contents: -1, cluster: 0 }]; // CONTENT_EMPTY leaf, cluster 0
-
-    const listenerLeaf = { num: 0, cluster: 5 };
-    model.leafs = [listenerLeaf];
-
-    return { model, listenerLeaf };
+    return { model, listenerLeaf: 0 };
   }
 
   /**
@@ -78,23 +77,18 @@ void describe('Sound.IsPositionAudible', () => {
   });
 
   void test('resolves audibility via the fat-point PHS when the source sits inside solid content near a wall (e.g. an explosion impact)', () => {
-    const model = new BrushModel('test-model');
+    // leaf 0 is the listener's (cluster 5), leaf 1 the solid one, which must never contribute, leaf 2 the open room beside the wall
+    const model = createTreeModel(
+      [{ normal: [1, 0, 0], dist: 0, type: 0 }],
+      [{ planeNum: 0, children: [~1, ~2] }],
+      [{ contents: -1, cluster: 5 }, { contents: -2, cluster: -1 }, { contents: -1, cluster: 0 }],
+    );
     model.numclusters = 8;
     model.visdata = new Uint8Array(0);
     model.clusterPhsOffsets = [0];
     model.phsdata = new Uint8Array([0x20]); // cluster 0's row reveals cluster 5 (the listener's cluster)
 
-    const solidLeaf = { contents: -2, cluster: -1 }; // CONTENT_SOLID, must never contribute
-    const openLeaf = { contents: -1, cluster: 0 }; // CONTENT_EMPTY, the room beside the wall
-
-    model.nodes = [{
-      contents: 0, // CONTENT_NONE: internal split node, not a leaf
-      plane: { normal: new Vector(1, 0, 0), dist: 0 },
-      children: [solidLeaf, openLeaf],
-    }];
-
-    const listenerLeaf = { num: 0, cluster: 5 };
-    model.leafs = [listenerLeaf];
+    const listenerLeaf = 0;
 
     const context = installClientContext({ worldmodel: model });
 

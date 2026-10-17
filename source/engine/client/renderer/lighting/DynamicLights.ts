@@ -1,8 +1,7 @@
 import Vector from '../../../../shared/Vector.ts';
-import { content } from '../../../../shared/Defs.ts';
 import * as Def from '../../../common/Def.ts';
 import { eventBus } from '../../../common/EventBus.ts';
-import { BrushModel, Node } from '../../../common/model/BSP.ts';
+import { BrushModel } from '../../../common/model/BSP.ts';
 import type { Face } from '../../../common/model/BaseModel.ts';
 import GL, { ATTRIB_LOCATIONS } from '../../GL.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
@@ -158,28 +157,31 @@ export class DynamicLights {
 
   /**
    * Propagates a dynamic light through the BSP and marks touched faces.
+   * @param light The light.
+   * @param bit The bit the light sets in the faces it touches.
+   * @param reference The node to start at (its index), or a leaf (`~index`), which has no faces of its own.
    */
-  static MarkLights(light: ClientDlight, bit: number, node: Node): void {
-    if (node.contents < content.CONTENT_NONE) {
+  static MarkLights(light: ClientDlight, bit: number, reference: number): void {
+    if (reference < 0) {
       return;
     }
-    const plane = node.plane!;
-    console.assert(plane !== null, 'node plane required');
+
+    const worldmodel = clientRuntimeState.worldmodel!;
+    const nodes = worldmodel.nodeTable;
+    const plane = worldmodel.planes[nodes.planeNums[reference]];
     const normal = plane.normal;
     const dist = light.origin.dot(normal) - plane.dist;
     if (dist > light.radius) {
-      const frontChild = node.children[0] as Node;
-      console.assert(frontChild instanceof Node, `DynamicLights.MarkLights expected linked BSP child 0 on node ${node.num}`);
-      DynamicLights.MarkLights(light, bit, frontChild);
+      DynamicLights.MarkLights(light, bit, nodes.children[reference * 2]);
       return;
     }
     if (dist < -light.radius) {
-      const backChild = node.children[1] as Node;
-      console.assert(backChild instanceof Node, `DynamicLights.MarkLights expected linked BSP child 1 on node ${node.num}`);
-      DynamicLights.MarkLights(light, bit, backChild);
+      DynamicLights.MarkLights(light, bit, nodes.children[reference * 2 + 1]);
       return;
     }
-    for (const surf of node.facesIter()) {
+    for (let index = 0; index < nodes.numFaces[reference]; index++) {
+      const surf = worldmodel.faces[nodes.firstFaces[reference] + index];
+
       if (surf.sky) {
         continue;
       }
@@ -196,12 +198,8 @@ export class DynamicLights {
       }
       surf.dlightbits |= bit;
     }
-    const frontChild = node.children[0] as Node;
-    const backChild = node.children[1] as Node;
-    console.assert(frontChild instanceof Node, `DynamicLights.MarkLights expected linked BSP child 0 on node ${node.num}`);
-    console.assert(backChild instanceof Node, `DynamicLights.MarkLights expected linked BSP child 1 on node ${node.num}`);
-    DynamicLights.MarkLights(light, bit, frontChild);
-    DynamicLights.MarkLights(light, bit, backChild);
+    DynamicLights.MarkLights(light, bit, nodes.children[reference * 2]);
+    DynamicLights.MarkLights(light, bit, nodes.children[reference * 2 + 1]);
   }
 
   static Push(): void {
@@ -220,7 +218,7 @@ export class DynamicLights {
       const l = clientRuntimeState.clientEntities.dlights[i];
 
       if (!l.isFree()) {
-        DynamicLights.MarkLights(l, bit, worldmodel.nodes[0]);
+        DynamicLights.MarkLights(l, bit, 0);
         for (const ent of clientRuntimeState.clientEntities.getVisibleEntities()) {
           if (ent.model === null) {
             continue;
@@ -229,10 +227,9 @@ export class DynamicLights {
             continue;
           }
           const firstClipNode = ent.model.hulls[0]?.firstClipNode;
-          const submodelNode = firstClipNode !== undefined ? worldmodel.nodes[firstClipNode] : null;
 
-          if (submodelNode !== undefined && submodelNode !== null) {
-            DynamicLights.MarkLights(l, bit, submodelNode);
+          if (firstClipNode !== undefined && firstClipNode < worldmodel.nodeTable.count) {
+            DynamicLights.MarkLights(l, bit, firstClipNode);
           }
         }
       }

@@ -1,6 +1,6 @@
 # BSP flat layout: one collision core, typed arrays, no copies, then shared memory
 
-**Status:** Decisions made 2026-10-16 (see "Decisions"). Phase 0 and Phase 1 are done (2026-10-17); Phase 2 waits for a look at the numbers and a go-ahead. Follows from the "Parked: SharedArrayBuffer" note in `plans/engine-architecture-modernization.md` (its
+**Status:** Decisions made 2026-10-16 (see "Decisions"). Phases 0 to 2 are done (2026-10-17); Phase 3 waits for a look at the numbers and a go-ahead. Follows from the "Parked: SharedArrayBuffer" note in `plans/engine-architecture-modernization.md` (its
 "revisit when" condition is a typed-array BSP layout) and from `plans/server-model-memory.md`.
 
 ## Decisions
@@ -292,6 +292,59 @@ Found while doing it:
 `NodeTable`, `LeafTable`, renderer-owned state, per-trace dedup counters, index-based hot paths, the cold-caller view, loader
 rewrite. Done when `BrushModel` has no `Node` objects for the world and no mutable render field, and a frame renders the same
 (screenshot pair, `browser-ui-verification`).
+
+#### Phase 2: what shipped (2026-10-17)
+
+`npm test` 2602 pass, `npm run typecheck` 0 errors, eslint clean on the touched files (the pre-existing findings in a few
+`.mjs` tests are unchanged). Done-when holds: `BrushModel` has no `Node` objects (the `Node` class is gone) and no mutable render
+field.
+
+- **`common/model/BspTree.ts`**: `NodeTable` (plane, two children, parent, bounds, first face and face count per node) and
+  `LeafTable` (contents, cluster, visofs, area, parent, bounds, marksurfaces, leaf brushes, ambient levels per leaf), typed
+  arrays, one entry per element. A child is a node index, or `~leaf` when negative (the BSP files' convention, which the
+  BSP29/BSP2/BSP38 loaders now write straight from the lumps). They are filled once by the loader and not changed after it.
+  The loaders check every plane and child index and throw `CorruptedResourceError` instead of leaving a lookup to read a
+  neighbour. `linkParents` walks from the world root only, as the old code did: the inline models hang from nodes nothing
+  refers to and share leaf 0 with the world.
+- **`common/model/WorldRenderState.ts`**: what the renderer keeps per view of a map: `markframes` (nodes first, then the leafs),
+  `visframes`, `skychains`, `waterchains`, the draw chains and turbulent chains per leaf, and the leaf bounds as the display
+  list builder grew them (which is why `baseMins`/`baseMaxs` and `resetRenderState` are gone). A scoped view gets its own,
+  made on first use (`WorldRenderState.of`), so the client's view no longer writes into the shared map.
+- **Consumers on indices**: `BrushModel.getLeafIndexForPoint`, `getPvsByLeaf(leaf)`, `getPhsByLeaf(leaf)`, `leafsConnected`;
+  `Visibility` (renderer), `BrushModelRenderer`, `Sky`, `ShadowMap`, `Fog`, `DynamicLights.MarkLights`,
+  `LightSampler.RecursiveLightPoint`, `TransparentPass` (a leaf item is its index), `BrushTrace` (the world traversal and the
+  position test), `ServerArea.findTouchedLeafs`, `ClientEntities` linking, `Sound`, `Edict`, the engine APIs. The cold-caller
+  view the plan sketched was not needed: every caller was converted, `tsc` listed them.
+- **Tests**: `test/support/bspTree.ts` builds a tree for a model from a short description (`setBspTree`, `createTreeModel`,
+  `createSingleLeafWorld`, `createRenderedWorld`); the fixtures, the client, sound, visibility, fog, light, shadow and loader
+  tests use it. New: `bsp-tree.test.ts`. Two tests under `source/game/id1/test/` use the helper too (that is the id1
+  submodule, committed there).
+
+**Verified against the old code**: for 8 maps (the id1 test maps and three Hellwave maps, `hw_village` among them) every leaf
+(contents, cluster, area, visofs, marksurfaces, leaf brushes, ambient, bounds), every node (plane, children, parent,
+faces, bounds) and the leaf, PVS, PHS and fat PVS/PHS rows at 3000 random points per map hash to the same value before and after.
+Scripted player walks on 12 maps (the brush path and the hull path) are byte-identical to the commit before. The first run
+found that linking parents for every node would have changed the parent of a shared leaf, which the test above now covers.
+
+**Numbers** (`scripts/measure-bsp-memory.mts`, server-style load):
+
+| | before | after |
+| :-- | --: | --: |
+| nodes + leafs, hw_village / hw_e1m2 / lqdm3 | 7.8 / 9.2 / 11.7 MB | 0.3 / 0.4 / 0.5 MB |
+| heap after load, hw_village / hw_e1m2 / lqdm3 | 23.3 / 28.1 / 38.0 MB | 15.8 / 19.3 / 26.7 MB |
+| 60000 `boxTrace` + `testPosition` on hw_village | 367 ms | 260 ms |
+
+**Real browser** (Chromium with software GL, the capture scripts of `docs/browser-verification.md`, `hw_e1m2` in Hellwave, a production
+build of the commit before and of the working tree, two captures of each): all nine views (spawn, lights with particles and a
+decal, chase, bloom, fog, under the sky, above the water, in the water, spawn again) match the old build beyond the noise between
+captures of one build, and `r_speeds` is identical in every view. Not verified: pointer lock and mouse look (no change here, and
+headless Chromium cannot test them), Firefox, `hw_village` itself in a browser. The capture script of the repo could not enter the
+map on its own for a Hellwave page (its console helper looks for the echo of the typed command in the last six lines, which
+`map` pushes out); the run used a copy with a simpler helper, the script in the repo is unchanged.
+
+Not done, and why: the `Brush._brushTraceCheck` dedup counter still lives on the brush objects. Brushes stay objects (they are
+not in this plan's tables), and the counter only matters once a brush array is shared between threads, which is Phase 4; it moves
+to a per-realm scratch array there.
 
 ### Phase 3: faces, vertexes, texinfo
 

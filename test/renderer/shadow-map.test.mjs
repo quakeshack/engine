@@ -9,6 +9,7 @@ import { assertNear } from '../physics/fixtures.mjs';
 import { useClientStateOf } from '../support/clientState.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 import { createFakeRenderTarget } from '../support/renderTargets.ts';
+import { createRenderedWorld } from '../support/bspTree.ts';
 
 // the passes of the frame check the real RenderTarget.bound, which the fake targets of these tests never are
 beforeEach(() => {
@@ -68,10 +69,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
 
     engineMocks.CL = {
       state: {
-        worldmodel: {
-          opaqueVAO: {},
-          leafs: [],
-        },
+        worldmodel: createRenderedWorld([], { opaqueVAO: {} }),
       },
     };
 
@@ -179,10 +177,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
 
     engineMocks.CL = {
       state: {
-        worldmodel: {
-          opaqueVAO: {},
-          leafs: [],
-        },
+        worldmodel: createRenderedWorld([], { opaqueVAO: {} }),
       },
     };
 
@@ -292,18 +287,17 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     // Two leaves drawing from the shared world display list: the first only
     // references a world face, the second references an inline submodel face
     // baked at map-compile position and must be skipped.
-    const worldLeaf = { skychain: 1, cmds: [[0, 0, 12]], firstmarksurface: 0, nummarksurfaces: 1 };
-    const submodelLeaf = { skychain: 1, cmds: [[0, 12, 6]], firstmarksurface: 1, nummarksurfaces: 1 };
+    const worldLeaf = { skychain: 1, cmds: [[0, 0, 12]], firstMarkSurface: 0, numMarkSurfaces: 1 };
+    const submodelLeaf = { skychain: 1, cmds: [[0, 12, 6]], firstMarkSurface: 1, numMarkSurfaces: 1 };
 
     engineMocks.CL = {
       state: {
-        worldmodel: {
+        worldmodel: createRenderedWorld([worldLeaf, submodelLeaf], {
           opaqueVAO: {},
-          leafs: [worldLeaf, submodelLeaf],
           faces: [{ submodel: false }, { submodel: true }],
           marksurfaces: [0, 1],
           textures: [{ flags: 0 }],
-        },
+        }),
       },
     };
 
@@ -821,17 +815,16 @@ void describe('ShadowMap.renderTopDownShadow', () => {
     // would be blocked by whatever roof is overhead, which would mark
     // virtually every indoor room "in shadow" all the time instead of just
     // the spots actually shadowed by something.
-    const worldLeaf = { skychain: 1, cmds: [[0, 0, 12]], firstmarksurface: 0, nummarksurfaces: 1 };
+    const worldLeaf = { skychain: 1, cmds: [[0, 0, 12]], firstMarkSurface: 0, numMarkSurfaces: 1 };
 
     engineMocks.CL = {
       state: {
-        worldmodel: {
+        worldmodel: createRenderedWorld([worldLeaf], {
           opaqueVAO: {},
-          leafs: [worldLeaf],
           faces: [{ submodel: false }],
           marksurfaces: [0],
           textures: [{ flags: 0 }],
-        },
+        }),
       },
     };
 

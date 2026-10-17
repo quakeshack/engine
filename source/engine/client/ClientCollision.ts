@@ -81,7 +81,7 @@ export default class ClientCollision {
       return Defs.content.CONTENT_SOLID;
     }
 
-    return ClientCollision.#normalizeContents(worldModel.getLeafForPoint(point).contents);
+    return ClientCollision.#normalizeContents(worldModel.leafTable.contents[worldModel.getLeafIndexForPoint(point)]);
   }
 
   /**

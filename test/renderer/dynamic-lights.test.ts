@@ -10,7 +10,8 @@ import rendererCvars from '../../source/engine/client/renderer/resources/Rendere
 import { ClientDlight } from '../../source/engine/client/ClientEntities.ts';
 import * as Def from '../../source/engine/common/Def.ts';
 import { Face, Plane } from '../../source/engine/common/model/BaseModel.ts';
-import { BrushModel, Node, type BrushTexInfo } from '../../source/engine/common/model/BSP.ts';
+import { BrushModel, type BrushTexInfo } from '../../source/engine/common/model/BSP.ts';
+import { setBspTree } from '../support/bspTree.ts';
 import { content } from '../../source/shared/Defs.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { assertNear } from '../support/assertions.ts';
@@ -22,7 +23,7 @@ const CLOCK = 100.0;
  * A square floor of 16x16 units at z = 0, facing up, with a corner at the origin.
  * @returns The face and the map it belongs to.
  */
-function createFloor(): { face: Face; model: BrushModel; root: Node; above: Node; below: Node } {
+function createFloor(): { face: Face; model: BrushModel; root: number } {
   const model = new BrushModel('maps/test.bsp');
   const face = new Face();
 
@@ -42,22 +43,11 @@ function createFloor(): { face: Face; model: BrushModel; root: Node; above: Node
   model.vertexes = [new Vector(0, 0, 0), new Vector(16, 0, 0)];
   model.texinfo = [{ vecs: [[1, 0, 0, 0], [0, 1, 0, 0]], texture: 0, flags: 0 } as unknown as BrushTexInfo];
 
-  const above = new Node(model);
-  above.contents = content.CONTENT_EMPTY;
+  // a horizontal splitting plane at z = 0: an empty leaf above, a solid leaf below, and the one face on the root node
+  model.planes = [new Plane(new Vector(0, 0, 1), 0)];
+  setBspTree(model, [{ planeNum: 0, children: [~0, ~1], firstFace: 0, numFaces: 1 }], [{ contents: content.CONTENT_EMPTY }, { contents: content.CONTENT_SOLID }]);
 
-  const below = new Node(model);
-  below.contents = content.CONTENT_SOLID;
-
-  const root = new Node(model);
-  root.contents = content.CONTENT_NONE;
-  root.plane = new Plane(new Vector(0, 0, 1), 0);
-  root.children = [above, below];
-  root.firstface = 0;
-  root.numfaces = 1;
-
-  model.nodes = [root];
-
-  return { face, model, root, above, below };
+  return { face, model, root: 0 };
 }
 
 /**

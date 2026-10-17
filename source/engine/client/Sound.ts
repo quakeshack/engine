@@ -1,4 +1,3 @@
-import type { Node as BSPNode } from '../common/model/BSP.ts';
 
 import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
@@ -185,9 +184,9 @@ class Channel {
     }
 
     // Area portal occlusion
-    if (clientCvars.areaportals.value > 0 && clientRuntimeState.worldmodel && Sound._listenerLeaf) {
-      const leaf = clientRuntimeState.worldmodel.getLeafForPoint(this.origin);
-      if (!clientRuntimeState.worldmodel.areaPortals.leafsConnected(Sound._listenerLeaf, leaf)) {
+    if (clientCvars.areaportals.value > 0 && clientRuntimeState.worldmodel && Sound._listenerLeaf !== null) {
+      const leaf = clientRuntimeState.worldmodel.getLeafIndexForPoint(this.origin);
+      if (!clientRuntimeState.worldmodel.leafsConnected(Sound._listenerLeaf, leaf)) {
         this.channel_vol = 0;
         this.updateVol();
         return;
@@ -233,7 +232,7 @@ export default class Sound {
   // Listener state
   static _listenerOrigin = new Vector();
   static _listenerRight = new Vector();
-  static _listenerLeaf: BSPNode | null = null;
+  static _listenerLeaf: number | null = null;
 
   static _started = false;
   static _context: AudioContext | null = null;
@@ -686,7 +685,7 @@ export default class Sound {
     Sound._listenerRight[2] = right[2];
 
     Sound._listenerLeaf = clientRuntimeState.worldmodel
-      ? clientRuntimeState.worldmodel.getLeafForPoint(origin)
+      ? clientRuntimeState.worldmodel.getLeafIndexForPoint(origin)
       : null;
 
     if (Sound.volume.value < 0) {
@@ -724,16 +723,16 @@ export default class Sound {
   static IsPositionAudible(origin: Vector): boolean {
     const worldmodel = clientRuntimeState.worldmodel;
 
-    if (!worldmodel || !Sound._listenerLeaf || worldmodel.phsdata === null) {
+    if (!worldmodel || Sound._listenerLeaf === null || worldmodel.phsdata === null) {
       return true;
     }
 
-    return worldmodel.getFatPhsByPoint(origin).isRevealed(Sound._listenerLeaf.num);
+    return worldmodel.getFatPhsByPoint(origin).isRevealed(Sound._listenerLeaf);
   }
 
   /** @protected */
   static _updateAmbientSounds(): void {
-    if (!clientRuntimeState.worldmodel || !Sound._listenerLeaf || Sound._ambientLevel.value === 0) {
+    if (!clientRuntimeState.worldmodel || Sound._listenerLeaf === null || Sound._ambientLevel.value === 0) {
       for (const ch of Sound._ambientChannels) {
         ch.channel_vol = 0;
         ch.updateVol();
@@ -743,7 +742,7 @@ export default class Sound {
 
     for (let i = 0; i < Sound._ambientChannels.length; i++) {
       const ch = Sound._ambientChannels[i];
-      let vol = (Sound._ambientLevel.value * Sound._listenerLeaf.ambient_level[i]) / 255;
+      let vol = (Sound._ambientLevel.value * clientRuntimeState.worldmodel.leafTable.ambient[Sound._listenerLeaf * 4 + i]) / 255;
       if (vol < 8 / 255) {
         vol = 0;
       }

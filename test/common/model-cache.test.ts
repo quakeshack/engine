@@ -5,9 +5,11 @@ import { Mod, ModelScope } from '../../source/engine/common/Mod.ts';
 import { AliasModel } from '../../source/engine/common/model/AliasModel.ts';
 import { Face } from '../../source/engine/common/model/BaseModel.ts';
 import type { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
-import { BrushModel, Node, type BrushTexInfo } from '../../source/engine/common/model/BSP.ts';
+import { BrushModel, type BrushTexInfo } from '../../source/engine/common/model/BSP.ts';
+import { WorldRenderState } from '../../source/engine/common/model/WorldRenderState.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { createModelLoadContext } from '../support/modelContext.ts';
+import { setBspTree } from '../support/bspTree.ts';
 
 /**
  * Narrows a model the cache returned.
@@ -49,40 +51,25 @@ function createSharedBrushModels(mod: Mod): { worldModel: BrushModel, submodel: 
   const worldModel = new BrushModel('maps/scoped-test.bsp');
   const submodel = new BrushModel('*1');
   const face = new Face();
-  const rootNode = new Node(worldModel);
-  const leaf = new Node(worldModel);
   const vertexes = [new Vector(0, 0, 0), new Vector(16, 0, 0)];
   const edges = [[0, 1]];
   const surfedges = [0];
   const texinfo: BrushTexInfo[] = [{ texture: 0, vecs: [[1, 0, 0, 0], [0, 1, 0, 0]], flags: 0, value: 0, nexttexinfo: -1 }];
   const faces = [face];
 
-  rootNode.num = 0;
-  rootNode.contents = 0;
-  rootNode.mins = new Vector(-16, -16, -16);
-  rootNode.maxs = new Vector(16, 16, 16);
-  rootNode.baseMins = rootNode.mins.copy();
-  rootNode.baseMaxs = rootNode.maxs.copy();
-
-  leaf.num = 1;
-  leaf.contents = -1;
-  leaf.parent = rootNode;
-  leaf.mins = new Vector(-8, -8, -8);
-  leaf.maxs = new Vector(8, 8, 8);
-  leaf.baseMins = leaf.mins.copy();
-  leaf.baseMaxs = leaf.maxs.copy();
-  leaf.firstmarksurface = 0;
-  leaf.nummarksurfaces = 1;
-
-  rootNode.children = [leaf, leaf];
+  worldModel.planes = [{ normal: new Vector(1, 0, 0), dist: 0, type: 0, signbits: 0 } as unknown as BrushModel['planes'][number]];
+  // one node whose two sides lead into the same leaf, which has the one face of the model
+  setBspTree(
+    worldModel,
+    [{ planeNum: 0, children: [~0, ~0], bounds: [-16, -16, -16, 16, 16, 16] }],
+    [{ contents: -1, bounds: [-8, -8, -8, 8, 8, 8], firstMarkSurface: 0, numMarkSurfaces: 1 }],
+  );
 
   worldModel.vertexes = vertexes;
   worldModel.edges = edges;
   worldModel.surfedges = surfedges;
   worldModel.texinfo = texinfo;
   worldModel.faces = faces;
-  worldModel.nodes = [rootNode];
-  worldModel.leafs = [leaf];
   worldModel.marksurfaces = [0];
   worldModel.submodels = [submodel];
 
@@ -220,7 +207,7 @@ void describe('Mod scoped model cache', () => {
     });
   });
 
-  void test('resets shared brush leaf runtime state before rebuilding a scoped client view', async () => {
+  void test('keeps the render state of the map per scoped view, and the tree shared', async () => {
     await withModel(async (mod) => {
       const { worldModel } = createSharedBrushModels(mod);
 
@@ -228,47 +215,48 @@ void describe('Mod scoped model cache', () => {
       const serverWorld = asBrushModel(await mod.ForNameAsync(worldModel.name, true, ModelScope.server));
       const sharedWorld = asBrushModel(await mod.ForNameAsync(worldModel.name, true, ModelScope.shared));
 
-      assert.equal(clientWorld.nodes[0], sharedWorld.nodes[0]);
-      assert.equal(clientWorld.leafs[0], sharedWorld.leafs[0]);
-      assert.equal(serverWorld.nodes[0], sharedWorld.nodes[0]);
-      assert.equal(serverWorld.leafs[0], sharedWorld.leafs[0]);
+      assert.equal(clientWorld.nodeTable, sharedWorld.nodeTable);
+      assert.equal(clientWorld.leafTable, sharedWorld.leafTable);
+      assert.equal(serverWorld.nodeTable, sharedWorld.nodeTable);
+      assert.equal(serverWorld.leafTable, sharedWorld.leafTable);
 
-      clientWorld.nodes[0].visframe = 123;
-      clientWorld.nodes[0].markvisframe = 456;
-      clientWorld.leafs[0].skychain = 2;
-      clientWorld.leafs[0].waterchain = 3;
-      clientWorld.leafs[0].cmds.push([99, 12, 18]);
-      clientWorld.leafs[0].mins![0] = -128;
+      const clientState = WorldRenderState.of(clientWorld);
+      clientState.markframes[0] = 456;
+      clientState.visframes[0] = 123;
+      clientState.skychains[0] = 2;
+      clientState.waterchains[0] = 3;
+      clientState.cmds[0].push([99, 12, 18]);
+      clientState.leafBounds[0] = -128;
       clientWorld.faces[0].dlightbits = 7;
       clientWorld.faces[0].dlightframe = 42;
 
-      assert.deepEqual(sharedWorld.leafs[0].cmds, [[99, 12, 18]]);
-      assert.equal(sharedWorld.leafs[0].skychain, 2);
-      assert.equal(sharedWorld.leafs[0].waterchain, 3);
-      assert.equal(sharedWorld.leafs[0].mins![0], -128);
+      // what one view draws with is not what another view, or the shared map, has
+      assert.equal(sharedWorld.renderState, null);
+      assert.equal(serverWorld.renderState, null);
+      assert.equal(sharedWorld.leafTable.bounds[0], -8);
 
       mod.ClearAll(ModelScope.client);
 
       const refreshedClientWorld = asBrushModel(await mod.ForNameAsync(worldModel.name, true, ModelScope.client));
 
       assert.notEqual(refreshedClientWorld, clientWorld);
-      assert.equal(refreshedClientWorld.nodes[0], clientWorld.nodes[0]);
-      assert.equal(refreshedClientWorld.leafs[0], clientWorld.leafs[0]);
-      assert.equal(refreshedClientWorld.leafs[0].skychain, 2);
-      assert.deepEqual(refreshedClientWorld.leafs[0].cmds, [[99, 12, 18]]);
+      assert.equal(refreshedClientWorld.nodeTable, clientWorld.nodeTable);
+      assert.equal(refreshedClientWorld.leafTable, clientWorld.leafTable);
+      assert.equal(refreshedClientWorld.renderState, null);
       assert.equal(refreshedClientWorld.faces[0].dlightbits, 0);
       assert.equal(refreshedClientWorld.faces[0].dlightframe, -1);
 
-      refreshedClientWorld.resetWorldRenderState();
+      // the state of a view is made when it is first needed, and can be reset
+      const refreshedState = WorldRenderState.of(refreshedClientWorld);
 
-      assert.equal(refreshedClientWorld.nodes[0].visframe, 0);
-      assert.equal(refreshedClientWorld.nodes[0].markvisframe, 0);
-      assert.equal(refreshedClientWorld.leafs[0].skychain, 0);
-      assert.equal(refreshedClientWorld.leafs[0].waterchain, 0);
-      assert.deepEqual(refreshedClientWorld.leafs[0].cmds, []);
-      assert.equal(refreshedClientWorld.leafs[0].mins![0], -8);
-      assert.equal(refreshedClientWorld.faces[0].dlightbits, 0);
-      assert.equal(refreshedClientWorld.faces[0].dlightframe, -1);
+      refreshedState.markframes[0] = 5;
+      refreshedState.cmds[0].push([1, 2, 3]);
+      refreshedState.leafBounds[0] = -99;
+      refreshedState.reset();
+
+      assert.equal(refreshedState.markframes[0], 0);
+      assert.deepEqual(refreshedState.cmds[0], []);
+      assert.equal(refreshedState.leafBounds[0], -8);
     });
   });
 

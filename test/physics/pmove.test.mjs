@@ -47,10 +47,10 @@ function createWallClipSeamWorldModel() {
   model.numBrushes = model.brushes.length;
 
   model.leafbrushes = [0, 1];
-  model.leafs[0].firstleafbrush = 0;
-  model.leafs[0].numleafbrushes = 2;
-  model.leafs[1].firstleafbrush = 2;
-  model.leafs[1].numleafbrushes = 0;
+  model.leafTable.firstLeafBrushes[0] = 0;
+  model.leafTable.numLeafBrushes[0] = 2;
+  model.leafTable.firstLeafBrushes[1] = 2;
+  model.leafTable.numLeafBrushes[1] = 0;
 
   return model;
 }
@@ -1254,7 +1254,7 @@ void describe('Pmove', () => {
       const worldModel = createBrushWorldModel({ center: [64, 0, 0], halfExtents: [16, 16, 16] });
       const pmove = new Pmove();
 
-      worldModel.leafs[0].contents = content.CONTENT_WATER;
+      worldModel.leafTable.contents[0] = content.CONTENT_WATER;
 
       pmove.setWorldmodel(worldModel);
 
@@ -1266,7 +1266,7 @@ void describe('Pmove', () => {
       const worldModel = createBrushWorldModel({ center: [64, 0, 0], halfExtents: [16, 16, 16] });
       const pmove = new Pmove();
 
-      worldModel.leafs[0].contents = content.CONTENT_CURRENT_UP;
+      worldModel.leafTable.contents[0] = content.CONTENT_CURRENT_UP;
 
       pmove.setWorldmodel(worldModel);
 
