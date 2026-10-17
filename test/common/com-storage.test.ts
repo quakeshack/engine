@@ -151,19 +151,19 @@ void describe('COM storage', () => {
   void describe('asset cache name', () => {
     void test('uses the commit of the build when there is one', async () => {
       await withStorage({ buildConfig: { commitHash: 'abc123', timestamp: 'T' } }, () => {
-        assert.equal(com.GetEngineBuildVersion(), '1.2.2+abc123');
+        assert.equal(com.GetEngineBuildVersion(), '1.3.0+abc123');
       });
     });
 
     void test('falls back to the build time, so local rebuilds never serve stale files', async () => {
       await withStorage({ buildConfig: { commitHash: null, timestamp: '2026-10-05T00:00:00.000Z' } }, () => {
-        assert.equal(com.GetEngineBuildVersion(), '1.2.2@2026-10-05T00:00:00.000Z');
+        assert.equal(com.GetEngineBuildVersion(), '1.3.0@2026-10-05T00:00:00.000Z');
       });
     });
 
     void test('is in the boot namespace until the game version is set', async () => {
       await withStorage({ buildConfig: { commitHash: 'abc123', timestamp: 'T' } }, () => {
-        assert.equal(com.GetAssetCacheName(), 'quakeshack/1.2.2+abc123/id1/boot');
+        assert.equal(com.GetAssetCacheName(), 'quakeshack/1.3.0+abc123/id1/boot');
       });
     });
 
@@ -171,8 +171,8 @@ void describe('COM storage', () => {
       const previousCaches = Object.getOwnPropertyDescriptor(globalThis, 'caches');
       const names = new Set([
         'quakeshack/1.2.1+old/id1/1.0.0',
-        'quakeshack/1.2.2+abc123/id1/boot',
-        'quakeshack/1.2.2+abc123/id1/0.9.0',
+        'quakeshack/1.3.0+abc123/id1/boot',
+        'quakeshack/1.3.0+abc123/id1/0.9.0',
         'unrelated',
       ]);
 
@@ -188,8 +188,8 @@ void describe('COM storage', () => {
         await withStorage({ buildConfig: { commitHash: 'abc123', timestamp: 'T' } }, async () => {
           await com.SetGameVersion('1.0.0');
 
-          assert.equal(com.GetAssetCacheName(), 'quakeshack/1.2.2+abc123/id1/1.0.0');
-          assert.deepEqual([...names].sort(), ['quakeshack/1.2.2+abc123/id1/boot', 'unrelated']);
+          assert.equal(com.GetAssetCacheName(), 'quakeshack/1.3.0+abc123/id1/1.0.0');
+          assert.deepEqual([...names].sort(), ['quakeshack/1.3.0+abc123/id1/boot', 'unrelated']);
         });
       } finally {
         if (previousCaches === undefined) {

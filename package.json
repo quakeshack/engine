@@ -1,6 +1,6 @@
 {
   "name": "quakeshack",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "main": "dedicated.ts",
   "type": "module",
   "repository": "https://github.com/chrisnew/quakeshack",
