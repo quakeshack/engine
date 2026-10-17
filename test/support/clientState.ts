@@ -90,10 +90,12 @@ export function patchMembers(target: object, overrides: object | undefined): () 
 /**
  * Makes the engine's real client state look like what a test mocked as `registry.CL`: the parts of the
  * client that read the state import it directly, so a test that wants other values sets them on the real one.
- * @param mockedClient What the test installed as `registry.CL`: `state`, `cls`, `pmove`, `collision`, the console variables and the methods of `CL` are applied.
+ * @param installedClient What the test installed as `engineMocks.CL`, read back from there (so untyped): `state`, `cls`, `pmove`, `collision`, the console variables and the methods of `CL` are applied.
  * @returns A function that puts the real state back.
  */
-export function useClientStateOf(mockedClient: ClientStateMock | null | undefined): () => void {
+export function useClientStateOf(installedClient: unknown): () => void {
+  const mockedClient = installedClient as ClientStateMock | null | undefined;
+
   const cvars = Object.fromEntries(Object.entries(mockedClient ?? {}).filter(([name]) => CVAR_NAMES.has(name)));
   const ownMembers = Object.fromEntries(Object.entries(mockedClient ?? {}).filter(([name]) => !SPLIT_MEMBERS.has(name) && name in CL));
   const restores = [

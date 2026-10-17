@@ -103,12 +103,12 @@ export function createSingleLeafWorld(contents: number = content.CONTENT_EMPTY):
  * Builds a world for the tests of the renderer's leaf loops: leafs with the marksurfaces and draw chains the test gives, and
  * a render state to hold the chains.
  * @param leafs The leafs, with the draw chains `[texture, first vertex, vertex count]` the display lists made for them.
- * @param members Other members of the model, e.g. faces, marksurfaces and textures.
+ * @param members Other members of the model, e.g. faces, marksurfaces and textures; tests give just the parts the code under test reads, so they are not checked against the model's own types.
  * @returns The model; its render state is made, with the chains set.
  */
 export function createRenderedWorld(
   leafs: readonly (LeafDescription & { readonly skychain?: number; readonly waterchain?: number; readonly cmds?: number[][]; readonly visframe?: number })[],
-  members: Partial<BrushModel> = {},
+  members: object = {},
 ): BrushModel {
   const model = new BrushModel('test-world');
 

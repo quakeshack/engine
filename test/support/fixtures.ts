@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.ts';
 import { content, flags, moveType, solid } from '../../source/shared/Defs.ts';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.ts';
-import { Plane } from '../../source/engine/common/model/BaseModel.ts';
+import { BaseModel, Plane } from '../../source/engine/common/model/BaseModel.ts';
+import GameModule from '../../source/engine/common/GameModule.ts';
 import type { Hull } from '../../source/engine/common/collision/Hull.ts';
 import './consoleBridge.ts';
 import { useClientStateOf } from './clientState.ts';
@@ -356,6 +357,35 @@ export function createLegacyWorldModel(mins: Vector, maxs: Vector): BrushModel {
   ];
 
   return model;
+}
+
+/**
+ * Build a model that has nothing but its bounds, for entities a test only needs to give a size.
+ * @param mins The mins of the model.
+ * @param maxs The maxs of the model.
+ * @param name The name of the model.
+ * @returns The model.
+ */
+export function createBoundsModel(mins: Vector, maxs: Vector, name = 'test-bounds'): BaseModel {
+  const model = new BaseModel(name);
+  model.mins = mins;
+  model.maxs = maxs;
+  return model;
+}
+
+/**
+ * Build the game module a test makes active, with the game APIs it brings.
+ * @param members The server and client game APIs of the module, as stand-ins with the members the code under test calls.
+ * @returns The module, typed as the real thing.
+ */
+export function createGameModuleStub(members: { ServerGameAPI?: object; ClientGameAPI?: object }): typeof GameModule.active {
+  // The engine calls just a few members of a game's APIs; the stand-ins have those.
+  return {
+    identification: { name: 'Test Game', author: 'test', version: [1, 0, 0], capabilities: [] },
+    ServerGameAPI: null,
+    ClientGameAPI: null,
+    ...members,
+  } as unknown as typeof GameModule.active;
 }
 
 // ── Entity Fixtures ─────────────────────────────────────────────────────────

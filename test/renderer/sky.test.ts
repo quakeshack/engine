@@ -4,7 +4,7 @@ import { afterEach, describe, test } from 'node:test';
 import GL from '../../source/engine/client/GL.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { publishGlReady } from '../support/glEvents.ts';
-import { SimpleSkyBox } from '../../source/engine/client/renderer/scene/Sky.ts';
+import { resolveSkyBloomEmissiveScale, SimpleSkyBox } from '../../source/engine/client/renderer/scene/Sky.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 
 /**
@@ -50,5 +50,18 @@ void describe('Sky shutdown', () => {
     sky.shutdown();
 
     assert.doesNotThrow(() => { sky.shutdown(); });
+  });
+});
+
+void describe('resolveSkyBloomEmissiveScale', () => {
+  void test('clamps invalid values to zero', () => {
+    assert.equal(resolveSkyBloomEmissiveScale(-1), 0.0);
+    assert.equal(resolveSkyBloomEmissiveScale(0), 0.0);
+    assert.equal(resolveSkyBloomEmissiveScale(Number.NaN), 0.0);
+  });
+
+  void test('preserves positive sky bloom strengths', () => {
+    assert.equal(resolveSkyBloomEmissiveScale(0.2), 0.2);
+    assert.equal(resolveSkyBloomEmissiveScale(0.75), 0.75);
   });
 });

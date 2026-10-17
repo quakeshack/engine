@@ -1,7 +1,7 @@
 # Track G, type-checked tests: the engine's `.mjs` tests become TypeScript
 
 Track G of `plans/engine-architecture-modernization.md`, the "type-checked tests" bullet. Status: **plan drafted 2026-10-17,
-forks settled the same day (see "Decisions"). Phase 0 is done and committed (`3537396`); Phase 1 (`test/physics/`) is done and committed (`5d9ff36`); Phase 2 (`test/server/`, `test/shared/`, `test/eslint/`) is done and committed (`5d07eb7`); Phase 3 (`test/common/`) is done (2026-10-17) and waits for review.**
+forks settled the same day (see "Decisions"). Phase 0 is done and committed (`3537396`); Phase 1 (`test/physics/`) is done and committed (`5d9ff36`); Phase 2 (`test/server/`, `test/shared/`, `test/eslint/`) is done and committed (`5d07eb7`); Phase 3 (`test/common/`) is done and committed (`72b98c0`); Phase 4 (`test/client/`, `test/renderer/`) is done (2026-10-17) and waits for review. No `.mjs` test is left under `test/`; Phase 5 is the close-out.**
 Written for the maintainers. Counts are from a read of the tree on that date (branch `engine-architecture-modernization`).
 
 ## Context
@@ -234,6 +234,35 @@ comment, file-wide in `savegame.test.ts` which does it a dozen times, and `unbou
 Needs the most mocking of DOM and GL shapes. `test/support/renderer.ts`, `clientState.ts` and `menu.ts` exist already.
 Per the unit-test conventions the UI-facing tests stay unit tests; a browser pass is not needed for a type-only change, but
 the conversion must not touch what a test checks.
+
+#### Phase 4: what shipped (2026-10-17)
+
+All 37 remaining `.mjs` tests (29 in `test/client/`, 8 in `test/renderer/`; the 38th, `renderer/sky.test.mjs`, was merged, see
+below) are `.test.ts`. No `.mjs` is left under `test/`. `npm test` 2602 pass (the baseline), `npm run typecheck` 0 errors, and
+`npx eslint test` is clean for the first time (it could not lint the `.mjs` files at all). Starting point was 1028 type errors.
+
+What the checker, or the lint that now sees these files, found:
+
+- **A test that never restored what it patched:** `client-entity-physics.test` made `useClientStateOf` and `useHostOf` patches and
+  discarded the functions that undo them, so every later test in the file ran with them still applied. They are called now.
+- **Stale stand-ins:** the `layout` objects in `menu-page.test` had `draw` only, while `MenuLayout` requires `hitTest`.
+- **Two tests with one name:** `renderer/sky.test.mjs` (the bloom scale) sat next to `renderer/sky.test.ts` (shutdown). The
+  `.mjs` cases moved into the `.ts` file instead of being renamed over it.
+- **A class nobody used:** `model-renderer-registry.test` declared `TestModelChild` and never used it. It looks like the start of a
+  test that a renderer is found for a subclass of a registered model class; `ModelRendererRegistry.getRendererForModel`
+  documents "falls back to an instanceof match" and does an exact lookup only. **Not changed here; the doc or the code should
+  follow the other.** The unused class is gone.
+- **Real `Cvar` and `Menu` shapes:** cvar stand-ins use `createCvarStub`, pages pushed onto the menu stack by hand go through one
+  documented cast (`asMenuPage`).
+
+Shared pieces added: `test/support/globals.ts` (`installGlobals`, one place to install and restore the browser globals that
+`network-drivers`, `in`, `menu` and `session-discovery` each did by hand), `createBoundsModel` and `createGameModuleStub` in
+`fixtures.ts`, and `useClientStateOf`, `useHostOf`, `useMenuOf` and `useRendererOf` take what `engineMocks.X` reads back
+(`unknown`) instead of needing a cast at every call. `createRenderedWorld` takes its members unchecked, like the stand-ins they
+are. Two more conversion tools were used and not kept: one for `/** @type */` casts, one for untyped arrays.
+
+Lint exceptions, each with a reason in the file: `unbound-method` in `shadow-map.test` and `client-host.test` (a test swaps a
+static and puts it back), `require-atomic-updates` in `save-slots.test`.
 
 ### Phase 5: close-out
 

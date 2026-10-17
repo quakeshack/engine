@@ -84,11 +84,11 @@ function splitRendererMock(mockedRenderer: object | null | undefined): Record<'c
  * use the renderer import it directly, so a test that wants other values or methods sets them on the real one.
  * Members that moved out of `R` are set where they live now (`Camera`, `Visibility`, `rendererCvars`,
  * `DefaultTextures`, `Fog`, `RenderStats`), so a mock written in terms of the old facade keeps working.
- * @param mockedRenderer What the test installed as `engineMocks.R`; `null` or `undefined` changes nothing.
+ * @param installedRenderer What the test installed as `engineMocks.R`; `null` or `undefined` changes nothing.
  * @returns A function that puts the real renderer back.
  */
-export function useRendererOf(mockedRenderer: object | null | undefined): () => void {
-  const parts = splitRendererMock(mockedRenderer);
+export function useRendererOf(installedRenderer: unknown): () => void {
+  const parts = splitRendererMock(installedRenderer as object | null | undefined);
   const restores = [
     patchMembers(R, parts.renderer),
     patchMembers(Camera, parts.camera),
