@@ -6,7 +6,8 @@ import { content, solid } from '../../source/shared/Defs.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import ClientCollision from '../../source/engine/client/ClientCollision.ts';
 
-import { assertNear, createBoxBrushModel, createBrushWorldModel, createLegacyWorldModel, type BrushWorldModelOptions } from '../support/fixtures.ts';
+import { createBoxBrushModel, createBrushWorldModel, createLegacyWorldModel, type BrushWorldModelOptions } from '../support/fixtures.ts';
+import { assertNear } from '../support/assertions.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import type { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
 import type { ClientCollisionTarget } from '../../source/engine/client/ClientCollision.ts';

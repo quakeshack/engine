@@ -6,7 +6,8 @@ import { content, flags, solid } from '../../source/shared/Defs.ts';
 import type { BaseEntity, ServerEdict } from '../../source/engine/server/Edict.ts';
 import { ServerMovement } from '../../source/engine/server/physics/ServerMovement.ts';
 
-import { assertNear, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV, type RecordedMove } from '../support/fixtures.ts';
+import { createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV, type RecordedMove } from '../support/fixtures.ts';
+import { assertNear } from '../support/assertions.ts';
 import { CollisionTrace } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
 
 void describe('ServerMovement', () => {

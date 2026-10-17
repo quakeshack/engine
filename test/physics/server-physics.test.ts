@@ -8,7 +8,8 @@ import { ServerCollision } from '../../source/engine/server/physics/ServerCollis
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
 import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics/Defs.ts';
 
-import { assertNear, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, withMockServerPhysics, mockedSV, mockedServer, type MockEntity, type RecordedMove } from '../support/fixtures.ts';
+import { createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, withMockServerPhysics, mockedSV, mockedServer, type MockEntity, type RecordedMove } from '../support/fixtures.ts';
+import { assertNear } from '../support/assertions.ts';
 import type { Octree } from '../../source/shared/Octree.ts';
 import type { ServerClient } from '../../source/engine/server/Client.ts';
 import type { ServerEdict } from '../../source/engine/server/Edict.ts';

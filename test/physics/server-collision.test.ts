@@ -13,7 +13,8 @@ import { AliasCollisionState, CollisionPlane, CollisionTrace, HullCollisionState
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 
 import { createClipTree, createLegacyHull } from '../support/hulls.ts';
-import { assertNear, createAxisPlane, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV, mockedCollisionModelSource, createPmoveTrace, type MockEntity } from '../support/fixtures.ts';
+import { createAxisPlane, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV, mockedCollisionModelSource, createPmoveTrace, type MockEntity } from '../support/fixtures.ts';
+import { assertNear } from '../support/assertions.ts';
 import { createModelLoadContext } from '../support/modelContext.ts';
 import type { Octree } from '../../source/shared/Octree.ts';
 import type { ServerEdict } from '../../source/engine/server/Edict.ts';

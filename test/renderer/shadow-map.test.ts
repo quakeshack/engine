@@ -8,7 +8,7 @@ import GL from '../../source/engine/client/GL.ts';
 import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
-import { assertNear } from '../support/fixtures.ts';
+import { assertNear } from '../support/assertions.ts';
 import { installEngineMocks } from '../support/withEngineMocks.ts';
 import { createFakeRenderTarget } from '../support/renderTargets.ts';
 import { createRenderedWorld } from '../support/bspTree.ts';

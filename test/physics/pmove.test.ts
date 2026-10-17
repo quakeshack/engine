@@ -10,13 +10,13 @@ import { DIST_EPSILON, MOVEVAR_CVARS, MoveVars, PM_TYPE, PMF, Pmove, PmovePlayer
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
 
 import {
-  assertNear,
   createBoxBrushModel,
   createBrushWorldModel,
   createLegacyWorldModel,
   createPmoveBoxEntity,
   createPmoveTrace,
 } from '../support/fixtures.ts';
+import { assertNear } from '../support/assertions.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { installEngineMocks } from '../support/withEngineMocks.ts';
 

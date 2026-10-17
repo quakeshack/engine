@@ -7,11 +7,11 @@ import { BrushSide, type BrushModel } from '../../source/engine/common/model/BSP
 import { content } from '../../source/shared/Defs.ts';
 
 import {
-  assertNear,
   createAxisPlane,
   createBoxBrushModel,
   createBrushWorldModel,
 } from '../support/fixtures.ts';
+import { assertNear } from '../support/assertions.ts';
 import { setBspTree } from '../support/bspTree.ts';
 
 /**

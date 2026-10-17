@@ -10,7 +10,8 @@ import GameModule from '../../source/engine/common/GameModule.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { moveType } from '../../source/shared/Defs.ts';
 
-import { assertNear, createBoundsModel, createGameModuleStub } from '../support/fixtures.ts';
+import { createBoundsModel, createGameModuleStub } from '../support/fixtures.ts';
+import { assertNear } from '../support/assertions.ts';
 import { createSingleLeafWorld } from '../support/bspTree.ts';
 import { installPageServices } from '../../source/engine/client/PageServices.ts';
 import { createClientEngineApi } from '../support/clientEngineApi.ts';

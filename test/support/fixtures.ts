@@ -1,4 +1,3 @@
-import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
 import { content, flags, moveType, solid } from '../../source/shared/Defs.ts';
@@ -642,21 +641,6 @@ export function withMockServerPhysics(callback: (context: MockServerPhysicsConte
       blockedCalls,
     });
   });
-}
-
-// ── Assertion Helpers ───────────────────────────────────────────────────────
-
-/**
- * Assert that two numeric values are approximately equal.
- * @param actual The measured value.
- * @param expected The expected value.
- * @param epsilon The maximum allowed absolute difference, defaults to 0.05.
- */
-export function assertNear(actual: number, expected: number, epsilon = 0.05): void {
-  assert.ok(
-    Math.abs(actual - expected) <= epsilon,
-    `expected ${actual} to be within ${epsilon} of ${expected}`,
-  );
 }
 
 // ── Stand-ins for what the server classes are constructed with ──────────────

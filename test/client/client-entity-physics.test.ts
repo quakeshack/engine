@@ -11,7 +11,8 @@ import { BaseClientEdictHandler } from '../../source/shared/ClientEdict.ts';
 import type { GameTrace } from '../../source/engine/common/GameApiSupport.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { CollisionPlane, CollisionTrace } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
-import { assertNear, createBoundsModel, createGameModuleStub } from '../support/fixtures.ts';
+import { createBoundsModel, createGameModuleStub } from '../support/fixtures.ts';
+import { assertNear } from '../support/assertions.ts';
 import { createSingleLeafWorld, createTreeModel } from '../support/bspTree.ts';
 import { withEngineMocks } from '../support/withEngineMocks.ts';
 

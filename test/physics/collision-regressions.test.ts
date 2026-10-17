@@ -15,7 +15,6 @@ import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics
 import COMClass from '../../source/engine/common/Com.ts';
 import Mod from '../../source/engine/common/Mod.ts';
 import {
-  assertNear,
   createAxisPlane,
   createBoxBrushModel,
   createBrushWorldModel,
@@ -30,6 +29,7 @@ import {
   withMockEngine,
   withMockServerPhysics,
 } from '../support/fixtures.ts';
+import { assertNear } from '../support/assertions.ts';
 import type { BaseEntity, ServerEdict } from '../../source/engine/server/Edict.ts';
 import type { MockEntity, RecordedMove } from '../support/fixtures.ts';
 import { createModelLoadContext } from '../support/modelContext.ts';

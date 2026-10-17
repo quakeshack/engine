@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { ClientAnimationSequence } from '../../source/shared/ClientAnimationSequence.ts';
-import { assertNear } from '../support/fixtures.ts';
+import { assertNear } from '../support/assertions.ts';
 
 void describe('ClientAnimationSequence', () => {
   void describe('tick', () => {
