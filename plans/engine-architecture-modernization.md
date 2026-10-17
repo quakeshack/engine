@@ -1424,10 +1424,10 @@ State on 2026-10-11 (the release in the next section waits for these, or for an 
   variables fixed, a model source per realm, entity hulls in their own class, `ClientCollision` without a stand-in server).
 - **F**: **postponed past 1.3.0 (decided 2026-10-13).** Only the first step (the shared `AssetSource`) exists. Content-hash
   addressing and the rest have no plan.
-- **G**: **type-checked tests are back in scope for 1.3.0 (decided 2026-10-17), the rest is postponed past it (decided 2026-10-13),
-  including deterministic replay (decision 14), which stays in scope for later.** The engine's `.mjs` tests become `.ts`:
-  `plans/tests-to-typescript.md`. Game repo tests follow after the release. State on 2026-10-13: half of the type-checked tests (55 `.test.ts` against 118 `.mjs`); `plans/server-replay.md` does not exist; the
-  `console.profile` calls are still in `ClientHost`.
+- **G**: **type-checked tests: done 2026-10-17**, `plans/tests-to-typescript.md` (all of the engine's tests under `test/` are `.test.ts`
+  and type-checked, none is left as `.mjs`; the game repos' tests follow after the release). **The rest is postponed past 1.3.0
+  (decided 2026-10-13), including deterministic replay (decision 14), which stays in scope for later.** State: `plans/server-replay.md`
+  does not exist; the `console.profile` calls are still in `ClientHost`.
 
 C (lifetimes and typed events) can start after Phase 2. The replay recorder (Track G) starts after
 Phase 3, as `plans/server-replay.md`. D1 (shader chunks) is independent of A/B
@@ -1445,8 +1445,8 @@ form their own plans define as done, and no open item left in "Open questions".
 
 **Scope cut, 2026-10-13:** Track F, Track G (including deterministic replay) and D4 are postponed past 1.3.0 and are not
 part of "everything". D3 (frame graph) was done the same day, `plans/frame-graph.md`. Track E was done on 2026-10-16. **Amended 2026-10-17:** the
-type-checked engine tests (the first bullet of Track G) are back in, see `plans/tests-to-typescript.md`. What 1.3.0 still waits for:
-that conversion, and the one open item in "Open questions" (the navigation worker check with a real path request, which needs the
+type-checked engine tests (the first bullet of Track G) were back in and are done, see `plans/tests-to-typescript.md`. What 1.3.0 still waits for:
+the one open item in "Open questions" (the navigation worker check with a real path request, which needs the
 Hellwave `.nav` files).
 
 The bump itself, in one commit with no other change:

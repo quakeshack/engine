@@ -17,9 +17,6 @@ const typeAwareParserOptions = {
   // local tsconfig.json when they want typed linting for their own tests.
   projectService: {
     allowDefaultProject: [
-      'test/*.test.mjs',
-      'test/*/*.test.mjs',
-      'test/*/*/*.test.mjs',
       'scripts/*/*.mjs',
       'scripts/*.mts',
     ],

@@ -1,7 +1,7 @@
 # Track G, type-checked tests: the engine's `.mjs` tests become TypeScript
 
 Track G of `plans/engine-architecture-modernization.md`, the "type-checked tests" bullet. Status: **plan drafted 2026-10-17,
-forks settled the same day (see "Decisions"). Phase 0 is done and committed (`3537396`); Phase 1 (`test/physics/`) is done and committed (`5d9ff36`); Phase 2 (`test/server/`, `test/shared/`, `test/eslint/`) is done and committed (`5d07eb7`); Phase 3 (`test/common/`) is done and committed (`72b98c0`); Phase 4 (`test/client/`, `test/renderer/`) is done (2026-10-17) and waits for review. No `.mjs` test is left under `test/`; Phase 5 is the close-out.**
+forks settled the same day (see "Decisions"). Phase 0 is done and committed (`3537396`); Phase 1 (`test/physics/`) is done and committed (`5d9ff36`); Phase 2 (`test/server/`, `test/shared/`, `test/eslint/`) is done and committed (`5d07eb7`); Phase 3 (`test/common/`) is done and committed (`72b98c0`); Phase 4 (`test/client/`, `test/renderer/`) is done and committed (`8e256a7`); Phase 5 (close-out) is done (2026-10-17). **The plan is complete; the game repos' tests are the follow-up.**
 Written for the maintainers. Counts are from a read of the tree on that date (branch `engine-architecture-modernization`).
 
 ## Context
@@ -273,6 +273,18 @@ static and puts it back), `require-atomic-updates` in `save-slots.test`.
   shipped here.
 - Then the 1.3.0 bump from the release section, as its own commit.
 
+#### Phase 5: what shipped (2026-10-17)
+
+- `package.json`: the `test`, `test:engine`, `test:common`, `test:physics` and `test:renderer` globs name `*.test.ts` only; the game
+  globs (`source/game/**/test/**/*.test.mjs`) stay. `test` still runs 2602 tests, the area scripts 536, 388 and 448.
+  The `test-glob-coverage` check (engine `.ts` plus game `.mjs` against what is on disk) shows no gap.
+- `eslint.config.mjs`: the default-project entries for `.mjs` files under `test/` are gone, there are none.
+- `unit-tests.instructions.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, `docs/game-module-contract.md` and the skills
+  `test-glob-coverage` and `dockerfile-fixture-sync` say that the engine's tests are TypeScript and type-checked and a game's are
+  `.mjs` and not. `unit-tests.instructions.md` also says how to write a mock (typed factory, one commented cast for a whole
+  subsystem, no `any`, no `@ts-ignore`). Stale file names in `docs/` follow the renames.
+- Nothing in the `Dockerfile` needed to change: the `test` stage copies `test/` whole and runs the typecheck, which now covers it.
+
 ## Testing
 
 - The test suite is the thing being converted, so the check is that nothing changed: the pass count equals the baseline after
@@ -290,10 +302,18 @@ static and puts it back), `require-atomic-updates` in `save-slots.test`.
 
 ## Open questions
 
-- **The game repos' tests (56 files).** Do they get converted for 1.3.0, or after? They need a commit inside each repo
-  (`submodule-aware-commit`), and `tsconfig.json` excludes `source/game/**/test/**` today. Proposed: after, as
-  `plans/game-tests-to-typescript.md`.
-- **The generic `node:test` mock typing.** `t.mock.method` is used by the existing typed tests (commit `7ee3236`); whether its
-  typings hold for the static facades without casts is checked in Phase 0 on two files before the sweep commits to it.
-- **Whether the stale-mock failures the typecheck turns up are many.** Unknown until Phase 0. If they run to dozens per area, the
-  phases get split smaller, and the count goes here.
+Settled while doing the work:
+
+- **`t.mock.method` for the static facades:** it holds without casts (`brushtrace`, `user-store`, `asset-source`, `sky`, ...). Where a test
+  swaps a static by hand and puts it back, a documented `eslint-disable` stays (see the Phase 3 and 4 notes).
+- **How many stale mocks the typecheck turns up:** a few hundred in all, 11 stale `BrushModel()` calls, two required dependencies
+  nobody passed, one test that never undid its patches, one that mocked a class instead of an object. The phases needed no splitting.
+
+Still open:
+
+- **The game repos' tests (56 files).** They need a commit inside each repo (`submodule-aware-commit`), and `tsconfig.json`
+  excludes `source/game/**/test/**` today. Proposed: `plans/game-tests-to-typescript.md`, after 1.3.0.
+- **`ModelRendererRegistry.getRendererForModel`** documents an `instanceof` fallback it does not have (see Phase 4); not a test
+  question, but found here.
+- **Folding the per-file `withMockXRegistry` helpers into `withMockEngine`:** many tests still carry their own copy of the same
+  install-and-restore code.

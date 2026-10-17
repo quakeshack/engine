@@ -36,7 +36,7 @@ Be a good boy scout, whenever touching something, make sure it’s cleaner than 
   - Browser: Served via Vite during dev.
   - Dedicated: `src/dedicated.mjs` (Node environment).
 - **Linting**: Strict ESLint configuration (`eslint.config.mjs`).
-- **Type checking**: `npm run typecheck` (`tsc`). Vite/esbuild do not check types, so this is what catches them. It gates the Cloudflare build (`npm run build:wrangler`) and the Docker `test` stage, and it must stay at zero errors. `.mjs` tests are not type-checked.
+- **Type checking**: `npm run typecheck` (`tsc`). Vite/esbuild do not check types, so this is what catches them. It gates the Cloudflare build (`npm run build:wrangler`) and the Docker `test` stage, and it must stay at zero errors. The engine's tests (`test/**/*.test.ts`) are type-checked with it; the `.mjs` tests of the games under `source/game/` are not.
 
 ### Master Server
 - **Run/Dev**: `wrangler dev` (Cloudflare local emulation).

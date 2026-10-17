@@ -3,16 +3,17 @@
 ### Runner and File Layout
 
 - **Test runner**: Node.js built-in (`node:test`). No third-party frameworks.
-- **Primary engine glob**: `node --test test/**/*.test.mjs` (see `package.json` scripts).
+- **Primary engine glob**: `node --import tsx --test test/**/*.test.ts` (see `package.json` scripts).
 - **Repo-local game globs**: `node --test source/game/**/test/*.test.mjs source/game/**/test/**/*.test.mjs`.
 - **Folder ownership**: Keep engine-owned tests under `test/`. Keep game/mod-owned tests in repo-local folders under `source/game/<repo>/test/`.
 - **Repo-local organization**: Within game repos, prefer mirroring the source layout with folders such as `client/`, `entity/`, `helper/`, `monster/`, `props/`, and `core/` when that keeps related tests easier to find.
 - **Category globs**: Keep engine tests grouped by top-level area such as `test/common/`, `test/physics/`, and `test/renderer/`.
 - **Nested test directories**: `npm test`'s glob patterns only reach as many directory levels as `package.json` spells out explicitly (dash has no recursive `**`) — see the `.claude/skills/test-glob-coverage/SKILL.md` skill and verify coverage whenever a new subdirectory level is added under `test/`.
-- **File naming**: `<subsystem>.test.mjs` or `<subsystem>.test.ts`. One file per production class/module.
+- **File naming**: `<subsystem>.test.ts` for the engine; the games' tests are still `<subsystem>.test.mjs`. One file per production class/module.
 - **Shared helpers**: `test/support/fixtures.ts` (the engine mocks and the geometry, entity and server factories) and the other typed ones in `test/support/`, among them `cvarStub.ts` for a variable a test only reads (no `.test.` — never auto-run). `runConsoleCommand` (`test/support/consoleCommands.ts`) runs a `ConsoleCommand` class with the context a test gives it (`{ client: null }`). `test/support/engineMocks.ts` is where a test puts the mocks it wants the engine's parts to see (see "Mock Pattern" below), and `test/support/consoleBridge.ts` makes the engine's shared console print to a mocked `engineMocks.Con`.
-- **All files are ESM**. Use `import`/`export` exclusively. New tests and tests of a module that is being converted are written in TypeScript (`<subsystem>.test.ts`, run by `tsx` like the `.mjs` ones, included by the same globs); the rest are `.mjs` until their module's turn.
-- **Only `.test.ts` tests are type-checked.** `npm run typecheck` covers `test/**/*.test.ts` and `test/support/**` (shared typed helpers such as `modelContext.ts`); `.mjs` tests and `source/game/**/test/` are outside `tsconfig.json`, so a test that calls a `.ts` method with a stale signature, or mocks an outdated shape, keeps passing when the code changes. After changing a signature or a game/engine contract member, search the tests for it by hand. This once hid a wrong override signature in a game mod behind a green test.
+- **All files are ESM**. Use `import`/`export` exclusively. The engine's tests are TypeScript (`<subsystem>.test.ts`, run by `tsx`); the games' tests under `source/game/<mod>/test/` are `.mjs` until their repos are converted.
+- **The engine's tests are type-checked, the games' are not.** `npm run typecheck` covers `test/**/*.test.ts` and `test/support/**` (shared typed helpers such as `fixtures.ts`), so a changed signature fails the build. `source/game/**/test/` is outside `tsconfig.json`: a game test that calls a `.ts` method with a stale signature, or mocks an outdated shape, keeps passing when the code changes. After changing a game/engine contract member, search the games' tests for it by hand. This once hid a wrong override signature in a game mod behind a green test.
+- **Type the mock, not the call.** Mocks are built by the typed factories in `test/support/fixtures.ts` (`createMockEntity`, `createMockEdict`, `createPmoveTrace`, `createCvarStub`, `createBoundsModel`, `createGameModuleStub`, `installGlobals`); a stand-in for a whole subsystem that has no factory is cast once with `as unknown as T` and a comment saying which members it needs. No `any`, no `@ts-ignore`.
 
 ### Test Structure
 

@@ -1,6 +1,6 @@
 ---
 name: test-glob-coverage
-description: Use whenever adding a new test file in a nested subdirectory under any test/ folder in this repo — e.g. splitting a test file into test/client/menu/*.test.mjs, or mirroring a new source/ subdirectory per unit-tests.instructions.md's "mirror the source layout" guidance. npm's test scripts pass ** glob patterns to dash (this machine's /bin/sh, and the Docker test stage's ash), neither of which supports real recursive ** — patterns only reach exactly as many directory levels as are spelled out explicitly. A new nesting level one deeper than what's already spelled out is silently skipped — npm test reports a clean, plausible-looking pass count with zero indication anything was excluded.
+description: Use whenever adding a new test file in a nested subdirectory under any test/ folder in this repo — e.g. splitting a test file into test/client/menu/*.test.ts, or mirroring a new source/ subdirectory per unit-tests.instructions.md's "mirror the source layout" guidance. npm's test scripts pass ** glob patterns to dash (this machine's /bin/sh, and the Docker test stage's ash), neither of which supports real recursive ** — patterns only reach exactly as many directory levels as are spelled out explicitly. A new nesting level one deeper than what's already spelled out is silently skipped — npm test reports a clean, plausible-looking pass count with zero indication anything was excluded.
 ---
 
 # Test glob coverage
@@ -14,12 +14,12 @@ many explicit `**/**/…` segments as there are directory levels it needs to rea
 past that.
 
 **Currently verified state (re-check if this becomes stale):** running the real patterns
-through `sh -c` and diffing against every `*.test.mjs` file on disk shows zero gap right
+through `sh -c` and diffing against every `*.test.ts` file under `test/` and every `*.test.mjs` file under `source/game/` on disk shows zero gap right
 now — but there is also zero headroom left:
 
-- `test/**/*.test.mjs` (used by `test` and implicitly needed by `test:common`/
-  `test:physics`/`test:renderer`'s own single-`**` patterns) reaches exactly one level under
-  `test/` (e.g. `test/client/cl.test.mjs`). None of `test/client/`, `test/common/`,
+- `test/**/*.test.ts` (used by `test` and `test:engine`, and in the form `test/<area>/**/*.test.ts` by `test:common`/
+  `test:physics`/`test:renderer`) reaches exactly one level under
+  `test/` (e.g. `test/client/cl.test.ts`). None of `test/client/`, `test/common/`,
   `test/physics/`, `test/renderer/` currently have any further nesting.
 - `source/game/**/test/*.test.mjs`, `.../test/**/*.test.mjs`, `.../test/**/**/*.test.mjs`
   (used by `test` and `test:game`) together reach up to two levels under `test/`. The
@@ -37,8 +37,8 @@ existing test file, verify it's actually picked up — don't trust a green `npm 
 
 ```bash
 diff \
-  <(sh -c 'ls -d test/**/*.test.mjs source/game/**/test/*.test.mjs source/game/**/test/**/*.test.mjs source/game/**/test/**/**/*.test.mjs 2>/dev/null' | sort -u) \
-  <(find test source/game -name '*.test.mjs' -not -path '*/node_modules/*' | sort -u)
+  <(sh -c 'ls -d test/**/*.test.ts source/game/**/test/*.test.mjs source/game/**/test/**/*.test.mjs source/game/**/test/**/**/*.test.mjs 2>/dev/null' | sort -u) \
+  <(find test source/game \( -name '*.test.ts' -o -name '*.test.mjs' \) -not -path '*/node_modules/*' | sort -u)
 ```
 
 - **Empty diff:** covered, nothing to do.

@@ -246,12 +246,12 @@ the frame time and is a lot lower with a GPU.
 - `test/common/channel-driver.test.ts`: the driver, in-process and over a real `MessageChannel`.
 - `test/server/server-worker-runtime.test.ts`, `server-realm.test.ts`, `server-worker-console.test.ts`:
   the worker side with stand-ins.
-- `test/client/worker-server-controller.test.mjs`: the page side against a scripted worker.
+- `test/client/worker-server-controller.test.ts`: the page side against a scripted worker.
 - `test/server/server-worker-control-plane.test.ts`: both sides over a real `MessageChannel`, with a fake
   server in the middle.
 - `test/server/server-cvar-realms.test.ts`: cvar and command sync against a second realm in a real worker thread
-  (`test/server/fixtures/cvar-realm.mjs`).
+  (`test/support/serverCvarRealm.ts`).
 - `server-cvar-sync`, `server-cvar-mirror`, `server-local-console`, `server-savegame`: the pieces on their own.
-- `test/client/peer-relay.test.mjs`: the relay between a made-up WebRTC driver and a worker-side network layer.
+- `test/client/peer-relay.test.ts`: the relay between a made-up WebRTC driver and a worker-side network layer.
 - A real browser: serve the build and open the game, see [browser-verification.md](browser-verification.md). The relay was
   checked with two Chromium contexts against a local master server (`wrangler dev` in the master-server repo).

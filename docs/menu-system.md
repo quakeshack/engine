@@ -526,18 +526,18 @@ how) a game module chooses to present them (see [`events.md`](events.md#host) fo
 
 ## Testing
 
-- `test/client/menu-stack.test.mjs` — `MenuStack` register/push/pop/replace/popTo/clear, plus
+- `test/client/menu-stack.test.ts` — `MenuStack` register/push/pop/replace/popTo/clear, plus
   `isShowing`/root-page (`setRootPage`/`pushRoot`/`isShowingRoot`).
-- `test/client/menu-viewport.test.mjs` — `MenuViewport`'s `resolve`/`toScreen`/`fromScreen`/
+- `test/client/menu-viewport.test.ts` — `MenuViewport`'s `resolve`/`toScreen`/`fromScreen`/
   `anchor` math for both `fixed` and `contain` (with and without `integerScale`) fits.
-- `test/client/menu-item.test.mjs` — widget behaviors (cvar round-trip, focus-skipping, input
+- `test/client/menu-item.test.ts` — widget behaviors (cvar round-trip, focus-skipping, input
   handling per widget type).
-- `test/client/menu-page.test.mjs` — `MenuPage`/`DialogPage`/`ListPage` navigation and dialog
+- `test/client/menu-page.test.ts` — `MenuPage`/`DialogPage`/`ListPage` navigation and dialog
   backdrop drawing, `VerticalLayout`'s `valueX` right-justification behavior, and the
   `customDraw`/`customHandleInput`/`customGetBackButtonAnchor` composition hooks.
-- `test/client/menu.test.mjs` — `M`'s remaining machinery: mouse/back-button mechanics, root-page
+- `test/client/menu.test.ts` — `M`'s remaining machinery: mouse/back-button mechanics, root-page
   aware `CloseMenu`/`PopMenu`, involuntary-disconnect reopen.
-- `test/client/session-discovery.test.mjs`, `test/client/save-slots.test.mjs` — the
+- `test/client/session-discovery.test.ts`, `test/client/save-slots.test.ts` — the
   `SessionDiscovery`/`SaveSlots` services `ClientEngineAPI.Multiplayer`/`ClientEngineAPI.SaveSlots`
   wrap.
 - `test/common/client-engine-api-menu.test.ts`,
@@ -548,7 +548,7 @@ how) a game module chooses to present them (see [`events.md`](events.md#host) fo
   using the same `engineMocks` pattern as other client API tests.
 - `test/common/host-alert.test.ts` — `ClientHost.EndGame`/`Host.Error` publish `host.alert` with the
   right severity, and `Con.PrintError`/`PrintSuccess` still fire even with nothing subscribed.
-- `source/game/id1/test/client/menu.test.mjs` — `Id1Menu.Init()`: every built-in page registers
+- `source/game/id1/test/client/menu.test.ts` — `Id1Menu.Init()`: every built-in page registers
   and the root is `'main'`; each page's actual behavior (main menu navigation, new-game/load/save
   flows, options toggles, the quit Y/N dialog, the help page-turner, the multiplayer setup
   name/color/join flow, the launch-server session list, and the `host.alert`/`host.quit-requested`
