@@ -30,17 +30,12 @@ export class ModelRendererRegistry {
 
   /**
    * Get the renderer for a concrete model instance.
-   * Supports subclasses by falling back to an `instanceof` match.
+   * Matches the exact class of the model: a subclass of a registered model class has no renderer
+   * unless it is registered itself.
    * @returns The matching renderer, or null if none is registered.
    */
   getRendererForModel(model: BaseModel): ModelRenderer | null {
-    const directRenderer = this.#renderers.get(model.constructor as typeof BaseModel);
-
-    if (directRenderer) {
-      return directRenderer;
-    }
-
-    return null;
+    return this.#renderers.get(model.constructor as typeof BaseModel) ?? null;
   }
 
   /**

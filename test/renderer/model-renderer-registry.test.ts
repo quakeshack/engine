@@ -42,6 +42,16 @@ void describe('ModelRendererRegistry', () => {
     assert.equal(registry.getRendererForModel(model), renderer);
   });
 
+  void test('does not resolve a renderer for a subclass of a registered model class', () => {
+    class DerivedModel extends TestModel {}
+
+    const registry = new ModelRendererRegistry();
+
+    registry.register(new TestModelRenderer());
+
+    assert.equal(registry.getRendererForModel(new DerivedModel('derived-model')), null);
+  });
+
   void test('unregisters model-class mappings', () => {
     const registry = new ModelRendererRegistry();
     const testRenderer = new TestModelRenderer();
