@@ -4,17 +4,18 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import COM from '../../source/engine/common/Com.ts';
 import Cmd from '../../source/engine/common/Cmd.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
+import type ServerHost from '../../source/engine/server/ServerHost.ts';
 import ServerRealm from '../../source/engine/server/ServerRealm.ts';
 import { withMockEngine } from '../support/fixtures.ts';
 
 /**
  * Builds a realm with a clock a test controls.
- * @returns {{ realm: ServerRealm, clock: { now: number }, crashes: unknown[], frames: Array<[number, number]> }} the realm and what it recorded
+ * @returns the realm and what it recorded
  */
-function createRealm() {
+function createRealm(): { realm: ServerRealm, clock: { now: number }, crashes: unknown[], frames: Array<[number, number]> } {
   const clock = { now: 100 };
-  const crashes = [];
-  const frames = [];
+  const crashes: unknown[] = [];
+  const frames: Array<[number, number]> = [];
 
   const realm = new ServerRealm({
     sys: { Print() {}, FloatTime: () => clock.now },
@@ -24,7 +25,8 @@ function createRealm() {
   });
 
   realm.InitLocal();
-  realm.serverHost = /** @type {any} */ ({ Frame: (frametime, realtime) => frames.push([frametime, realtime]) });
+  // Only the frame of the server host is called by the realm.
+  realm.serverHost = { Frame: (frametime: number, realtime: number) => frames.push([frametime, realtime]) } as unknown as ServerHost;
 
   return { realm, clock, crashes, frames };
 }
@@ -85,7 +87,7 @@ void describe('ServerRealm', () => {
     void test('host_framerate fixes the time step', async () => {
       const { realm, clock, frames } = createRealm();
 
-      realm.framerate.set(0.5);
+      realm.framerate!.set(0.5);
       clock.now += 0.016;
       await realm.Frame();
 
@@ -103,14 +105,15 @@ void describe('ServerRealm', () => {
 
     void test('runs queued console commands before the server', async () => {
       const { realm } = createRealm();
-      const order = [];
+      const order: string[] = [];
 
       Cmd.AddCommand('realm_test_command', () => { order.push('command'); });
-      realm.serverHost = /** @type {any} */ ({ Frame: () => order.push('server') });
+      // Only the frame of the server host is called by the realm.
+  realm.serverHost = { Frame: () => order.push('server') } as unknown as ServerHost;
       Cmd.text += 'realm_test_command\n';
 
       // Executing commands tokenizes them with the static parser of COM.
-      await withMockEngine({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, async () => {
+      await withMockEngine({ COM, Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, async () => {
         await realm.Frame();
       });
 
@@ -121,9 +124,10 @@ void describe('ServerRealm', () => {
   void describe('scheduling', () => {
     void test('runs work scheduled for the next frame before the server, once', async () => {
       const { realm, frames } = createRealm();
-      const order = [];
+      const order: string[] = [];
 
-      realm.serverHost = /** @type {any} */ ({ Frame: () => order.push('server') });
+      // Only the frame of the server host is called by the realm.
+  realm.serverHost = { Frame: () => order.push('server') } as unknown as ServerHost;
       realm.ScheduleForNextFrame(() => { order.push('scheduled'); });
 
       await realm.Frame();
@@ -135,9 +139,10 @@ void describe('ServerRealm', () => {
 
     void test('waits for scheduled work that is asynchronous', async () => {
       const { realm } = createRealm();
-      const order = [];
+      const order: string[] = [];
 
-      realm.serverHost = /** @type {any} */ ({ Frame: () => order.push('server') });
+      // Only the frame of the server host is called by the realm.
+  realm.serverHost = { Frame: () => order.push('server') } as unknown as ServerHost;
       realm.ScheduleForNextFrame(async () => {
         await new Promise((resolve) => setTimeout(resolve, 5));
         order.push('scheduled');
@@ -191,7 +196,7 @@ void describe('ServerRealm', () => {
 
   void describe('noclip_anglehack', () => {
     void test('tells whoever shows the view when the server switches it', () => {
-      const changes = [];
+      const changes: boolean[] = [];
       const realm = new ServerRealm({
         sys: { Print() {}, FloatTime: () => 0 },
         con: { Print() {}, DPrint() {}, PrintWarning() {}, PrintError() {}, PrintSuccess() {} },

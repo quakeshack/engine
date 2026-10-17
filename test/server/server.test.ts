@@ -4,21 +4,22 @@ import { describe, test } from 'node:test';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 
 import { createTestServer } from '../support/fixtures.ts';
-
-/** @typedef {import('../../source/engine/server/Server.ts').default} Server */
+import type Server from '../../source/engine/server/Server.ts';
 
 /**
  * Builds a server with the given game and client slots.
- * @param {{ gameAPI: object, clients?: object[] }} options server state
- * @returns {Server} the server
+ * @param options server state
+ * @returns the server
  */
-function createServer({ gameAPI, clients = [] }) {
+function createServer({ gameAPI, clients = [] }: { gameAPI: object; clients?: object[] }): Server {
   const sv = createTestServer();
 
-  sv.server.gameAPI = gameAPI;
+  // Only the serverflags of the game are read.
+  sv.server.gameAPI = gameAPI as Server['server']['gameAPI'];
   sv.svs.serverflags = 0;
   sv.svs.maxclients = clients.length;
-  sv.svs.clients = clients;
+  // The clients have the state and the spawn parameter saving that SaveSpawnparms asks for.
+  sv.svs.clients = clients as ServerClient[];
 
   return sv;
 }
@@ -33,8 +34,8 @@ void describe('SV.SaveSpawnparms', () => {
   });
 
   void test('has connected clients save their spawn parameters and skips clients that are not connected yet', () => {
-    const saved = [];
-    const createClient = (name, state) => ({
+    const saved: string[] = [];
+    const createClient = (name: string, state: number) => ({
       state,
       saveSpawnparms() {
         saved.push(name);

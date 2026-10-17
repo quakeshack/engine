@@ -4,31 +4,36 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import COM from '../../source/engine/common/Com.ts';
 import Cmd, { ConsoleCommand } from '../../source/engine/common/Cmd.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
+import type { ConsoleOutput } from '../../source/engine/common/Services.ts';
+import type Server from '../../source/engine/server/Server.ts';
+import type ServerHost from '../../source/engine/server/ServerHost.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import ServerLocalConsole from '../../source/engine/server/ServerLocalConsole.ts';
 import { QSocket } from '../../source/engine/network/NetworkDrivers.ts';
 import { withMockEngine } from '../support/fixtures.ts';
 
 /**
- * @param {string} address address of the connection
- * @param {number} [state] state of the client
- * @returns {object} a client connected from that address
+ * @param address address of the connection
+ * @param [state] state of the client
+ * @returns a client connected from that address
  */
-function createClient(address, state = ServerClient.STATE.SPAWNED) {
-  return { state, netconnection: { address, state: QSocket.STATE_CONNECTED } };
+function createClient(address: string, state: number = ServerClient.STATE.SPAWNED): ServerClient {
+  // Only the state and the address of the connection are looked at.
+  return { state, netconnection: { address, state: QSocket.STATE_CONNECTED } } as unknown as ServerClient;
 }
 
 /**
- * @param {object[]} clients the clients of the server
- * @returns {{ console: ServerLocalConsole, serverHost: { getLocalOperatorName: () => string }, prints: string[] }} the local console and what it works on
+ * @param clients the clients of the server
+ * @returns the local console and what it works on
  */
-function createConsole(clients) {
-  const prints = [];
+function createConsole(clients: ServerClient[]): { console: ServerLocalConsole, serverHost: { getLocalOperatorName: () => string }, prints: string[] } {
+  const prints: string[] = [];
   const serverHost = { getLocalOperatorName: () => 'nobody' };
-  const sv = { svs: { maxclients: clients.length, clients } };
+  // The local console reads the client slots of the server, the operator name of the host and prints through the console.
+  const sv = { svs: { maxclients: clients.length, clients } } as unknown as Server;
 
   return {
-    console: new ServerLocalConsole(/** @type {any} */ (sv), /** @type {any} */ (serverHost), /** @type {any} */ ({ Print: (text) => prints.push(text) })),
+    console: new ServerLocalConsole(sv, serverHost as unknown as ServerHost, { Print: (text: string) => prints.push(text) } as unknown as ConsoleOutput),
     serverHost,
     prints,
   };
@@ -36,12 +41,12 @@ function createConsole(clients) {
 
 /**
  * Runs a console line with the parser available.
- * @param {string} line the line
- * @param {object | null} [client] who runs it
+ * @param line the line
+ * @param [client] who runs it
  */
-async function run(line, client = null) {
-  await withMockEngine({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, async () => {
-    await Cmd.ExecuteString(line, /** @type {any} */ (client));
+async function run(line: string, client: ServerClient | null = null) {
+  await withMockEngine({ COM, Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, async () => {
+    await Cmd.ExecuteString(line, client);
   });
 }
 
@@ -81,7 +86,7 @@ void describe('ServerLocalConsole', () => {
     void test('run for the local player', async () => {
       const local = createClient('local');
       const { console: con } = createConsole([local]);
-      const seen = [];
+      const seen: unknown[] = [];
 
       Cmd.AddCommand('probe', class extends ConsoleCommand {
         run() {
@@ -121,7 +126,7 @@ void describe('ServerLocalConsole', () => {
     void test('are left alone when a client sent them', async () => {
       const remote = createClient('1.2.3.4:5');
       const { console: con } = createConsole([createClient('local'), remote]);
-      const seen = [];
+      const seen: unknown[] = [];
 
       Cmd.AddCommand('probe', class extends ConsoleCommand {
         run() {
@@ -148,9 +153,9 @@ void describe('ServerLocalConsole', () => {
   });
 
   void describe('execute', () => {
-    void test('runs the line as the console, not as a player', async () => {
+    void test('runs the line as the console, not as a player', () => {
       const { console: con } = createConsole([createClient('local')]);
-      const seen = [];
+      const seen: unknown[] = [];
 
       Cmd.AddCommand('probe', class extends ConsoleCommand {
         run() {
@@ -158,18 +163,18 @@ void describe('ServerLocalConsole', () => {
         }
       });
 
-      await withMockEngine({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, () => {
+      withMockEngine({ COM, Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, () => {
         con.execute('probe', 'Ranger');
       });
 
       assert.deepEqual(seen, [null]);
     });
 
-    void test('names the player as the operator for what the server does on their behalf', async () => {
+    void test('names the player as the operator for what the server does on their behalf', () => {
       const { console: con, serverHost } = createConsole([]);
 
       Cmd.AddCommand('probe', () => {});
-      await withMockEngine({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, () => {
+      withMockEngine({ COM, Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, () => {
         con.execute('probe', 'Ranger');
       });
 

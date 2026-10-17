@@ -3,21 +3,22 @@ import { describe, test } from 'node:test';
 import { MessageChannel } from 'node:worker_threads';
 
 import WorkerServerController from '../../source/engine/client/WorkerServerController.ts';
-import { ControlLink } from '../../source/engine/common/ServerWorkerProtocol.ts';
-import { ChannelDriver, MessagePortEndpoint } from '../../source/engine/network/ChannelDriver.ts';
+import { ControlLink, type ControlFromServer, type ControlToServer } from '../../source/engine/common/ServerWorkerProtocol.ts';
+import { ChannelDriver, MessagePortEndpoint, type ChannelEndpoint, type ChannelPortLike } from '../../source/engine/network/ChannelDriver.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import NET from '../../source/engine/network/Network.ts';
-import ServerWorkerRuntime from '../../source/engine/server/ServerWorkerRuntime.ts';
+import type { QSocket } from '../../source/engine/network/NetworkDrivers.ts';
+import ServerWorkerRuntime, { type ServerWorkerHostControls } from '../../source/engine/server/ServerWorkerRuntime.ts';
 
 const INIT = Object.freeze({
   searchpaths: [], gamedir: null, game: 'id1', urls: {}, engineVersion: 'test', edition: { registered: true, hipnotic: false, rogue: false }, argv: [], buildConfig: undefined,
 });
 
 /**
- * @param {import('../../source/engine/network/ChannelDriver.ts').ChannelEndpoint} endpoint the end of the channel it uses
- * @returns {NET} a network layer that only talks through the channel
+ * @param endpoint the end of the channel it uses
+ * @returns a network layer that only talks through the channel
  */
-function createNet(endpoint) {
+function createNet(endpoint: ChannelEndpoint): NET {
   const net = new NET({
     con: { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {}, PrintSuccess() {} },
     sys: { Print() {}, FloatTime: () => 1 },
@@ -34,32 +35,50 @@ function createNet(endpoint) {
   return net;
 }
 
+/** What {@link createPair} builds: both ends of the channel and what happened on them. */
+interface TestPair {
+  controller: WorkerServerController;
+  pageNet: NET;
+  /** What the fake server did each frame. */
+  frames: string[];
+  /** Engine events the controller published. */
+  published: unknown[][];
+  /** What the server printed through the controller. */
+  prints: string[];
+  /** The state the fake server reports. */
+  world: { active: boolean; maxclients: number; mapname: string | null; paused: boolean };
+  host: ServerWorkerHostControls;
+  /** The packets the fake server read from the player. */
+  received: number[][];
+  close(): void;
+}
+
 /**
  * Wires a controller on one end of a real message channel to a runtime on the other, the way the
  * browser wires the page to its server worker, with a fake server in the middle.
- * @returns {object} both ends and what happened
+ * @returns both ends and what happened
  */
-function createPair() {
+function createPair(): TestPair {
   const channel = new MessageChannel();
-  const world = { active: false, maxclients: 1, mapname: null, paused: false };
-  const frames = [];
-  const published = [];
-  const prints = [];
-  const received = [];
-  let runtime = null;
-  let workerNet = null;
-  let workerSocket = null;
+  const world: TestPair['world'] = { active: false, maxclients: 1, mapname: null, paused: false };
+  const frames: string[] = [];
+  const published: unknown[][] = [];
+  const prints: string[] = [];
+  const received: number[][] = [];
+  let runtime: ServerWorkerRuntime | null = null;
+  let workerNet: NET | null = null;
+  let workerSocket: QSocket | null = null;
 
-  const host = {
+  const host: ServerWorkerHostControls = {
     simulationAllowed: false,
-    StartMap(mapname) {
+    StartMap(mapname: string) {
       world.active = true;
       world.mapname = mapname;
       send({ kind: 'event', name: 'server.spawned', args: [{ mapname }] });
       return Promise.resolve(true);
     },
     AnnounceChangelevel() {},
-    Changelevel(mapname) {
+    Changelevel(mapname: string) {
       world.mapname = mapname;
       return Promise.resolve(true);
     },
@@ -73,15 +92,17 @@ function createPair() {
 
   /** The far end boots when the page hands it the port, like the worker entry does. */
   const worker = {
-    postMessage(message) {
+    postMessage(boot: unknown) {
+      const message = boot as { event: string; port: ChannelPortLike };
+
       assert.equal(message.event, 'server.worker.boot');
 
       const port = message.port;
-      const link = new ControlLink(/** @type {any} */ (port), (control) => runtime.handle(control));
+      const link = new ControlLink<ControlFromServer, ControlToServer>(port, (control) => { runtime!.handle(control); });
 
       send = (control) => { link.send(control); };
 
-      const portEndpoint = new MessagePortEndpoint(/** @type {any} */ (port));
+      const portEndpoint = new MessagePortEndpoint(port);
 
       // Anything that arrives is a reason for a server frame, like in createServerWorker.
       workerNet = createNet({
@@ -89,7 +110,7 @@ function createPair() {
         setReceiver: (receiver) => {
           portEndpoint.setReceiver((m) => {
             receiver(m);
-            runtime.requestFrame();
+            runtime!.requestFrame();
           });
         },
       });
@@ -101,7 +122,7 @@ function createPair() {
         console: { describe: () => ({ cvars: [], commands: [] }), setCvar() {}, execute() {} },
         savegame: { capture: () => ({ ok: false, reason: 'x' }), restore: () => Promise.resolve() },
         frame: () => {
-          const accepted = workerNet.CheckNewConnections();
+          const accepted = workerNet!.CheckNewConnections();
 
           if (accepted !== null) {
             workerSocket = accepted;
@@ -116,13 +137,13 @@ function createPair() {
           }
 
           // Read what the player sent and answer it, like the server does every frame.
-          while (workerNet.GetMessage(workerSocket) > 0) {
-            received.push([...new Uint8Array(workerNet.message.data, 0, workerNet.message.cursize)]);
+          while (workerNet!.GetMessage(workerSocket) > 0) {
+            received.push([...new Uint8Array(workerNet!.message.data, 0, workerNet!.message.cursize)]);
 
             const answer = new SzBuffer(16, 'answer');
 
             answer.writeByte(7);
-            workerNet.SendUnreliableMessage(workerSocket, answer);
+            workerNet!.SendUnreliableMessage(workerSocket, answer);
           }
 
           return Promise.resolve();
@@ -135,22 +156,24 @@ function createPair() {
     shutdown() { runtime?.stop(); return Promise.resolve(); },
   };
 
-  let send = () => {};
+  let send: (control: ControlFromServer) => void = () => {};
 
   const controller = new WorkerServerController({
     worker,
-    channel: /** @type {any} */ (channel),
+    // Node's channel and the DOM's differ in types only.
+    channel: channel as unknown as { port1: MessagePort; port2: MessagePort },
     createInit: () => INIT,
-    con: { Print: (t) => prints.push(t), PrintSuccess() {}, PrintWarning() {}, PrintError() {}, DPrint() {} },
+    con: { Print: (t: string) => prints.push(t), PrintSuccess() {}, PrintWarning() {}, PrintError() {}, DPrint() {} },
     operatorName: () => 'Ranger',
     onNoclipAnglehack() {},
-    publish: (name, ...args) => published.push([name, ...args]),
+    publish: (name: string, ...args: unknown[]) => published.push([name, ...args]),
+    onSessionRequest() {},
     onError() {},
     onCrash() {},
   });
 
   // The page's network layer talks to the same port as the controller does.
-  const pageNet = createNet(new MessagePortEndpoint(/** @type {any} */ (channel.port1)));
+  const pageNet = createNet(new MessagePortEndpoint(channel.port1 as unknown as ChannelPortLike));
 
   return {
     controller, pageNet, frames, published, prints, world, host, received,
@@ -159,10 +182,10 @@ function createPair() {
 }
 
 /**
- * @param {() => boolean} condition what to wait for
- * @returns {Promise<void>} settles once the condition holds
+ * @param condition what to wait for
+ * @returns settles once the condition holds
  */
-async function until(condition) {
+async function until(condition: () => boolean): Promise<void> {
   for (let attempt = 0; attempt < 200 && !condition(); attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }

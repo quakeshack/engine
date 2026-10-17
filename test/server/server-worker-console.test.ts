@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
+import type { ControlFromServer } from '../../source/engine/common/ServerWorkerProtocol.ts';
 import ServerWorkerConsole from '../../source/engine/server/ServerWorkerConsole.ts';
 
 /**
- * @returns {{ console: ServerWorkerConsole, sent: object[] }} a console and the messages it sent
+ * @returns a console and the messages it sent
  */
-function createConsole() {
-  const sent = [];
+function createConsole(): { console: ServerWorkerConsole, sent: ControlFromServer[] } {
+  const sent: ControlFromServer[] = [];
 
   return { console: new ServerWorkerConsole((message) => sent.push(message)), sent };
 }

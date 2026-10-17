@@ -2,16 +2,17 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import * as Def from '../../source/engine/common/Def.ts';
+import type { ServerEdict } from '../../source/engine/server/Edict.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import ServerSavegame from '../../source/engine/server/ServerSavegame.ts';
 import { createTestServer } from '../support/fixtures.ts';
 
 /**
  * Builds a server with one connected player, ready to be saved.
- * @param {{ active?: boolean, maxclients?: number, health?: number }} [options] what to change
- * @returns {ReturnType<typeof createTestServer>} the server
+ * @param [options] what to change
+ * @returns the server
  */
-function createSavableServer({ active = true, maxclients = 1, health = 100 } = {}) {
+function createSavableServer({ active = true, maxclients = 1, health = 100 }: { active?: boolean; maxclients?: number; health?: number } = {}): ReturnType<typeof createTestServer> {
   const sv = createTestServer();
   const player = { classname: 'player', health, serialize: () => ({ health }) };
 
@@ -20,11 +21,13 @@ function createSavableServer({ active = true, maxclients = 1, health = 100 } = {
   sv.server.gameVersion = '1.0.0';
   sv.server.time = 12.5;
   sv.server.lightstyles = ['m'];
-  sv.server.gameAPI = /** @type {any} */ ({ serialize: () => ({ globals: true }) });
-  sv.server.edicts = /** @type {any} */ ([{ entity: null, isFree: () => true }]);
+  // The savegame calls the serializer of the game and asks each edict whether it is free.
+  sv.server.gameAPI = { serialize: () => ({ globals: true }) } as unknown as ReturnType<typeof createTestServer>['server']['gameAPI'];
+  sv.server.edicts = [{ entity: null, isFree: () => true }] as unknown as ServerEdict[];
   sv.server.num_edicts = 1;
   sv.svs.maxclients = maxclients;
-  sv.svs.clients = /** @type {any} */ ([{ state: ServerClient.STATE.SPAWNED, spawn_parms: 'parms', edict: { entity: player } }]);
+  // A spawned client is enough: the savegame reads its state, spawn parameters and the entity of its edict.
+  sv.svs.clients = [{ state: ServerClient.STATE.SPAWNED, spawn_parms: 'parms', edict: { entity: player } }] as unknown as ServerClient[];
 
   return sv;
 }
@@ -65,18 +68,18 @@ void describe('ServerSavegame.capture', () => {
 
 void describe('ServerSavegame.restore', () => {
   /**
-   * @param {boolean} spawns whether the map can be spawned
-   * @returns {{ sv: ReturnType<typeof createTestServer>, shutdowns: boolean[], warnings: string[] }} a server that records what happens to it
+   * @param spawns whether the map can be spawned
+   * @returns a server that records what happens to it
    */
-  function createRestoringServer(spawns) {
-    const shutdowns = [];
-    const warnings = [];
+  function createRestoringServer(spawns: boolean): { sv: ReturnType<typeof createTestServer>, shutdowns: Array<boolean | undefined>, warnings: string[] } {
+    const shutdowns: Array<boolean | undefined> = [];
+    const warnings: string[] = [];
     const sv = createTestServer({
-      con: { Print() {}, DPrint() {}, PrintWarning: (text) => warnings.push(text), PrintError() {}, PrintSuccess() {}, StartCapturing() {}, StopCapturing: () => '' },
+      con: { Print() {}, DPrint() {}, PrintWarning: (text: string) => warnings.push(text), PrintError() {}, PrintSuccess() {}, StartCapturing() {}, StopCapturing: () => '' },
     });
 
     sv.SpawnServer = () => Promise.resolve(spawns);
-    sv.ShutdownServer = (crash) => { shutdowns.push(crash); };
+    sv.ShutdownServer = (crash?: boolean) => { shutdowns.push(crash); };
 
     return { sv, shutdowns, warnings };
   }
@@ -88,7 +91,7 @@ void describe('ServerSavegame.restore', () => {
   void test('fails with a host error and shuts the server down when the map cannot be spawned', async () => {
     const { sv, shutdowns } = createRestoringServer(false);
 
-    await assert.rejects(ServerSavegame.restore(sv, state, 'quick.json'), (error) => error.name === 'HostError' && /Couldn't load map e1m1 for save game quick\.json/.test(error.message));
+    await assert.rejects(ServerSavegame.restore(sv, state, 'quick.json'), (error: Error) => error.name === 'HostError' && /Couldn't load map e1m1 for save game quick\.json/.test(error.message));
     assert.deepEqual(shutdowns, [false]);
   });
 

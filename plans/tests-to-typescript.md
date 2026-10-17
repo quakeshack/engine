@@ -1,7 +1,7 @@
 # Track G, type-checked tests: the engine's `.mjs` tests become TypeScript
 
 Track G of `plans/engine-architecture-modernization.md`, the "type-checked tests" bullet. Status: **plan drafted 2026-10-17,
-forks settled the same day (see "Decisions"). Phase 0 is done and committed (`3537396`); Phase 1 (`test/physics/`) is done (2026-10-17) and waits for review.**
+forks settled the same day (see "Decisions"). Phase 0 is done and committed (`3537396`); Phase 1 (`test/physics/`) is done and committed (`5d9ff36`); Phase 2 (`test/server/`, `test/shared/`, `test/eslint/`) is done (2026-10-17) and waits for review.**
 Written for the maintainers. Counts are from a read of the tree on that date (branch `engine-architecture-modernization`).
 
 ## Context
@@ -179,6 +179,26 @@ Left as it is, on purpose:
 
 Small. `test/eslint/control-statement-blocks.test.mjs` loads `eslint.rules.mjs`, which is plain JS; it needs a declaration or a
 typed import, decide when it turns up.
+
+#### Phase 2: what shipped (2026-10-17)
+
+The 12 remaining `.mjs` tests of `test/server/`, `test/shared/` and `test/eslint/` are `.test.ts`: 114 tests, `npm test` 2602 pass
+(the baseline), `npm run typecheck` 0 errors, ESLint clean. `test/eslint/control-statement-blocks.test.ts` needed no declaration for
+`eslint.rules.mjs`: `allowJs` types the import, and the test type-checked as it was. Starting point was 158 errors.
+
+What the checker found:
+
+- **A required dependency the tests never passed:** `WorkerServerController` takes `onSessionRequest`, and both tests that build one
+  (`server-cvar-realms`, `server-worker-control-plane`) left it out. It never fired there, so nothing failed.
+- **Messages and requests are typed unions now:** the runtime tests find what the runtime sent with `firstOfKind`/`allOfKind`
+  instead of reading `.state` or `.commands` off an untyped message; a stand-in `savegame.capture` returned `ok: boolean` where the
+  result is a discriminated union.
+- **Node's `MessageChannel` and the DOM's differ in types only** (`Transferable`, `MessagePort`); each test that bridges them has one
+  cast with a comment saying so.
+- Async stand-ins with no `await` became `Promise.resolve`/`Promise.reject`, which also removed seven lint warnings the `.mjs`
+  files never showed; `await withMockEngine(..., () => {...})` around synchronous work lost its `await`.
+
+No shared helper changed in this phase.
 
 ### Phase 3: `test/common/` (51 files)
 

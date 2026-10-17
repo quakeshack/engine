@@ -8,7 +8,7 @@ import { defaultMockEngine, withMockEngine, mockedSV } from '../support/fixtures
 
 void describe('ED.Print', () => {
   void test('prints serializable and public entity fields without Progs fielddefs', () => {
-    const prints = [];
+    const prints: string[] = [];
     const entity = {
       classname: 'monster_ogre',
       edictId: 7,
@@ -31,18 +31,19 @@ void describe('ED.Print', () => {
       },
       deserialize() {},
     };
+    // Printing reads the entity of the edict, its number and whether it is free.
     const edict = {
       entity,
       num: 7,
       isFree() {
         return false;
       },
-    };
+    } as unknown as ServerEdict;
 
-    void withMockEngine({
+    withMockEngine({
       ...defaultMockEngine({ server: { active: true } }),
       Con: {
-        Print(message) {
+        Print(message: string) {
           prints.push(message);
         },
         DPrint() {},
@@ -74,13 +75,13 @@ void describe('ED lifecycle events', () => {
     reusableEdict.free = true;
     reusableEdict.freetime = 0;
 
-    const assignedEdictIds = [];
+    const assignedEdictIds: number[] = [];
     const unsubscribe = eventBus.subscribe('server.edict.assigned', (edictId) => {
       assignedEdictIds.push(edictId);
     });
 
     try {
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         svs: {
           maxclients: 1,
         },
@@ -107,13 +108,13 @@ void describe('ED lifecycle events', () => {
     activeEdict.free = false;
     const freshEdict = new ServerEdict(3, mockedSV());
 
-    const assignedEdictIds = [];
+    const assignedEdictIds: number[] = [];
     const unsubscribe = eventBus.subscribe('server.edict.assigned', (edictId) => {
       assignedEdictIds.push(edictId);
     });
 
     try {
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         svs: {
           maxclients: 1,
         },

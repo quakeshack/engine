@@ -2,14 +2,15 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import Cvar from '../../source/engine/common/Cvar.ts';
+import type { ControlFromServer } from '../../source/engine/common/ServerWorkerProtocol.ts';
 import ServerCvarSync from '../../source/engine/server/ServerCvarSync.ts';
 import { defaultMockEngine, withMockEngine } from '../support/fixtures.ts';
 
 /**
- * @returns {{ sync: ServerCvarSync, sent: object[] }} the sync and what it sent to the page
+ * @returns the sync and what it sent to the page
  */
-function createSync() {
-  const sent = [];
+function createSync(): { sync: ServerCvarSync, sent: ControlFromServer[] } {
+  const sent: ControlFromServer[] = [];
 
   return { sync: new ServerCvarSync((message) => sent.push(message)), sent };
 }
