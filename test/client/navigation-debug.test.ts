@@ -5,9 +5,9 @@ import Vector from '../../source/shared/Vector.ts';
 import NavigationDebug from '../../source/engine/client/NavigationDebug.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
-import { patchMembers, useClientStateOf } from '../support/clientState.ts';
+import { patchMembers } from '../support/clientState.ts';
 import Particles, { ParticleType } from '../../source/engine/client/renderer/effects/Particles.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { installEngineMocks } from '../support/withEngineMocks.ts';
 
 /** The fields of a particle that the navigation debug dots set. */
 interface DebugParticle {
@@ -23,14 +23,13 @@ interface DebugParticle {
  * @param callback test callback
  */
 function withParticles({ free }: { free: number }, callback: (context: { particles: DebugParticle[], warnings: string[] }) => void): void {
-  const previous = { CL: engineMocks.CL, Con: engineMocks.Con };
   const particles: DebugParticle[] = [];
   const warnings: string[] = [];
 
-  engineMocks.CL = { state: { time: 10 } };
-
-  const restoreClientState = useClientStateOf(engineMocks.CL);
-  engineMocks.Con = { PrintWarning: (text: string) => { warnings.push(text); } };
+  const restoreEngineMocks = installEngineMocks({
+    CL: { state: { time: 10 } },
+    Con: { PrintWarning: (text: string) => { warnings.push(text); } },
+  });
   const restoreParticles = patchMembers(Particles, {
     particles,
     AllocParticles() {
@@ -46,9 +45,8 @@ function withParticles({ free }: { free: number }, callback: (context: { particl
   try {
     callback({ particles, warnings });
   } finally {
-    Object.assign(engineMocks, previous);
     restoreParticles();
-    restoreClientState();
+    restoreEngineMocks();
   }
 }
 

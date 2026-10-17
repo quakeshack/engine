@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import SaveSlots from '../../source/engine/client/menu/SaveSlots.ts';
 import { BackendUserStore, MemoryBackend } from '../../source/engine/common/UserStore.ts';
 import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Installs a minimal `COM` registry stub (SaveSlots needs the game directory and the user store)
@@ -12,22 +13,18 @@ import { engineMocks } from '../support/engineMocks.ts';
  * @returns resolves once the callback and the cleanup are done
  */
 async function withMockSaveSlotsRegistry(callback: (store: BackendUserStore) => Promise<void> | void): Promise<void> {
-  const previousCOM = engineMocks.COM;
   const store = new BackendUserStore(new MemoryBackend());
 
-  engineMocks.COM = { GetGamedir: () => 'id1', userStore: store };
-
-  /* eslint-disable require-atomic-updates -- the mocked COM is put back whatever happened meanwhile */
-  try {
-    await SaveSlots.refresh();
-    await callback(store);
-  } finally {
-    // Leave an empty snapshot behind for the next test.
-    engineMocks.COM = { GetGamedir: () => 'id1', userStore: null };
-    await SaveSlots.refresh();
-    engineMocks.COM = previousCOM;
-  }
-  /* eslint-enable require-atomic-updates */
+  await withEngineMocks({ COM: { GetGamedir: () => 'id1', userStore: store } }, async () => {
+    try {
+      await SaveSlots.refresh();
+      await callback(store);
+    } finally {
+      // Leave an empty snapshot behind for the next test.
+      engineMocks.COM = { GetGamedir: () => 'id1', userStore: null };
+      await SaveSlots.refresh();
+    }
+  });
 }
 
 /**

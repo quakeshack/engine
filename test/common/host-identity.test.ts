@@ -4,11 +4,10 @@ import { describe, test } from 'node:test';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import * as Def from '../../source/engine/common/Def.ts';
 import '../support/consoleBridge.ts';
-import { useClientStateOf } from '../support/clientState.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
 import { runConsoleCommand } from '../support/consoleCommands.ts';
-import { engineMocks } from '../support/engineMocks.ts';
 import type { MockClient, MockServer } from '../support/fixtures.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Installs a minimal client-side mock (CL, Con, SV) for the
@@ -20,31 +19,13 @@ import type { MockClient, MockServer } from '../support/fixtures.ts';
  * @returns settles when the callback did and the mocks are back
  */
 async function withIdentityMocks({ cl, sv = { server: { active: false } } }: { cl: MockClient; sv?: MockServer }, callback: (prints: string[]) => void | Promise<void>): Promise<void> {
-  const previous = {
-    CL: engineMocks.CL,
-    Con: engineMocks.Con,
-    SV: engineMocks.SV,
-  };
-
   const prints: string[] = [];
 
-  engineMocks.CL = cl;
-
-  const restoreClientState = useClientStateOf(cl);
-  engineMocks.Con = { Print(message: string) { prints.push(message); }, DPrint() {} };
-  engineMocks.SV = sv;
-
-  try {
-    await callback(prints);
-  } finally {
-    // The mocks are put back as they were found, whatever happened meanwhile.
-    /* eslint-disable require-atomic-updates */
-    engineMocks.CL = previous.CL;
-    restoreClientState();
-    engineMocks.Con = previous.Con;
-    engineMocks.SV = previous.SV;
-    /* eslint-enable require-atomic-updates */
-  }
+  await withEngineMocks({
+    CL: cl,
+    Con: { Print(message: string) { prints.push(message); }, DPrint() {} },
+    SV: sv,
+  }, () => callback(prints));
 }
 
 /**

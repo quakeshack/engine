@@ -10,7 +10,7 @@ import { ServerMessages } from '../../source/engine/server/ServerMessages.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import { PM_TYPE } from '../../source/engine/common/Pmove.ts';
 import { createMockEdict, createTestServer } from '../support/fixtures.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { installEngineMocks } from '../support/withEngineMocks.ts';
 
 /** The mock player of a clientdata test: the fields the clientdata message reads, as plain values the test changes. */
 interface ClientdataEntity {
@@ -35,9 +35,6 @@ interface ClientdataEntity {
  * @returns The test context: the server, a client of it, the player entity, and a function that puts the engine back.
  */
 function installClientdataContext(): { restore: () => void; sv: Server; client: ServerClient; entity: ClientdataEntity } {
-  const previousCon = engineMocks.Con;
-  const previousHost = engineMocks.Host;
-
   const entity: ClientdataEntity = {
     classname: 'player',
     dmg_inflictor: null,
@@ -64,16 +61,15 @@ function installClientdataContext(): { restore: () => void; sv: Server; client: 
     edicts: [createMockEdict({}, 0), createMockEdict(entity, 1)],
   });
 
-  engineMocks.Con = { Print() {}, DPrint() {}, PrintWarning() {} };
-  engineMocks.Host = { realtime: 0, version: { string: 'test' } };
+  const restoreEngineMocks = installEngineMocks({
+    Con: { Print() {}, DPrint() {}, PrintWarning() {} },
+    Host: { realtime: 0, version: { string: 'test' } },
+  });
 
   const client = new ServerClient(0, sv);
 
   return {
-    restore() {
-      engineMocks.Con = previousCon;
-      engineMocks.Host = previousHost;
-    },
+    restore: restoreEngineMocks,
     sv,
     client,
     entity,

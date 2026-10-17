@@ -250,8 +250,7 @@ What the checker, or the lint that now sees these files, found:
   `.mjs` cases moved into the `.ts` file instead of being renamed over it.
 - **A class nobody used:** `model-renderer-registry.test` declared `TestModelChild` and never used it. It looks like the start of a
   test that a renderer is found for a subclass of a registered model class; `ModelRendererRegistry.getRendererForModel`
-  documents "falls back to an instanceof match" and does an exact lookup only. **Not changed here; the doc or the code should
-  follow the other.** The unused class is gone.
+  documents "falls back to an instanceof match" and does an exact lookup only. **Fixed afterwards: the JSDoc now says what the code does, and a test pins it.** The unused class is gone.
 - **Real `Cvar` and `Menu` shapes:** cvar stand-ins use `createCvarStub`, pages pushed onto the menu stack by hand go through one
   documented cast (`asMenuPage`).
 
@@ -308,12 +307,14 @@ Settled while doing the work:
   swaps a static by hand and puts it back, a documented `eslint-disable` stays (see the Phase 3 and 4 notes).
 - **How many stale mocks the typecheck turns up:** a few hundred in all, 11 stale `BrushModel()` calls, two required dependencies
   nobody passed, one test that never undid its patches, one that mocked a class instead of an object. The phases needed no splitting.
+- **`ModelRendererRegistry.getRendererForModel`** documented an `instanceof` fallback it does not have: fixed after the
+  migration by correcting the JSDoc (the lookup is exact, as every caller relies on) and a test that pins it.
+- **Folding the per-file `withMockXRegistry` helpers into one:** done after the migration. `withEngineMocks` and
+  `installEngineMocks` (`test/support/withEngineMocks.ts`) replace about 40 hand-written save-and-restore blocks in 33 test
+  files; `menu.test.ts` also has its own `withMenuEnvironment` for the stack and pages. The `use...Of` calls that remain are
+  `before`/`after` hooks.
 
 Still open:
 
 - **The game repos' tests (56 files).** They need a commit inside each repo (`submodule-aware-commit`), and `tsconfig.json`
   excludes `source/game/**/test/**` today. Proposed: `plans/game-tests-to-typescript.md`, after 1.3.0.
-- **`ModelRendererRegistry.getRendererForModel`** documents an `instanceof` fallback it does not have (see Phase 4); not a test
-  question, but found here.
-- **Folding the per-file `withMockXRegistry` helpers into `withMockEngine`:** many tests still carry their own copy of the same
-  install-and-restore code.

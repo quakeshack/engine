@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import InviteCommand from '../../source/engine/client/InviteCommand.ts';
 import '../support/consoleBridge.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Temporarily install a global value for the duration of a callback.
@@ -48,16 +48,7 @@ function withGlobalValue(name: string, value: unknown, callback: () => Promise<u
  * @returns Result of the callback.
  */
 function withInviteRegistry(mockedNet: { GetListenAddress: () => string | null }, mockedCon: { Print: (message: string) => void, PrintWarning: (message: string) => void }, callback: () => Promise<void>): Promise<void> {
-  const previousCon = engineMocks.Con;
-  const previousNET = engineMocks.NET;
-
-  engineMocks.Con = mockedCon;
-  engineMocks.NET = mockedNet;
-
-  return Promise.resolve(callback()).finally(() => {
-    engineMocks.Con = previousCon;
-    engineMocks.NET = previousNET;
-  });
+  return withEngineMocks({ Con: mockedCon, NET: mockedNet }, callback);
 }
 
 void describe('InviteCommand', () => {

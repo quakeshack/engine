@@ -23,8 +23,8 @@ import '../support/consoleBridge.ts';
 import Particles from '../../source/engine/client/renderer/effects/Particles.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
 import { runConsoleCommand } from '../support/consoleCommands.ts';
-import { patchMembers, useClientStateOf } from '../support/clientState.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { patchMembers } from '../support/clientState.ts';
+import { installEngineMocks } from '../support/withEngineMocks.ts';
 
 // The sv, the host and the server state of these tests are stand-ins with the members a save reads and writes.
 const asServer = (value: object): Server => value as unknown as Server;
@@ -32,7 +32,6 @@ const asServerHost = (value: object): ServerHost => value as unknown as ServerHo
 const asMockServer = (value: object): MockServer => value as unknown as MockServer;
 const asCvars = (cvars: Record<string, MockCvar>): typeof ServerGameAPI._cvars => cvars as unknown as typeof ServerGameAPI._cvars;
 const asMockClient = (value: object): MockClient => value as unknown as MockClient;
-const clientStateOf = (client: unknown): (() => void) => useClientStateOf(client as Parameters<typeof useClientStateOf>[0]);
 
 const [{ ServerGameAPI }, { PlayerEntity }, { WorldspawnEntity }] = await Promise.all([
   import('../../source/game/id1/GameAPI.ts'),
@@ -499,33 +498,27 @@ void describe('ClientHost.Savegame_f', () => {
       },
     };
 
-    const previousRegistry = {
-      CL: engineMocks.CL,
-      COM: engineMocks.COM,
-      Con: engineMocks.Con,
-      SV: engineMocks.SV,
-    };
     const previousFilter = Cvar.Filter;
 
-    engineMocks.CL = {
-      serverController: new InThreadServerController(asServer(sv), asServerHost({})),
-      state: {
-        intermission: 0,
-        levelname: 'E1M1',
-        gameAPI: clientGameAPI,
-        clientEntities: {
-          serialize() {
-            return [{ classname: 'debris' }];
+    const restoreEngineMocks = installEngineMocks({
+      CL: {
+        serverController: new InThreadServerController(asServer(sv), asServerHost({})),
+        state: {
+          intermission: 0,
+          levelname: 'E1M1',
+          gameAPI: clientGameAPI,
+          clientEntities: {
+            serialize() {
+              return [{ classname: 'debris' }];
+            },
           },
         },
       },
-    };
-
-    const restoreClientState = clientStateOf(engineMocks.CL);
-    engineMocks.COM = mockCOM;
-    engineMocks.Con = consoleCapture.Con;
+      COM: mockCOM,
+      Con: consoleCapture.Con,
+      SV: sv,
+    });
     const restoreParticles = patchMembers(Particles, renderer);
-    engineMocks.SV = sv;
 
     Cvar.Filter = function* Filter(compareFn: (cvar: Cvar) => boolean) {
       for (const cvar of filterCvars as unknown as Cvar[]) {
@@ -539,12 +532,8 @@ void describe('ClientHost.Savegame_f', () => {
       await runConsoleCommand(ClientHost.Savegame_f, { client: null }, 'save/e1m1');
     } finally {
       Cvar.Filter = previousFilter;
-      engineMocks.CL = previousRegistry.CL;
-      restoreClientState();
-      engineMocks.COM = previousRegistry.COM;
-      engineMocks.Con = previousRegistry.Con;
+      restoreEngineMocks();
       restoreParticles();
-      engineMocks.SV = previousRegistry.SV;
     }
 
     assert.equal(writes.length, 1);
@@ -684,12 +673,10 @@ void describe('ClientHost.Loadgame_f', () => {
       },
     };
     const previousResumeGame = ClientLifecycle.resumeGame;
-    const previousSCR = engineMocks.SCR;
-
     ClientLifecycle.resumeGame = (clientdata, particles) => {
       resumes.push({ clientdata, particles });
     };
-    engineMocks.SCR = { BeginLoadingPlaque() { } };
+    const restoreEngineMocks = installEngineMocks({ SCR: { BeginLoadingPlaque() { } } });
 
     try {
       await withMockEngine({
@@ -707,7 +694,7 @@ void describe('ClientHost.Loadgame_f', () => {
       });
     } finally {
       ClientLifecycle.resumeGame = previousResumeGame;
-      engineMocks.SCR = previousSCR;
+      restoreEngineMocks();
     }
 
     assert.deepEqual(callOrder, [
@@ -875,8 +862,7 @@ void describe('ClientHost.Loadgame_f', () => {
       },
     };
 
-    const previousSCR = engineMocks.SCR;
-    engineMocks.SCR = { BeginLoadingPlaque() { } };
+    const restoreEngineMocks = installEngineMocks({ SCR: { BeginLoadingPlaque() { } } });
 
     try {
       await withMockEngine({
@@ -890,7 +876,7 @@ void describe('ClientHost.Loadgame_f', () => {
         );
       });
     } finally {
-      engineMocks.SCR = previousSCR;
+      restoreEngineMocks();
     }
 
     assert.equal(spawnCalls, 1);
@@ -905,7 +891,6 @@ void describe('Host.save/load integration', () => {
     const knownKeysBefore = new Set(Object.keys(Mod.known));
     const resumes: Array<{ clientdata: unknown; particles: unknown; clientEntities: unknown }> = [];
     const previousServerGameCvars = ServerGameAPI._cvars;
-    const previousSys = engineMocks.Sys;
     const nodeCom = new NodeCOM({
       con: { Print() {}, DPrint() {}, PrintWarning() {}, PrintError() {}, PrintSuccess() {} },
       sys: { Print() {}, FloatTime: () => 0 },
@@ -933,11 +918,7 @@ void describe('Host.save/load integration', () => {
       deathmatch: createMockCvar('deathmatch', '0'),
       coop: createMockCvar('coop', '0'),
     });
-    engineMocks.Sys = {
-      Print() { },
-    };
-    const previousSCR = engineMocks.SCR;
-    engineMocks.SCR = { BeginLoadingPlaque() { } };
+    const restoreEngineMocks = installEngineMocks({ Sys: { Print() { } }, SCR: { BeginLoadingPlaque() { } } });
 
     const engineAPI = createIntegrationEngineAPI(() => currentEdicts);
     const mockCOM = {
@@ -1136,8 +1117,7 @@ void describe('Host.save/load integration', () => {
       });
     } finally {
       ClientLifecycle.resumeGame = previousResumeGame;
-      engineMocks.SCR = previousSCR;
-      engineMocks.Sys = previousSys;
+      restoreEngineMocks();
       ServerGameAPI._cvars = previousServerGameCvars;
 
       for (const name of Object.keys(Mod.known)) {

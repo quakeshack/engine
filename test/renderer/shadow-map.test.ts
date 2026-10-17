@@ -9,8 +9,7 @@ import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { assertNear } from '../support/fixtures.ts';
-import { useClientStateOf } from '../support/clientState.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { installEngineMocks } from '../support/withEngineMocks.ts';
 import { createFakeRenderTarget } from '../support/renderTargets.ts';
 import { createRenderedWorld } from '../support/bspTree.ts';
 
@@ -25,7 +24,6 @@ afterEach(() => {
 
 void describe('ShadowMap.renderPointLightShadow', () => {
   void test('limits entity casters to the active point light radius', () => {
-    const previousCL = engineMocks.CL;
     const previousGL = GL.gl;
     const previousBindVAO = GL.BindVAO;
     const previousUnbindVAO = GL.UnbindVAO;
@@ -70,13 +68,13 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       uLightSpaceMatrix: null,
     };
 
-    engineMocks.CL = {
-      state: {
-        worldmodel: createRenderedWorld([], { opaqueVAO: {} }),
+    const restoreEngineMocks = installEngineMocks({
+      CL: {
+        state: {
+          worldmodel: createRenderedWorld([], { opaqueVAO: {} }),
+        },
       },
-    };
-
-    const restoreClientState = useClientStateOf(engineMocks.CL);
+    });
 
     // The shadow pass calls only the context functions the mock has.
     GL.gl = mockGl as unknown as WebGL2RenderingContext;
@@ -115,9 +113,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
         eventBus.publish('gl.shutdown');
       }
 
-      engineMocks.CL = previousCL;
-
-      restoreClientState();
+      restoreEngineMocks();
     }
 
     assert.equal(renderEntitiesCalls.length, 6);
@@ -130,7 +126,6 @@ void describe('ShadowMap.renderPointLightShadow', () => {
   });
 
   void test('renders one cube per active point-light slot', () => {
-    const previousCL = engineMocks.CL;
     const previousGL = GL.gl;
     const previousBindVAO = GL.BindVAO;
     const previousUnbindVAO = GL.UnbindVAO;
@@ -179,13 +174,13 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       uLightSpaceMatrix: null,
     };
 
-    engineMocks.CL = {
-      state: {
-        worldmodel: createRenderedWorld([], { opaqueVAO: {} }),
+    const restoreEngineMocks = installEngineMocks({
+      CL: {
+        state: {
+          worldmodel: createRenderedWorld([], { opaqueVAO: {} }),
+        },
       },
-    };
-
-    const restoreClientState = useClientStateOf(engineMocks.CL);
+    });
 
     // The shadow pass calls only the context functions the mock has.
     GL.gl = mockGl as unknown as WebGL2RenderingContext;
@@ -224,9 +219,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
         eventBus.publish('gl.shutdown');
       }
 
-      engineMocks.CL = previousCL;
-
-      restoreClientState();
+      restoreEngineMocks();
     }
 
     // 3 active slots × 6 faces each — each dlight gets its own independent
@@ -244,7 +237,6 @@ void describe('ShadowMap.renderPointLightShadow', () => {
   });
 
   void test('skips world leaves that reference inline submodel faces', () => {
-    const previousCL = engineMocks.CL;
     const previousGL = GL.gl;
     const previousBindVAO = GL.BindVAO;
     const previousUnbindVAO = GL.UnbindVAO;
@@ -295,18 +287,18 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     const worldLeaf = { skychain: 1, cmds: [[0, 0, 12]], firstMarkSurface: 0, numMarkSurfaces: 1 };
     const submodelLeaf = { skychain: 1, cmds: [[0, 12, 6]], firstMarkSurface: 1, numMarkSurfaces: 1 };
 
-    engineMocks.CL = {
-      state: {
-        worldmodel: createRenderedWorld([worldLeaf, submodelLeaf], {
-          opaqueVAO: {},
-          faces: [{ submodel: false }, { submodel: true }],
-          marksurfaces: [0, 1],
-          textures: [{ flags: 0 }],
-        }),
+    const restoreEngineMocks = installEngineMocks({
+      CL: {
+        state: {
+          worldmodel: createRenderedWorld([worldLeaf, submodelLeaf], {
+            opaqueVAO: {},
+            faces: [{ submodel: false }, { submodel: true }],
+            marksurfaces: [0, 1],
+            textures: [{ flags: 0 }],
+          }),
+        },
       },
-    };
-
-    const restoreClientState = useClientStateOf(engineMocks.CL);
+    });
 
     // The shadow pass calls only the context functions the mock has.
     GL.gl = mockGl as unknown as WebGL2RenderingContext;
@@ -345,9 +337,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
         eventBus.publish('gl.shutdown');
       }
 
-      engineMocks.CL = previousCL;
-
-      restoreClientState();
+      restoreEngineMocks();
     }
 
     // The world leaf is drawn once per cube face; the submodel leaf never.
@@ -468,7 +458,6 @@ void describe('ShadowMap.selectPointLights', () => {
    * @param callback
    */
   function withMockDlightRegistry(dlights: object[], callback: () => void) {
-    const previousCL = engineMocks.CL;
     const previousPointEnabled = ShadowMap.pointEnabled;
 
     const padded = dlights.slice();
@@ -476,20 +465,19 @@ void describe('ShadowMap.selectPointLights', () => {
       padded.push(createMockDlight(new Vector(), 0));
     }
 
-    engineMocks.CL = {
-      state: {
-        clientEntities: { dlights: padded },
+    const restoreEngineMocks = installEngineMocks({
+      CL: {
+        state: {
+          clientEntities: { dlights: padded },
+        },
       },
-    };
-
-    const restoreClientState = useClientStateOf(engineMocks.CL);
+    });
     ShadowMap.pointEnabled = createCvarStub(1);
 
     try {
       callback();
     } finally {
-      engineMocks.CL = previousCL;
-      restoreClientState();
+      restoreEngineMocks();
       ShadowMap.pointEnabled = previousPointEnabled;
     }
   }
@@ -802,7 +790,6 @@ void describe('ShadowMap.renderTopDownShadow', () => {
   }
 
   void test('renders only entities, never world geometry, centered on the camera', () => {
-    const previousCL = engineMocks.CL;
     const previousGL = GL.gl;
     const previousRenderEntitiesShadow = ShadowMap.renderEntitiesShadow;
     const previousRange = ShadowMap.range;
@@ -823,18 +810,18 @@ void describe('ShadowMap.renderTopDownShadow', () => {
     // the spots actually shadowed by something.
     const worldLeaf = { skychain: 1, cmds: [[0, 0, 12]], firstMarkSurface: 0, numMarkSurfaces: 1 };
 
-    engineMocks.CL = {
-      state: {
-        worldmodel: createRenderedWorld([worldLeaf], {
-          opaqueVAO: {},
-          faces: [{ submodel: false }],
-          marksurfaces: [0],
-          textures: [{ flags: 0 }],
-        }),
+    const restoreEngineMocks = installEngineMocks({
+      CL: {
+        state: {
+          worldmodel: createRenderedWorld([worldLeaf], {
+            opaqueVAO: {},
+            faces: [{ submodel: false }],
+            marksurfaces: [0],
+            textures: [{ flags: 0 }],
+          }),
+        },
       },
-    };
-
-    const restoreClientState = useClientStateOf(engineMocks.CL);
+    });
 
     // The shadow pass calls only the context functions the mock has.
     GL.gl = mockGl as unknown as WebGL2RenderingContext;
@@ -866,9 +853,7 @@ void describe('ShadowMap.renderTopDownShadow', () => {
         eventBus.publish('gl.shutdown');
       }
 
-      engineMocks.CL = previousCL;
-
-      restoreClientState();
+      restoreEngineMocks();
     }
 
     // No world geometry is drawn into the depth map.
@@ -884,12 +869,9 @@ void describe('ShadowMap.renderTopDownShadow', () => {
   });
 
   void test('does nothing when there is no worldmodel', () => {
-    const previousCL = engineMocks.CL;
     let bindFramebufferCalls = 0;
 
-    engineMocks.CL = { state: { worldmodel: null } };
-
-    const restoreClientState = useClientStateOf(engineMocks.CL);
+    const restoreEngineMocks = installEngineMocks({ CL: { state: { worldmodel: null } } });
 
     const previousGL = GL.gl;
     GL.gl = { bindFramebuffer() { bindFramebufferCalls++; } } as unknown as WebGL2RenderingContext;
@@ -904,8 +886,7 @@ void describe('ShadowMap.renderTopDownShadow', () => {
       } else {
         eventBus.publish('gl.shutdown');
       }
-      engineMocks.CL = previousCL;
-      restoreClientState();
+      restoreEngineMocks();
     }
 
     assert.equal(bindFramebufferCalls, 0);

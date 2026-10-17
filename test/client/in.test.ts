@@ -14,8 +14,7 @@ import VID from '../../source/engine/client/VID.ts';
 import { K } from '../../source/shared/Keys.ts';
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import { installGlobals } from '../support/globals.ts';
-import { useClientStateOf } from '../support/clientState.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { installEngineMocks, withEngineMocks } from '../support/withEngineMocks.ts';
 
 /** The `document` stub: the pointer lock the page holds, and the call that gives it up. */
 interface MockDocument {
@@ -153,26 +152,23 @@ void describe('IN.onclick', () => {
    * @param [options]
    */
   function withMockClickEnvironment(destination: KeyDestination, callback: (wasPointerLockRequested: () => boolean) => void, options: { consoleOpen?: boolean, connectionState?: number } = {}) {
-    const previousKey = engineMocks.Key;
     const previousConsoleOpen = ConsoleOverlay.isOpen;
-    const previousCL = engineMocks.CL;
     const previousMainwindow = VID.mainwindow;
     let requestedPointerLock = false;
 
-    engineMocks.Key = { destination };
+    const restoreEngineMocks = installEngineMocks({
+      Key: { destination },
+      CL: { cls: { state: options.connectionState ?? clientConnectionState.connected } },
+    });
     ConsoleOverlay.isOpen = options.consoleOpen ?? false;
-    engineMocks.CL = { cls: { state: options.connectionState ?? clientConnectionState.connected } };
-    const restoreClientState = useClientStateOf(engineMocks.CL);
     // Only the request for the pointer lock is made of the window.
     VID.mainwindow = { requestPointerLock: () => { requestedPointerLock = true; return Promise.resolve(); } } as unknown as HTMLCanvasElement;
 
     try {
       callback(() => requestedPointerLock);
     } finally {
-      engineMocks.Key = previousKey;
+      restoreEngineMocks();
       ConsoleOverlay.isOpen = previousConsoleOpen;
-      engineMocks.CL = previousCL;
-      restoreClientState();
       VID.mainwindow = previousMainwindow;
     }
   }
@@ -272,16 +268,9 @@ void describe('IN.onpointerlockchange', () => {
    * @param callback test callback
    */
   function withMockKeyEvent(callback: (events: [number, boolean][]) => void) {
-    const previousKey = engineMocks.Key;
     const events: Array<[number, boolean]> = [];
 
-    engineMocks.Key = { Event: (key: number, down: boolean) => { events.push([key, down]); } };
-
-    try {
-      callback(events);
-    } finally {
-      engineMocks.Key = previousKey;
-    }
+    withEngineMocks({ Key: { Event: (key: number, down: boolean) => { events.push([key, down]); } } }, () => { callback(events); });
   }
 
   void test('does not synthesize Escape when pointer lock is lost because of our own ReleasePointerLock() call', () => {

@@ -4,8 +4,6 @@ import { describe, test } from 'node:test';
 import Vector from '../../source/shared/Vector.ts';
 import { BrushModelRenderer, resolveBrushBloomContributionStrength } from '../../source/engine/client/renderer/models/BrushModelRenderer.ts';
 import { SimpleSkyBox } from '../../source/engine/client/renderer/scene/Sky.ts';
-import { useRendererOf } from '../support/renderer.ts';
-import { engineMocks } from '../support/engineMocks.ts';
 import { createRenderedWorld } from '../support/bspTree.ts';
 import { WorldRenderState } from '../../source/engine/common/model/WorldRenderState.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
@@ -13,6 +11,7 @@ import type { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import type { Face } from '../../source/engine/common/model/BaseModel.ts';
 import type R from '../../source/engine/client/R.ts';
 import type { GLTexture } from '../../source/engine/client/GL.ts';
+import { installEngineMocks } from '../support/withEngineMocks.ts';
 
 void describe('resolveBrushBloomContributionStrength', () => {
   void test('clamps invalid contribution strengths to zero', () => {
@@ -317,14 +316,14 @@ void describe('BrushModelRenderer._buildTurbulentFallbackLightMap', () => {
 
 void describe('BrushModelRenderer.getWorldTurbulentChains', () => {
   void test('sorts world turbulents by tight batch bounds instead of oversized leaf bounds', () => {
-    const previousR = engineMocks.R;
-    engineMocks.R = ({
-      visframecount: 7,
-      CullBox() {
-        return false;
-      },
-    } as unknown as typeof R);
-    const restoreRenderer = useRendererOf(engineMocks.R);
+    const restoreEngineMocks = installEngineMocks({
+      R: {
+        visframecount: 7,
+        CullBox() {
+          return false;
+        },
+      } as unknown as typeof R,
+    });
 
     try {
       const renderer = new BrushModelRenderer();
@@ -344,8 +343,7 @@ void describe('BrushModelRenderer.getWorldTurbulentChains', () => {
       assert.equal(items[0].chain, chain);
       assert.equal(items[0].dist, 96);
     } finally {
-      engineMocks.R = previousR;
-      restoreRenderer();
+      restoreEngineMocks();
     }
   });
 });

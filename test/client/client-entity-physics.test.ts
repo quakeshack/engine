@@ -12,10 +12,8 @@ import type { GameTrace } from '../../source/engine/common/GameApiSupport.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { CollisionPlane, CollisionTrace } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
 import { assertNear, createBoundsModel, createGameModuleStub } from '../support/fixtures.ts';
-import { useClientStateOf } from '../support/clientState.ts';
 import { createSingleLeafWorld, createTreeModel } from '../support/bspTree.ts';
-import { useHostOf } from '../support/host.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * A world trace result matching `CollisionTrace`'s shape.
@@ -71,21 +69,10 @@ function floorWorld(floorZ: number): (start: Vector, end: Vector) => CollisionTr
  * @param callback
  */
 function withWorld({ gravity = 800, paused = false, worldmodel = createSingleLeafWorld(), frametime = 0.1, trace }: { gravity?: number; paused?: boolean; worldmodel?: BrushModel; frametime?: number; trace: (start: Vector, end: Vector) => CollisionTrace }, callback: () => void): void {
-  const previous = { CL: engineMocks.CL, Host: engineMocks.Host };
-
-  engineMocks.CL = { pmove: { movevars: { gravity } }, state: { worldmodel, paused }, nolerp: { value: 0 }, collision: { traceStaticWorldLine: trace } };
-
-  const restoreClientState = useClientStateOf(engineMocks.CL);
-  engineMocks.Host = { frametime };
-  const restoreHost = useHostOf(engineMocks.Host);
-
-  try {
-    callback();
-  } finally {
-    Object.assign(engineMocks, previous);
-    restoreHost();
-    restoreClientState();
-  }
+  withEngineMocks({
+    CL: { pmove: { movevars: { gravity } }, state: { worldmodel, paused }, nolerp: { value: 0 }, collision: { traceStaticWorldLine: trace } },
+    Host: { frametime },
+  }, callback);
 }
 
 /**

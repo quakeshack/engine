@@ -7,9 +7,8 @@ import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import ClientDemos from '../../source/engine/client/ClientDemos.ts';
 import { clientRuntimeState, clientStaticState } from '../../source/engine/client/ClientState.ts';
 import '../support/consoleBridge.ts';
-import { useClientStateOf } from '../support/clientState.ts';
-import { useHostOf } from '../support/host.ts';
 import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Builds a synthetic current-format demo file with a single message.
@@ -93,45 +92,9 @@ function createMockClientRegistry(clientDemos: ClientDemos, demoFile: ArrayBuffe
  * @returns Callback result.
  */
 function withMockClientRegistry(mockedRegistry: ReturnType<typeof createMockClientRegistry>, callback: () => Promise<void> | void): Promise<void> | void {
-  const previousValues = {
-    CL: engineMocks.CL,
-    COM: engineMocks.COM,
-    Con: engineMocks.Con,
-    Host: engineMocks.Host,
-    NET: engineMocks.NET,
-  };
+  const { CL, COM, Con, Host, NET } = mockedRegistry;
 
-  engineMocks.CL = mockedRegistry.CL;
-  const restoreClientState = useClientStateOf(engineMocks.CL);
-  engineMocks.COM = mockedRegistry.COM;
-  engineMocks.Con = mockedRegistry.Con;
-  engineMocks.Host = mockedRegistry.Host;
-  const restoreHost = useHostOf(engineMocks.Host);
-  engineMocks.NET = mockedRegistry.NET;
-
-  const restore = () => {
-    engineMocks.CL = previousValues.CL;
-    restoreClientState();
-    engineMocks.COM = previousValues.COM;
-    engineMocks.Con = previousValues.Con;
-    engineMocks.Host = previousValues.Host;
-    restoreHost();
-    engineMocks.NET = previousValues.NET;
-  };
-
-  try {
-    const result = callback();
-
-    if (result instanceof Promise) {
-      return result.finally(restore);
-    }
-
-    restore();
-    return result;
-  } catch (error) {
-    restore();
-    throw error;
-  }
+  return withEngineMocks({ CL, COM, Con, Host, NET }, callback);
 }
 
 /**

@@ -6,15 +6,12 @@ import { BaseClientEdictHandler } from '../../source/shared/ClientEdict.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { content, effect } from '../../source/shared/Defs.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';
-import { useClientStateOf } from '../support/clientState.ts';
 import { createTreeModel } from '../support/bspTree.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
-import { useRendererOf } from '../support/renderer.ts';
-import { useHostOf } from '../support/host.ts';
-import { engineMocks } from '../support/engineMocks.ts';
 import type { ClientEngineAPI } from '../../source/engine/client/ClientEngineAPI.ts';
 import { createBoundsModel, createGameModuleStub } from '../support/fixtures.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Computes wrapped angular delta in degrees.
@@ -40,32 +37,19 @@ function setRenderTime(value: number): void {
  * @param callback
  */
 function withMockClientEntitiesRegistry(callback: () => void) {
-  const previousCL = engineMocks.CL;
-
-  engineMocks.CL = {
-    nolerp: { value: 0 },
-    state: {
-      clientMessages: {
-        mtime: [0.0],
-        // mirrors ClientMessages.renderTime: mtime[0] extrapolated by real
-        // elapsed time; tests set this directly instead of mocking Host.
-        renderTime: 0.0,
+  withEngineMocks({
+    CL: {
+      nolerp: { value: 0 },
+      state: {
+        clientMessages: {
+          mtime: [0.0],
+          // mirrors ClientMessages.renderTime: mtime[0] extrapolated by real
+          // elapsed time; tests set this directly instead of mocking Host.
+          renderTime: 0.0,
+        },
       },
     },
-  };
-
-  const restoreClientState = useClientStateOf(engineMocks.CL);
-
-  const restore = () => {
-    engineMocks.CL = previousCL;
-    restoreClientState();
-  };
-
-  try {
-    callback();
-  } finally {
-    restore();
-  }
+  }, callback);
 }
 
 /**
@@ -76,27 +60,7 @@ function withMockClientEntitiesRegistry(callback: () => void) {
  * @param callback
  */
 function withMockDlightRegistry(time: number, frametime: number, callback: () => void) {
-  const previousCL = engineMocks.CL;
-  const previousHost = engineMocks.Host;
-
-  engineMocks.CL = { state: { time } };
-
-  const restoreClientState = useClientStateOf(engineMocks.CL);
-  engineMocks.Host = { frametime };
-  const restoreHost = useHostOf(engineMocks.Host);
-
-  const restore = () => {
-    engineMocks.CL = previousCL;
-    restoreClientState();
-    engineMocks.Host = previousHost;
-    restoreHost();
-  };
-
-  try {
-    callback();
-  } finally {
-    restore();
-  }
+  withEngineMocks({ CL: { state: { time } }, Host: { frametime } }, callback);
 }
 
 void describe('ClientEdict.lerp.angles', () => {
@@ -209,22 +173,7 @@ void describe('ClientEdict.dropOriginLerp', () => {
  * @param callback
  */
 function withMockWorldmodelRegistry(worldmodel: BrushModel, callback: () => void) {
-  const previousCL = engineMocks.CL;
-
-  engineMocks.CL = { state: { worldmodel } };
-
-  const restoreClientState = useClientStateOf(engineMocks.CL);
-
-  const restore = () => {
-    engineMocks.CL = previousCL;
-    restoreClientState();
-  };
-
-  try {
-    callback();
-  } finally {
-    restore();
-  }
+  withEngineMocks({ CL: { state: { worldmodel } } }, callback);
 }
 
 void describe('ClientEdict.linkEdict', () => {
@@ -333,23 +282,10 @@ void describe('ClientEntities.isPotentiallyVisible', () => {
    * @param callback
    */
   function withViewVisibility(visibility: {areRevealed: (leafs: number[]) => boolean}, callback: () => void) {
-    const previousCL = engineMocks.CL;
-    const previousR = engineMocks.R;
-
-    engineMocks.CL = { state: { worldmodel: { getPvsByPoint: () => visibility }, viewentity: 1 } };
-
-    const restoreClientState = useClientStateOf(engineMocks.CL);
-    engineMocks.R = { novis: { value: 0 }, refdef: { vieworg: new Vector() } };
-    const restoreRenderer = useRendererOf(engineMocks.R);
-
-    try {
-      callback();
-    } finally {
-      engineMocks.CL = previousCL;
-      restoreClientState();
-      engineMocks.R = previousR;
-      restoreRenderer();
-    }
+    withEngineMocks({
+      CL: { state: { worldmodel: { getPvsByPoint: () => visibility }, viewentity: 1 } },
+      R: { novis: { value: 0 }, refdef: { vieworg: new Vector() } },
+    }, callback);
   }
 
   void test('is true before any view has been processed', () => {

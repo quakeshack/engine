@@ -3,8 +3,7 @@ import { describe, test } from 'node:test';
 
 import { createClientEngineApi } from '../support/clientEngineApi.ts';
 import { clientConnectionState } from '../../source/engine/common/Def.ts';
-import { useClientStateOf } from '../support/clientState.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 const engineApi = createClientEngineApi();
 
@@ -14,19 +13,7 @@ const engineApi = createClientEngineApi();
  * @param callback test callback
  */
 function withMockConnectionState({ state = clientConnectionState.disconnected, serverActive = false }, callback: () => void) {
-  const previousCL = engineMocks.CL;
-
-  const mockedClient = { cls: { state }, serverController: { state: { active: serverActive } } };
-
-  engineMocks.CL = mockedClient;
-  const restoreClientState = useClientStateOf(mockedClient);
-
-  try {
-    callback();
-  } finally {
-    engineMocks.CL = previousCL;
-    restoreClientState();
-  }
+  withEngineMocks({ CL: { cls: { state }, serverController: { state: { active: serverActive } } } }, callback);
 }
 
 void describe('ClientEngineAPI.CL.connected', () => {

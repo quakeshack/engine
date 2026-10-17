@@ -12,11 +12,7 @@ import type { ServerClient } from '../../source/engine/server/Client.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { clientStaticState } from '../../source/engine/client/ClientState.ts';
-import { useClientStateOf } from '../support/clientState.ts';
-import { useRendererOf } from '../support/renderer.ts';
-import { useMenuOf } from '../support/menu.ts';
-import { useHostOf } from '../support/host.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /** What {@link createClientRuntime} is told about the client and the local server. */
 interface ClientRuntimeOptions {
@@ -96,23 +92,7 @@ function createClientRuntime({ calls, scheduled, serverActive = true, mapname = 
  * @returns resolves once the callback and the cleanup are done
  */
 async function withRegistryMembers(members: Partial<ClientRuntimeMock>, callback: () => void | Promise<void>): Promise<void> {
-  const previous = Object.fromEntries(Object.keys(members).map((name) => [name, engineMocks[name]]));
-
-  Object.assign(engineMocks, members);
-  const restoreClientState = useClientStateOf(members.CL);
-  const restoreRenderer = useRendererOf(members.R);
-  const restoreMenu = useMenuOf(members.M);
-  const restoreHost = useHostOf(members.Host);
-
-  try {
-    await callback();
-  } finally {
-    restoreHost();
-    restoreMenu();
-    restoreRenderer();
-    restoreClientState();
-    Object.assign(engineMocks, previous);
-  }
+  await withEngineMocks(members, callback);
 }
 
 void describe('ClientHost', () => {

@@ -10,9 +10,7 @@ import { createCvarStub } from '../support/cvarStub.ts';
 import { QSocket } from '../../source/engine/network/NetworkDrivers.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
-import { useMenuOf } from '../support/menu.ts';
-import { useHostOf } from '../support/host.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Build a minimal demo subsystem stub for connection tests.
@@ -102,55 +100,10 @@ function createMockClientRegistry(overrides: Partial<MockClientRegistry> = {}): 
  * @returns Callback result.
  */
 function withMockClientRegistry(mockedRegistry: ReturnType<typeof createMockClientRegistry>, callback: () => void | Promise<void>): void | Promise<void> {
-  const previousValues = {
-    Con: engineMocks.Con,
-    Host: engineMocks.Host,
-    IN: engineMocks.IN,
-    Mod: engineMocks.Mod,
-    NET: engineMocks.NET,
-    SCR: engineMocks.SCR,
-    S: engineMocks.S,
-    SV: engineMocks.SV,
-  };
+  const { Con, Host, IN, Mod, NET, SCR, S, SV } = mockedRegistry;
 
-  engineMocks.Con = mockedRegistry.Con;
-  engineMocks.Host = mockedRegistry.Host;
-  const restoreHost = useHostOf(engineMocks.Host);
-  engineMocks.IN = mockedRegistry.IN;
-  engineMocks.Mod = mockedRegistry.Mod;
-  engineMocks.NET = mockedRegistry.NET;
-  engineMocks.SCR = mockedRegistry.SCR;
-  engineMocks.S = mockedRegistry.S;
-  engineMocks.SV = mockedRegistry.SV;
   // The menu listens for connection events too; this test is about the connection, so the menu does nothing.
-  const restoreMenu = useMenuOf({ Menu_Main_f() {}, ReturnToGame() {} });
-
-  const restore = () => {
-    restoreMenu();
-    engineMocks.Con = previousValues.Con;
-    engineMocks.Host = previousValues.Host;
-    restoreHost();
-    engineMocks.IN = previousValues.IN;
-    engineMocks.Mod = previousValues.Mod;
-    engineMocks.NET = previousValues.NET;
-    engineMocks.SCR = previousValues.SCR;
-    engineMocks.S = previousValues.S;
-    engineMocks.SV = previousValues.SV;
-  };
-
-  try {
-    const result = callback();
-
-    if (result && typeof result.then === 'function') {
-      return Promise.resolve(result).finally(restore);
-    }
-
-    restore();
-    return result;
-  } catch (error) {
-    restore();
-    throw error;
-  }
+  return withEngineMocks({ Con, Host, IN, Mod, NET, SCR, S, SV, M: { Menu_Main_f() {}, ReturnToGame() {} } }, callback);
 }
 
 /**

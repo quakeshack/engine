@@ -7,8 +7,7 @@ import '../support/consoleBridge.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
 import type { HostAlertEvent } from '../../source/shared/GameInterfaces.ts';
 import type ServerHost from '../../source/engine/server/ServerHost.ts';
-import { useClientStateOf } from '../support/clientState.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Installs the minimal registry ClientHost.EndGame/Host.Error need to reach their `host.alert`
@@ -18,46 +17,34 @@ import { engineMocks } from '../support/engineMocks.ts';
  * @param callback test callback
  */
 function withMockHostAlertRegistry({ demonum = -1, serverActive = false }: { demonum?: number; serverActive?: boolean }, callback: (recorded: { prints: string[]; disconnected: () => boolean }) => void): void {
-  const previous = {
-    CL: engineMocks.CL,
-    Con: engineMocks.Con,
-    serverHost: Host.serverHost,
-    SCR: engineMocks.SCR,
-  };
+  const previousServerHost = Host.serverHost;
+  const previousRecovery = Host.recoverFromError;
 
   const prints: string[] = [];
   let disconnected = false;
   const shutdowns: boolean[] = [];
 
-  const mockedClient = {
-    cls: { demonum },
-    NextDemo() { throw new Error('NextDemo should not be reached in these tests'); },
-    Disconnect() { disconnected = true; },
-  };
-
-  engineMocks.CL = mockedClient;
-  const restoreClientState = useClientStateOf(mockedClient);
-  const previousRecovery = Host.recoverFromError;
-
   // What the page installs when it boots: an error leaves the game and stops the local server.
   Host.recoverFromError = () => { ClientHost.RecoverFromError(); };
-  engineMocks.Con = {
-    PrintSuccess(message: string) { prints.push(message); },
-    PrintError(message: string) { prints.push(message); },
-  };
   // Only the shutdown of the server host is called.
   Host.serverHost = { ShutdownServer() { shutdowns.push(serverActive); } } as unknown as ServerHost;
-  engineMocks.SCR = { EndLoadingPlaque() {} };
 
   try {
-    callback({ prints, disconnected: () => disconnected });
+    withEngineMocks({
+      CL: {
+        cls: { demonum },
+        NextDemo() { throw new Error('NextDemo should not be reached in these tests'); },
+        Disconnect() { disconnected = true; },
+      },
+      Con: {
+        PrintSuccess(message: string) { prints.push(message); },
+        PrintError(message: string) { prints.push(message); },
+      },
+      SCR: { EndLoadingPlaque() {} },
+    }, () => { callback({ prints, disconnected: () => disconnected }); });
   } finally {
     Host.recoverFromError = previousRecovery;
-    restoreClientState();
-    engineMocks.CL = previous.CL;
-    engineMocks.Con = previous.Con;
-    Host.serverHost = previous.serverHost;
-    engineMocks.SCR = previous.SCR;
+    Host.serverHost = previousServerHost;
   }
 }
 

@@ -5,13 +5,11 @@ import { K } from '../../source/shared/Keys.ts';
 import Cmd from '../../source/engine/common/Cmd.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import Key from '../../source/engine/client/Key.ts';
-import { useMenuOf } from '../support/menu.ts';
-import { useHostOf } from '../support/host.ts';
 import {
   Action, ColorPicker, KeyBindItem, MenuItem, NumberInput, SaveSlotItem, Slider, Textbox, Toggle,
 } from '../../source/engine/client/menu/MenuItem.ts';
 import type { BitmapFont } from '../../source/engine/client/BitmapFont.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Temporarily installs minimal `Host`/`Key`/`M`/`S` registry stubs so widget draw/input
@@ -19,42 +17,25 @@ import { engineMocks } from '../support/engineMocks.ts';
  * @param callback test callback
  */
 function withMockWidgetRegistry(callback: (recorded: { printed: string[]; sounds: string[]; bitmapStrings: Array<{ str: string; font: unknown; variant: number }> }) => void): void {
-  const previousHost = engineMocks.Host;
-  const previousKey = engineMocks.Key;
-  const previousM = engineMocks.M;
-  const previousS = engineMocks.S;
-
   const printed: string[] = [];
   const sounds: string[] = [];
   const bitmapStrings: Array<{ str: string; font: unknown; variant: number }> = [];
 
-  engineMocks.Host = { realtime: 0 };
-
-  const restoreHost = useHostOf(engineMocks.Host);
-  engineMocks.Key = Key;
-  engineMocks.M = {
-    sfx_menu1: 'menu1',
-    sfx_menu2: 'menu2',
-    sfx_menu3: 'menu3',
-    Print(_x: number, _y: number, str: string) { printed.push(str); },
-    PrintWhite(_x: number, _y: number, str: string) { printed.push(str); },
-    DrawCharacter() {},
-    DrawSlider() {},
-    DrawBitmapString(_x: number, _y: number, str: string, font: unknown, variant: number) { bitmapStrings.push({ str, font, variant }); },
-  };
-  const restoreMenu = useMenuOf(engineMocks.M);
-  engineMocks.S = { LocalSound(sfx: string) { sounds.push(sfx); } };
-
-  try {
-    callback({ printed, sounds, bitmapStrings });
-  } finally {
-    engineMocks.Host = previousHost;
-    restoreHost();
-    engineMocks.Key = previousKey;
-    engineMocks.M = previousM;
-    restoreMenu();
-    engineMocks.S = previousS;
-  }
+  withEngineMocks({
+    Host: { realtime: 0 },
+    Key,
+    M: {
+      sfx_menu1: 'menu1',
+      sfx_menu2: 'menu2',
+      sfx_menu3: 'menu3',
+      Print(_x: number, _y: number, str: string) { printed.push(str); },
+      PrintWhite(_x: number, _y: number, str: string) { printed.push(str); },
+      DrawCharacter() {},
+      DrawSlider() {},
+      DrawBitmapString(_x: number, _y: number, str: string, font: unknown, variant: number) { bitmapStrings.push({ str, font, variant }); },
+    },
+    S: { LocalSound(sfx: string) { sounds.push(sfx); } },
+  }, () => { callback({ printed, sounds, bitmapStrings }); });
 }
 
 /**

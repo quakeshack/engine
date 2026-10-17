@@ -3,70 +3,43 @@ import { describe, test } from 'node:test';
 
 import ClientInput, { kbutton, kbuttons } from '../../source/engine/client/ClientInput.ts';
 import '../support/consoleBridge.ts';
-import { useClientStateOf } from '../support/clientState.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
-import { useHostOf } from '../support/host.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Installs the client state, console and host that reading the input commands needs, for the duration of a callback.
  * @param callback The test callback.
  */
 function withMockClientInputRegistry(callback: () => void): void {
-  const previousValues = {
-    CL: engineMocks.CL,
-    Con: engineMocks.Con,
-    Host: engineMocks.Host,
-    NET: engineMocks.NET,
-    V: engineMocks.V,
-  };
-
-  engineMocks.CL = {
-    cls: { signon: 4 },
-    state: {
-      cmd: {
-        sidemove: 0,
-        upmove: 0,
-        forwardmove: 0,
-        impulse: 0,
-        angles: { set() {} },
-        msec: 0,
+  withEngineMocks({
+    CL: {
+      cls: { signon: 4 },
+      state: {
+        cmd: {
+          sidemove: 0,
+          upmove: 0,
+          forwardmove: 0,
+          impulse: 0,
+          angles: { set() {} },
+          msec: 0,
+        },
+        viewangles: [0, 0, 0],
+        time: 0,
       },
-      viewangles: [0, 0, 0],
-      time: 0,
+      anglespeedkey: { value: 1 },
+      backspeed: { value: 200 },
+      forwardspeed: { value: 200 },
+      movespeedkey: { value: 1 },
+      pitchspeed: { value: 1 },
+      sidespeed: { value: 200 },
+      upspeed: { value: 200 },
+      yawspeed: { value: 1 },
     },
-    anglespeedkey: { value: 1 },
-    backspeed: { value: 200 },
-    forwardspeed: { value: 200 },
-    movespeedkey: { value: 1 },
-    pitchspeed: { value: 1 },
-    sidespeed: { value: 200 },
-    upspeed: { value: 200 },
-    yawspeed: { value: 1 },
-  };
-
-  const restoreClientState = useClientStateOf(engineMocks.CL);
-  engineMocks.Con = { Print() {}, DPrint() {} };
-  engineMocks.Host = { frametime: 0.1 };
-  const restoreHost = useHostOf(engineMocks.Host);
-  engineMocks.NET = { SendUnreliableMessage() { return 0; } };
-  engineMocks.V = { startPitchDrift() {} };
-
-  const restore = () => {
-    engineMocks.CL = previousValues.CL;
-    restoreClientState();
-    engineMocks.Con = previousValues.Con;
-    engineMocks.Host = previousValues.Host;
-    restoreHost();
-    engineMocks.NET = previousValues.NET;
-    engineMocks.V = previousValues.V;
-  };
-
-  try {
-    callback();
-  } finally {
-    restore();
-  }
+    Con: { Print() {}, DPrint() {} },
+    Host: { frametime: 0.1 },
+    NET: { SendUnreliableMessage() { return 0; } },
+    V: { startPitchDrift() {} },
+  }, callback);
 }
 
 void describe('ClientInput', () => {

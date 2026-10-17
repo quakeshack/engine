@@ -17,8 +17,8 @@ import {
   createPmoveBoxEntity,
   createPmoveTrace,
 } from '../support/fixtures.ts';
-import { engineMocks } from '../support/engineMocks.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
+import { installEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Build a brush-backed world where a solid wall continues as a clip brush.
@@ -187,11 +187,6 @@ async function runMapFrames({
   buildCmd = null,
 }: MapFrameRunOptions): Promise<MapPmoveFrame[]> {
   const baseUrl = new URL(basePath, import.meta.url);
-  const previousRegistry = {
-    COM: engineMocks.COM,
-    Con: engineMocks.Con,
-    Mod: engineMocks.Mod,
-  };
   const knownKeysBefore = new Set(Object.keys(Mod.known));
 
   const con = {
@@ -222,9 +217,7 @@ async function runMapFrames({
       }
     },
   };
-  engineMocks.Con = con;
-  engineMocks.Mod = Mod;
-  engineMocks.COM = files;
+  const restoreEngineMocks = installEngineMocks({ Con: con, Mod, COM: files });
   Mod.Init({ files, con, loadRenderData: false });
 
   try {
@@ -276,7 +269,7 @@ async function runMapFrames({
       }
     }
 
-    Object.assign(engineMocks, previousRegistry);
+    restoreEngineMocks();
   }
 }
 

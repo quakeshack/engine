@@ -7,10 +7,8 @@ import { ClientMessages } from '../../source/engine/client/ClientMessages.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
-import { useClientStateOf } from '../support/clientState.ts';
-import { useHostOf } from '../support/host.ts';
 import Host from '../../source/engine/common/Host.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 class MockClientSerializable {
   readonly value: string;
@@ -39,42 +37,7 @@ registerSerializableType(MockClientSerializable, {
  * @returns Callback result.
  */
 function withMockClientMessagesRegistry({ CL, COM, NET, Host }: { CL: object; COM: object; NET: object; Host?: object }, callback: () => void | Promise<void>): void | Promise<void> {
-  const previousValues = {
-    CL: engineMocks.CL,
-    COM: engineMocks.COM,
-    NET: engineMocks.NET,
-    Host: engineMocks.Host,
-  };
-
-  engineMocks.CL = CL;
-  const restoreClientState = useClientStateOf(engineMocks.CL);
-  engineMocks.COM = COM;
-  engineMocks.NET = NET;
-  engineMocks.Host = Host ?? { realtime: 0 };
-  const restoreHost = useHostOf(engineMocks.Host);
-
-  const restore = () => {
-    engineMocks.CL = previousValues.CL;
-    restoreClientState();
-    engineMocks.COM = previousValues.COM;
-    engineMocks.NET = previousValues.NET;
-    engineMocks.Host = previousValues.Host;
-    restoreHost();
-  };
-
-  try {
-    const result = callback();
-
-    if (result && typeof result.then === 'function') {
-      return Promise.resolve(result).finally(restore);
-    }
-
-    restore();
-    return result;
-  } catch (error) {
-    restore();
-    throw error;
-  }
+  return withEngineMocks({ CL, COM, NET, Host: Host ?? { realtime: 0 } }, callback);
 }
 
 void describe('ClientMessages', () => {

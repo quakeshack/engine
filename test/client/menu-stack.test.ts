@@ -4,8 +4,7 @@ import { describe, test } from 'node:test';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { MenuPage } from '../../source/engine/client/menu/MenuPage.ts';
 import { MenuStack } from '../../source/engine/client/menu/MenuStack.ts';
-import { useMenuOf } from '../support/menu.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Temporarily installs minimal `M`/`IN` registry stubs (MenuStack only needs `M.entersound`
@@ -13,21 +12,7 @@ import { engineMocks } from '../support/engineMocks.ts';
  * @param callback test callback
  */
 function withMockMenuRegistry(callback: () => void) {
-  const previousM = engineMocks.M;
-  const previousIN = engineMocks.IN;
-
-  engineMocks.M = { entersound: false };
-
-  const restoreMenu = useMenuOf(engineMocks.M);
-  engineMocks.IN = { ReleasePointerLock() {} };
-
-  try {
-    callback();
-  } finally {
-    engineMocks.M = previousM;
-    restoreMenu();
-    engineMocks.IN = previousIN;
-  }
+  withEngineMocks({ M: { entersound: false }, IN: { ReleasePointerLock() {} } }, callback);
 }
 
 /** A menu page that counts how often it was entered and left. */

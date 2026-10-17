@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { createClientEngineApi } from '../support/clientEngineApi.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 const engineApi = createClientEngineApi();
 
@@ -13,22 +13,14 @@ const engineApi = createClientEngineApi();
  * @param callback async test callback
  */
 async function withMockMultiplayerApi(jsonBody: object, callback: () => Promise<void>) {
-  const previousCOM = engineMocks.COM;
-  const previousUrls = engineMocks.urls;
   const previousFetch = globalThis.fetch;
 
-  engineMocks.COM = { game: 'id1' };
-  engineMocks.urls = { signalingURL: 'wss://master.example.test/signal' };
   // Only the body of the response is read.
   globalThis.fetch = () => Promise.resolve({ json: () => Promise.resolve(jsonBody) } as Response);
 
   try {
-    await callback();
+    await withEngineMocks({ COM: { game: 'id1' }, urls: { signalingURL: 'wss://master.example.test/signal' } }, callback);
   } finally {
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    engineMocks.COM = previousCOM;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    engineMocks.urls = previousUrls;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.fetch = previousFetch;
   }
@@ -57,13 +49,7 @@ void describe('ClientEngineAPI.Multiplayer.SubscribeSessions/RequestSessionsRefr
   // `test/client/session-discovery.test.mjs`; this file only needs to prove GameAPIs.ts wires
   // through to SessionDiscovery correctly.
   void test('delegates to SessionDiscovery.subscribe and .requestRefresh', () => {
-    const previousCOM = engineMocks.COM;
-    const previousUrls = engineMocks.urls;
-
-    engineMocks.COM = { game: 'id1' };
-    engineMocks.urls = {};
-
-    try {
+    withEngineMocks({ COM: { game: 'id1' }, urls: {} }, () => {
       const statuses: string[] = [];
       const unsubscribe = engineApi.Multiplayer.SubscribeSessions(() => {}, (status) => statuses.push(status));
 
@@ -72,9 +58,6 @@ void describe('ClientEngineAPI.Multiplayer.SubscribeSessions/RequestSessionsRefr
       unsubscribe();
 
       assert.doesNotThrow(() => { engineApi.Multiplayer.RequestSessionsRefresh(); });
-    } finally {
-      engineMocks.COM = previousCOM;
-      engineMocks.urls = previousUrls;
-    }
+    });
   });
 });

@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import { installGlobals } from '../support/globals.ts';
 import SessionDiscovery, { type DiscoveredSession, type SessionDiscoveryStatus } from '../../source/engine/client/menu/SessionDiscovery.ts';
 import '../support/consoleBridge.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * A minimal `WebRTCDriver` test double for the ping-probe lifecycle (`startSessionPing`/
@@ -56,30 +56,14 @@ class FakeWebRTCDriver {
  * @param [options] registry overrides, e.g. to simulate no signaling URL
  */
 async function withMockDiscoveryRegistry(game: string, callback: (webRTCDriver: FakeWebRTCDriver) => Promise<void>, options: { urls?: { signalingURL?: string } } = {}) {
-  const previousCOM = engineMocks.COM;
-  const previousUrls = engineMocks.urls;
-  const previousCon = engineMocks.Con;
-  const previousNET = engineMocks.NET;
-
   const webRTCDriver = new FakeWebRTCDriver();
 
-  engineMocks.COM = { game };
-  engineMocks.urls = options.urls ?? { signalingURL: 'wss://master.example.test/signal' };
-  engineMocks.Con = { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {} };
-  engineMocks.NET = { driverRegistry: { get: (name: string) => (name === 'webrtc' ? webRTCDriver : null) } };
-
-  try {
-    await callback(webRTCDriver);
-  } finally {
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    engineMocks.COM = previousCOM;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    engineMocks.urls = previousUrls;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    engineMocks.Con = previousCon;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    engineMocks.NET = previousNET;
-  }
+  await withEngineMocks({
+    COM: { game },
+    urls: options.urls ?? { signalingURL: 'wss://master.example.test/signal' },
+    Con: { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {} },
+    NET: { driverRegistry: { get: (name: string) => (name === 'webrtc' ? webRTCDriver : null) } },
+  }, () => callback(webRTCDriver));
 }
 
 /**

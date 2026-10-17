@@ -11,18 +11,17 @@ import type Server from '../../source/engine/server/Server.ts';
 import type { ServerEdict } from '../../source/engine/server/Edict.ts';
 import type { BrushModel, Visibility } from '../../source/engine/common/model/BSP.ts';
 import { createTestServer } from '../support/fixtures.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { installEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Installs a minimal server context for delta-entity message tests.
  * @returns The server, and a function that puts the mocked engine parts back.
  */
 function installWriteDeltaEntityContext(): { sv: Server; restore: () => void } {
-  const previousCon = engineMocks.Con;
-  const previousHost = engineMocks.Host;
-
-  engineMocks.Con = { Print() {}, DPrint() {}, PrintWarning() {} };
-  engineMocks.Host = { frametime: 0.1 };
+  const restoreEngineMocks = installEngineMocks({
+    Con: { Print() {}, DPrint() {}, PrintWarning() {} },
+    Host: { frametime: 0.1 },
+  });
 
   const sv = createTestServer();
 
@@ -32,10 +31,7 @@ function installWriteDeltaEntityContext(): { sv: Server; restore: () => void } {
 
   return {
     sv,
-    restore() {
-      engineMocks.Con = previousCon;
-      engineMocks.Host = previousHost;
-    },
+    restore: restoreEngineMocks,
   };
 }
 

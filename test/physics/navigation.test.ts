@@ -8,7 +8,7 @@ import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { Navigation } from '../../source/engine/server/Navigation.ts';
 import { mockedNavigationServices } from '../support/fixtures.ts';
 import { createCvarStub } from '../support/cvarStub.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);
 const NAV_MONSTER_MAXS = new Vector(16.0, 16.0, 40.0);
@@ -149,43 +149,20 @@ function createTrace(end: Vector, endpos: Vector, fraction: number, startsolid: 
  * @returns callback result after registry restoration
  */
 function withNavigationRegistry(mockRegistry: { Con: object, COM: object, SV: object }, callback: () => Promise<void>|void): Promise<void> {
-  const previousCL = engineMocks.CL;
-  const previousCOM = engineMocks.COM;
-  const previousCon = engineMocks.Con;
-  const previousHost = engineMocks.Host;
-  const previousR = engineMocks.R;
-  const previousSV = engineMocks.SV;
+  return withEngineMocks({
+    CL: null,
+    COM: mockRegistry.COM,
+    Con: mockRegistry.Con,
+    Host: { frametime: 0.1 },
+    R: null,
+    SV: mockRegistry.SV,
+  }, async () => {
+    await callback();
 
-  const restore = () => {
-    engineMocks.CL = previousCL;
-    engineMocks.COM = previousCOM;
-    engineMocks.Con = previousCon;
-    engineMocks.Host = previousHost;
-    engineMocks.R = previousR;
-    engineMocks.SV = previousSV;
-  };
-
-  engineMocks.CL = null;
-  engineMocks.COM = mockRegistry.COM;
-  engineMocks.Con = mockRegistry.Con;
-  engineMocks.Host = { frametime: 0.1 };
-  engineMocks.R = null;
-  engineMocks.SV = mockRegistry.SV;
-
-  let result;
-
-  try {
-    result = callback();
-  } catch (error) {
-    restore();
-    throw error;
-  }
-
-  return Promise.resolve(result)
-    .then(() => Promise.resolve())
-    .finally(() => {
-      restore();
-    });
+    // The navigation graph is saved in the background and reports a failure through the console of the mocks:
+    // keep them installed until what is still pending has settled.
+    await new Promise<void>((resolve) => { setImmediate(resolve); });
+  });
 }
 
 /**

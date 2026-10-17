@@ -8,6 +8,7 @@ import { clientRuntimeState, clientStaticState } from '../../source/engine/clien
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import { patchMembers } from '../support/clientState.ts';
 import { engineMocks } from '../support/engineMocks.ts';
+import { installEngineMocks } from '../support/withEngineMocks.ts';
 
 interface ToggleStubs {
   readonly key: { history_line: number; lines: string[] };
@@ -23,14 +24,11 @@ interface ToggleStubs {
  * @param callback The test body.
  */
 function withToggleRegistry(callback: (stubs: ToggleStubs) => void): void {
-  const previous = { SCR: engineMocks.SCR, Key: engineMocks.Key, IN: engineMocks.IN };
   let released = false;
   const key = { history_line: 0, lines: ['a', 'b', 'c'] };
   const scr = { EndLoadingPlaque() {} };
 
-  engineMocks.SCR = scr;
-  engineMocks.Key = key;
-  engineMocks.IN = { ReleasePointerLock() { released = true; } };
+  const restoreEngineMocks = installEngineMocks({ SCR: scr, Key: key, IN: { ReleasePointerLock() { released = true; } } });
 
   ConsoleOverlay.isOpen = false;
   ConsoleOverlay.forcedup = false;
@@ -41,7 +39,7 @@ function withToggleRegistry(callback: (stubs: ToggleStubs) => void): void {
   } finally {
     ConsoleOverlay.isOpen = false;
     ConsoleOverlay.forcedup = false;
-    Object.assign(engineMocks, previous);
+    restoreEngineMocks();
   }
 }
 

@@ -5,18 +5,16 @@ import { K } from '../../source/shared/Keys.ts';
 import Cmd from '../../source/engine/common/Cmd.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import Key from '../../source/engine/client/Key.ts';
-import { useMenuOf } from '../support/menu.ts';
 import M, { type MenuPic } from '../../source/engine/client/Menu.ts';
 import type { MenuViewport } from '../../source/engine/client/menu/MenuViewport.ts';
 import type { MenuItem } from '../../source/engine/client/menu/MenuItem.ts';
-import { useHostOf } from '../support/host.ts';
 import {
   Action, KeyBindItem, Label, Slider, Textbox,
 } from '../../source/engine/client/menu/MenuItem.ts';
 import {
   DialogPage, GridLayout, ImageBasedLayout, ListLayout, ListPage, MenuPage, VerticalLayout,
 } from '../../source/engine/client/menu/MenuPage.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Temporarily installs a minimal `Host`/`M`/`S` registry stub so page draw/navigation can run
@@ -24,49 +22,32 @@ import { engineMocks } from '../support/engineMocks.ts';
  * @param callback test callback
  */
 function withMockPageRegistry(callback: (recorded: { drawnPics: unknown[]; printed: string[]; printedWhite: Array<{ x: unknown; str: unknown }>; slidersDrawn: number[]; renderingPages: unknown[] }) => void): void {
-  const previousHost = engineMocks.Host;
-  const previousKey = engineMocks.Key;
-  const previousM = engineMocks.M;
-  const previousS = engineMocks.S;
-
   const drawnPics: unknown[] = [];
   const printed: string[] = [];
   const printedWhite: Array<{ x: unknown; str: unknown }> = [];
   const slidersDrawn: number[] = [];
   const renderingPages: unknown[] = [];
 
-  engineMocks.Host = { realtime: 0 };
-
-  const restoreHost = useHostOf(engineMocks.Host);
-  engineMocks.Key = Key;
-  engineMocks.M = {
-    sfx_menu1: 'menu1',
-    sfx_menu2: 'menu2',
-    sfx_menu3: 'menu3',
-    mouseX: 0,
-    mouseY: 0,
-    Print(_x: number, _y: number, str: string) { printed.push(str); },
-    PrintWhite(x: number, _y: number, str: string) { printedWhite.push({ x, str }); },
-    DrawPic(_x: number, _y: number, pic: unknown) { drawnPics.push(pic); },
-    DrawCharacter() {},
-    DrawSlider(x: number) { slidersDrawn.push(x); },
-    withRenderingPage(page: unknown, draw: () => void) { renderingPages.push(page); draw(); },
-  };
-  const restoreMenu = useMenuOf(engineMocks.M);
-  engineMocks.S = { LocalSound() {} };
-
-  try {
-    callback({
-      drawnPics, printed, printedWhite, slidersDrawn, renderingPages,
-    });
-  } finally {
-    engineMocks.Host = previousHost;
-    restoreHost();
-    engineMocks.Key = previousKey;
-    engineMocks.M = previousM;
-    restoreMenu();
-    engineMocks.S = previousS;
-  }
+  withEngineMocks({
+    Host: { realtime: 0 },
+    Key,
+    M: {
+      sfx_menu1: 'menu1',
+      sfx_menu2: 'menu2',
+      sfx_menu3: 'menu3',
+      mouseX: 0,
+      mouseY: 0,
+      Print(_x: number, _y: number, str: string) { printed.push(str); },
+      PrintWhite(x: number, _y: number, str: string) { printedWhite.push({ x, str }); },
+      DrawPic(_x: number, _y: number, pic: unknown) { drawnPics.push(pic); },
+      DrawCharacter() {},
+      DrawSlider(x: number) { slidersDrawn.push(x); },
+      withRenderingPage(page: unknown, draw: () => void) { renderingPages.push(page); draw(); },
+    },
+    S: { LocalSound() {} },
+  }, () => { callback({
+    drawnPics, printed, printedWhite, slidersDrawn, renderingPages,
+  }); });
 }
 
 void describe('MenuPage', () => {

@@ -4,14 +4,14 @@ import { describe, test } from 'node:test';
 import { DefaultClientEdictHandler } from '../../source/engine/client/ClientLegacy.ts';
 import ClientEntities, { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { effect, modelFlags } from '../../source/shared/Defs.ts';
-import { patchMembers, useClientStateOf } from '../support/clientState.ts';
+import { patchMembers } from '../support/clientState.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import Particles from '../../source/engine/client/renderer/effects/Particles.ts';
-import { useHostOf } from '../support/host.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 import type { ClientEngineAPI } from '../../source/engine/client/ClientEngineAPI.ts';
 import type { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
 import type { ClientDlight } from '../../source/engine/client/ClientEntities.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /**
  * Runs a callback with a real `ClientEntities` instance wired into the
@@ -20,30 +20,13 @@ import type { ClientDlight } from '../../source/engine/client/ClientEntities.ts'
  * @param callback
  */
 function withMockLegacyClientRegistry(callback: (clientEntities: ClientEntities) => void): void {
-  const previousCL = engineMocks.CL;
-  const previousHost = engineMocks.Host;
-
   const clientEntities = new ClientEntities();
-
-  engineMocks.CL = { state: { time: 0.0, clientEntities } };
-
-  const restoreClientState = useClientStateOf(engineMocks.CL);
-  engineMocks.Host = { frametime: 1 / 60 };
-  const restoreHost = useHostOf(engineMocks.Host);
   const restoreParticles = patchMembers(Particles, { RocketTrail() {}, EntityParticles() {} });
 
-  const restore = () => {
-    engineMocks.CL = previousCL;
-    restoreClientState();
-    engineMocks.Host = previousHost;
-    restoreHost();
-    restoreParticles();
-  };
-
   try {
-    callback(clientEntities);
+    withEngineMocks({ CL: { state: { time: 0.0, clientEntities } }, Host: { frametime: 1 / 60 } }, () => { callback(clientEntities); });
   } finally {
-    restore();
+    restoreParticles();
   }
 }
 

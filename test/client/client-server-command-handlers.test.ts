@@ -12,11 +12,9 @@ import '../support/consoleBridge.ts';
 import { clientPmove } from '../../source/engine/client/ClientPhysics.ts';
 import { MoveVars } from '../../source/engine/common/Pmove.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
-import { useClientStateOf } from '../support/clientState.ts';
 import { createGameModuleStub } from '../support/fixtures.ts';
-import { useRendererOf } from '../support/renderer.ts';
-import { useHostOf } from '../support/host.ts';
 import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /** The engine parts the server message handlers read, as the tests mock them. */
 interface MockClientRegistry {
@@ -96,59 +94,9 @@ function createMockClientRegistry(overrides: { [Part in keyof MockClientRegistry
  * @returns Callback result.
  */
 function withMockClientRegistry(mockedRegistry: ReturnType<typeof createMockClientRegistry>, callback: () => void | Promise<void>): void | Promise<void> {
-  const previousValues = {
-    CL: engineMocks.CL,
-    Con: engineMocks.Con,
-    Host: engineMocks.Host,
-    Mod: engineMocks.Mod,
-    NET: engineMocks.NET,
-    R: engineMocks.R,
-    S: engineMocks.S,
-    SCR: engineMocks.SCR,
-    V: engineMocks.V,
-  };
+  const { CL, Con, Host, Mod, NET, R, S, SCR, V } = mockedRegistry;
 
-  engineMocks.CL = mockedRegistry.CL;
-  const restoreClientState = useClientStateOf(engineMocks.CL);
-  engineMocks.Con = mockedRegistry.Con;
-  engineMocks.Host = mockedRegistry.Host;
-  const restoreHost = useHostOf(engineMocks.Host);
-  engineMocks.Mod = mockedRegistry.Mod;
-  engineMocks.NET = mockedRegistry.NET;
-  engineMocks.R = mockedRegistry.R;
-  const restoreRenderer = useRendererOf(engineMocks.R);
-  engineMocks.S = mockedRegistry.S;
-  engineMocks.SCR = mockedRegistry.SCR;
-  engineMocks.V = mockedRegistry.V;
-
-  const restore = () => {
-    engineMocks.CL = previousValues.CL;
-    restoreClientState();
-    engineMocks.Con = previousValues.Con;
-    engineMocks.Host = previousValues.Host;
-    restoreHost();
-    engineMocks.Mod = previousValues.Mod;
-    engineMocks.NET = previousValues.NET;
-    engineMocks.R = previousValues.R;
-    restoreRenderer();
-    engineMocks.S = previousValues.S;
-    engineMocks.SCR = previousValues.SCR;
-    engineMocks.V = previousValues.V;
-  };
-
-  try {
-    const result = callback();
-
-    if (result && typeof result.then === 'function') {
-      return Promise.resolve(result).finally(restore);
-    }
-
-    restore();
-    return result;
-  } catch (error) {
-    restore();
-    throw error;
-  }
+  return withEngineMocks({ CL, Con, Host, Mod, NET, R, S, SCR, V }, callback);
 }
 
 void describe('parseServerMessage', () => {

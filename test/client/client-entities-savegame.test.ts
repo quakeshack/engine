@@ -11,12 +11,11 @@ import Vector from '../../source/shared/Vector.ts';
 import { moveType } from '../../source/shared/Defs.ts';
 
 import { assertNear, createBoundsModel, createGameModuleStub } from '../support/fixtures.ts';
-import { useClientStateOf } from '../support/clientState.ts';
 import { createSingleLeafWorld } from '../support/bspTree.ts';
 import { installPageServices } from '../../source/engine/client/PageServices.ts';
 import { createClientEngineApi } from '../support/clientEngineApi.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 // Handlers are constructed with the page's engine API.
 installPageServices({ engineApi: createClientEngineApi() });
@@ -72,27 +71,7 @@ function withTestGameModule(callback: () => void) {
  * @param callback
  */
 function withMockClRegistry(time: number, callback: () => void) {
-  const previousCL = engineMocks.CL;
-
-  engineMocks.CL = {
-    state: {
-      time,
-      worldmodel: createSingleLeafWorld(),
-    },
-  };
-
-  const restoreClientState = useClientStateOf(engineMocks.CL);
-
-  const restore = () => {
-    engineMocks.CL = previousCL;
-    restoreClientState();
-  };
-
-  try {
-    callback();
-  } finally {
-    restore();
-  }
+  withEngineMocks({ CL: { state: { time, worldmodel: createSingleLeafWorld() } } }, callback);
 }
 
 void describe('ClientEntities.serialize/deserialize (save/load)', () => {

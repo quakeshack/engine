@@ -13,8 +13,7 @@ import { createBrushWorldModel } from '../support/fixtures.ts';
 import clientCvars from '../../source/engine/client/ClientCvars.ts';
 import { clientPmove } from '../../source/engine/client/ClientPhysics.ts';
 import { clientStaticState } from '../../source/engine/client/ClientState.ts';
-import { useHostOf } from '../support/host.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { installEngineMocks } from '../support/withEngineMocks.ts';
 
 void describe('CL.AppendChatMessage', () => {
   void test('publishes chat messages without a legacy engine HUD fallback', () => {
@@ -46,7 +45,6 @@ void describe('CL.PredictMove', () => {
     // commands and replay them through Pmove, which has no notion of
     // intermission and would keep applying gravity/collision from the fixed
     // base every frame — producing visible camera jitter.
-    const previousHost = engineMocks.Host;
     const previousNopred = clientCvars.nopred;
     const previousIntermission = CL.state.intermission;
     const previousViewentity = CL.state.viewentity;
@@ -54,9 +52,7 @@ void describe('CL.PredictMove', () => {
     const previousAckedMoveSequence = CL.state.acknowledgedMoveSequence;
     const previousPredicted = CL.state.predicted;
 
-    engineMocks.Host = { realtime: 42.0 };
-
-    const restoreHost = useHostOf(engineMocks.Host);
+    const restoreEngineMocks = installEngineMocks({ Host: { realtime: 42.0 } });
 
     clientCvars.nopred = createCvarStub(0);
     CL.state.intermission = 1;
@@ -74,8 +70,7 @@ void describe('CL.PredictMove', () => {
       assert.equal(CL.state.predicted, false);
       assert.deepEqual([...playerEntity!.origin], [100.0, 200.0, 300.0]);
     } finally {
-      engineMocks.Host = previousHost;
-      restoreHost();
+      restoreEngineMocks();
       clientCvars.nopred = previousNopred;
       CL.state.intermission = previousIntermission;
       CL.state.viewentity = previousViewentity;

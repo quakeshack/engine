@@ -36,8 +36,8 @@ import { createModelLoadContext } from '../support/modelContext.ts';
 import { createClipTree, createLegacyHull } from '../support/hulls.ts';
 import { setBspTree } from '../support/bspTree.ts';
 import { NodeTable } from '../../source/engine/common/model/BspTree.ts';
-import { engineMocks } from '../support/engineMocks.ts';
 import { CollisionTrace, CollisionPlane, type MoveClip } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
+import { installEngineMocks } from '../support/withEngineMocks.ts';
 
 void test('PmovePlayer.DEBUG is disabled before Pmove.Init()', () => {
   assert.equal(PmovePlayer.DEBUG, false);
@@ -3027,11 +3027,6 @@ void test('ServerPhysics.physics applies gravity and toss movement for one frame
  */
 async function loadBSPMap(mapName: string): Promise<BrushModel> {
   const baseUrl = new URL('../../data/id1/', import.meta.url);
-  const previousRegistry = {
-    COM: engineMocks.COM,
-    Con: engineMocks.Con,
-    Mod: engineMocks.Mod,
-  };
   const knownKeysBefore = new Set(Object.keys(Mod.known));
 
   const con = {
@@ -3064,9 +3059,7 @@ async function loadBSPMap(mapName: string): Promise<BrushModel> {
       }
     },
   };
-  engineMocks.Con = con;
-  engineMocks.Mod = Mod;
-  engineMocks.COM = files;
+  const restoreEngineMocks = installEngineMocks({ Con: con, Mod, COM: files });
   Mod.Init({ files, con, loadRenderData: false });
 
   try {
@@ -3080,7 +3073,7 @@ async function loadBSPMap(mapName: string): Promise<BrushModel> {
       }
     }
 
-    Object.assign(engineMocks, previousRegistry);
+    restoreEngineMocks();
   }
 }
 

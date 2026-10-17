@@ -9,11 +9,9 @@ import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
 import Con from '../../source/engine/common/Console.ts';
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import '../support/consoleBridge.ts';
-import { useClientStateOf } from '../support/clientState.ts';
-import { useMenuOf } from '../support/menu.ts';
 import M from '../../source/engine/client/Menu.ts';
 import { patchMembers } from '../support/clientState.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 /** The console `Key` writes to, with the scrollback it moves. */
 interface MockKeyConsole {
@@ -29,23 +27,16 @@ interface MockKeyConsole {
  * @param callback test callback
  */
 function withMockKeyRegistry(callback: (context: { con: MockKeyConsole, printed: string[] }) => void): void {
-  const previousCon = engineMocks.Con;
-  const previousCOM = engineMocks.COM;
-
   const printed: string[] = [];
   const con: MockKeyConsole = {
     Print(msg: string) { printed.push(msg); }, backscroll: 0, text: [],
   };
   ConsoleOverlay.isOpen = false;
-  engineMocks.Con = con;
-  engineMocks.COM = COM;
 
   try {
-    callback({ con, printed });
+    withEngineMocks({ Con: con, COM }, () => { callback({ con, printed }); });
   } finally {
     ConsoleOverlay.isOpen = false;
-    engineMocks.Con = previousCon;
-    engineMocks.COM = previousCOM;
   }
 }
 
@@ -429,32 +420,18 @@ void describe('Key', () => {
      */
     function withMockEventRegistry(callback: (spies: { menuKeydownCalls: number[], toggleMenu: { count: number }, menuMainCalls: { count: number } }) => void, options: { connectionState?: number } = {}) {
       withMockKeyRegistry(() => {
-        const previousCL = engineMocks.CL;
-        const previousM = engineMocks.M;
         const menuKeydownCalls: number[] = [];
         const toggleMenu = { count: 0 };
         const menuMainCalls = { count: 0 };
 
-        engineMocks.CL = {
-          cls: { state: options.connectionState ?? clientConnectionState.connected, demoplayback: false },
-        };
-
-        const restoreClientState = useClientStateOf(engineMocks.CL);
-        engineMocks.M = {
-          Keydown: (key: number) => { menuKeydownCalls.push(key); },
-          ToggleMenu_f: () => { toggleMenu.count++; },
-          Menu_Main_f: () => { menuMainCalls.count++; },
-        };
-        const restoreMenu = useMenuOf(engineMocks.M);
-
-        try {
-          callback({ menuKeydownCalls, toggleMenu, menuMainCalls });
-        } finally {
-          engineMocks.CL = previousCL;
-          restoreClientState();
-          engineMocks.M = previousM;
-          restoreMenu();
-        }
+        withEngineMocks({
+          CL: { cls: { state: options.connectionState ?? clientConnectionState.connected, demoplayback: false } },
+          M: {
+            Keydown: (key: number) => { menuKeydownCalls.push(key); },
+            ToggleMenu_f: () => { toggleMenu.count++; },
+            Menu_Main_f: () => { menuMainCalls.count++; },
+          },
+        }, () => { callback({ menuKeydownCalls, toggleMenu, menuMainCalls }); });
       });
     }
 
@@ -653,28 +630,16 @@ void describe('Key', () => {
      */
     function withMockConsoleClickRegistry(connectionState: number, callback: (spies: { menuMainCalls: { count: number } }) => void) {
       withMockKeyRegistry(() => {
-        const previousCL = engineMocks.CL;
-        const previousM = engineMocks.M;
         const menuMainCalls = { count: 0 };
 
-        engineMocks.CL = { cls: { state: connectionState, demoplayback: false } };
-
-        const restoreClientState = useClientStateOf(engineMocks.CL);
-        engineMocks.M = {
-          Menu_Main_f: () => { menuMainCalls.count++; },
-          ToggleMenu_f: () => {},
-          Keydown: () => {},
-        };
-        const restoreMenu = useMenuOf(engineMocks.M);
-
-        try {
-          callback({ menuMainCalls });
-        } finally {
-          engineMocks.CL = previousCL;
-          restoreClientState();
-          engineMocks.M = previousM;
-          restoreMenu();
-        }
+        withEngineMocks({
+          CL: { cls: { state: connectionState, demoplayback: false } },
+          M: {
+            Menu_Main_f: () => { menuMainCalls.count++; },
+            ToggleMenu_f: () => {},
+            Keydown: () => {},
+          },
+        }, () => { callback({ menuMainCalls }); });
       });
     }
 

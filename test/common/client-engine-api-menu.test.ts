@@ -4,8 +4,7 @@ import { describe, test } from 'node:test';
 import { createClientEngineApi } from '../support/clientEngineApi.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
 import { MenuStack } from '../../source/engine/client/menu/MenuStack.ts';
-import { useMenuOf } from '../support/menu.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 const engineApi = createClientEngineApi();
 
@@ -15,41 +14,34 @@ const engineApi = createClientEngineApi();
  * @param callback test callback
  */
 function withMockClientEngineMenu(callback: (context: { menuStack: MenuStack, getCloseMenuCalls: () => number, getPopMenuCalls: () => number }) => void) {
-  const previousM = engineMocks.M;
-  const previousIN = engineMocks.IN;
   const previousDestination = Key.destination;
 
   const menuStack = new MenuStack();
   let closeMenuCalls = 0;
   let popMenuCalls = 0;
 
-  engineMocks.M = {
-    entersound: false,
-    menuStack,
-    CloseMenu() {
-      closeMenuCalls += 1;
-      menuStack.clear();
-    },
-    PopMenu() {
-      popMenuCalls += 1;
-      menuStack.pop();
-    },
-  };
-
-  const restoreMenu = useMenuOf(engineMocks.M as object);
-  // MenuStack.push() releases pointer lock on every open — a no-op spy here.
-  engineMocks.IN = { ReleasePointerLock() {} };
-
   try {
-    callback({
+    withEngineMocks({
+      M: {
+        entersound: false,
+        menuStack,
+        CloseMenu() {
+          closeMenuCalls += 1;
+          menuStack.clear();
+        },
+        PopMenu() {
+          popMenuCalls += 1;
+          menuStack.pop();
+        },
+      },
+      // MenuStack.push() releases pointer lock on every open — a no-op spy here.
+      IN: { ReleasePointerLock() {} },
+    }, () => { callback({
       menuStack,
       getCloseMenuCalls: () => closeMenuCalls,
       getPopMenuCalls: () => popMenuCalls,
-    });
+    }); });
   } finally {
-    engineMocks.M = previousM;
-    restoreMenu();
-    engineMocks.IN = previousIN;
     Key.destination = previousDestination;
   }
 }

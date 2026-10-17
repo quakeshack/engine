@@ -4,9 +4,8 @@ import assert from 'node:assert/strict';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import Sound from '../../source/engine/client/Sound.ts';
 import Vector from '../../source/shared/Vector.ts';
-import { useClientStateOf } from '../support/clientState.ts';
 import { createTreeModel } from '../support/bspTree.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { installEngineMocks } from '../support/withEngineMocks.ts';
 
 void describe('Sound.IsPositionAudible', () => {
   /**
@@ -35,17 +34,13 @@ void describe('Sound.IsPositionAudible', () => {
    * @returns context handle
    */
   function installClientContext({ worldmodel = null }: { worldmodel?: BrushModel | null } = {}): { restore: () => void } {
-    const previousCL = engineMocks.CL;
     const previousListenerLeaf = Sound._listenerLeaf;
 
-    engineMocks.CL = { state: { worldmodel } };
-
-    const restoreClientState = useClientStateOf(engineMocks.CL);
+    const restoreEngineMocks = installEngineMocks({ CL: { state: { worldmodel } } });
 
     return {
       restore() {
-        engineMocks.CL = previousCL;
-        restoreClientState();
+        restoreEngineMocks();
         Sound._listenerLeaf = previousListenerLeaf;
       },
     };
