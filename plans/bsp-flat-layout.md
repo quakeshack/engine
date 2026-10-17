@@ -1,7 +1,8 @@
 # BSP flat layout: one collision core, typed arrays, no copies, then shared memory
 
-**Status:** Decisions made 2026-10-16 (see "Decisions"). Phases 0 to 2 are done (2026-10-17); Phase 3 waits for a look at the numbers and a go-ahead. Follows from the "Parked: SharedArrayBuffer" note in `plans/engine-architecture-modernization.md` (its
-"revisit when" condition is a typed-array BSP layout) and from `plans/server-model-memory.md`.
+**Status:** Done for now (2026-10-17). Phases 0 to 2 shipped; Phase 3 (faces, vertexes, texinfo) and Phase 4 (shared buffers) are
+postponed by decision, see "Outcome". Follows from the "Parked: SharedArrayBuffer" note in `plans/engine-architecture-modernization.md`
+(its "revisit when" condition was a typed-array BSP layout) and from `plans/server-model-memory.md`.
 
 ## Decisions
 
@@ -15,6 +16,42 @@ Made with the developer on 2026-10-16:
 3. **Cold callers get a temporary read-only view** in Phase 2 instead of a one-go rewrite; the view is deleted once unused.
 4. **Who parses in Phase 4, and the SAB policy, are postponed to Phase 4.** The work is the cleanup of the structures first;
    shared memory is a maybe afterwards.
+5. **Phase 3 and Phase 4 are postponed (2026-10-17).** After the Phase 3 survey the developer judged the benefit too small at
+   today's map sizes against the risk of making the renderer's per-face code harder to extend. See "Outcome".
+
+## Outcome
+
+What shipped, in the order it landed (numbers and evidence in the "what shipped" sections below):
+
+| | |
+| :-- | :-- |
+| Phase 0 | measuring tool, characterization of the two hull traversals, the limits that are not geometry |
+| Render-only BSPX lumps | a server no longer loads the lightgrid, deluxemap and face normals: `hw_village` 1049 MB -> 25 MB in the server worker |
+| Lightgrid | kept as the lump bytes and decoded when sampled: 1020 MB -> 15.6 MB in the page |
+| Phase 1 | one `Hull` traversal over typed planes and clip nodes, Pmove copies nothing (4 to 10 MB per realm), traces 1.75x faster |
+| Phase 2 | typed node and leaf tables, the renderer's marks in `WorldRenderState`: nodes + leafs 7.8 MB -> 0.3 MB on `hw_village`, brush traces 1.4x faster |
+| Found on the way | a brush-trace bug (a box touching the side of stacked brushes was lifted onto the lower one) and an underwater render graph assertion, both fixed |
+
+**Postponed, and why.**
+
+- **Phase 3 (faces, vertexes, texinfo).** The survey found 8 MB per server thread and 14 to 17 MB per client thread on `hw_village`,
+  about 3% of a 484 MB tab. It would touch `Lightmaps`, `DynamicLights` and the display list builder, where a one-bit difference is
+  a visual glitch that only screenshots catch, and it would make every future per-face feature a change to several arrays. The
+  benefit grows with map size, but no map ten times larger exists yet.
+- **Phase 4 (shared buffers).** What a listen server still duplicates between the page and the server worker, and could share as
+  plain bytes, is about 2 to 4 MB (nodes, leafs, clip trees, the plane table, visibility rows, RGB lighting). The 1 GB lightgrid
+  and the 10 MB hull copies that made shared memory attractive are gone without it, and the faces are still objects, so there is
+  nothing large to share. It also costs the embedding constraint and a feature-detected fallback, see the umbrella plan's
+  "Parked: SharedArrayBuffer".
+
+**Cheap option left, not done:** `Face.verts` (6.2 MB on `hw_village`, 8.8 MB on `hw_e1m2`, client only) is needed only while the
+display lists are built (and for one tangent fallback). Freeing it afterwards would save that without changing any structure;
+the nine capture views would verify it.
+
+**When to pick this up again.** Measure a map of the intended size first (`scripts/measure-bsp-memory.mts`; the loaded heap of
+the server worker and the page, per structure). Phase 3 pays when the face group is a large share of what a loaded map holds
+(its survey table is the baseline); Phase 4 pays when the typed bytes that both threads hold are tens of MB. The `Brush._brushTraceCheck`
+counter moves to a per-realm array before any brush array is shared.
 
 ## Context
 
@@ -180,8 +217,7 @@ The rows from the lightgrid down are MB of heap that group keeps alive. What thi
   the page. It very likely explains the unexplained 750 MB Hellwave server worker in `plans/server-model-memory.md` (verify with
   the worker heap snapshot that plan still owes). Two fixes, independent of the rest of this plan: do not load it when
   `loadRenderData` is false (server: about 1 GB gone on this map), and give it a flat layout for the client (a `Uint8Array` over
-  the lump with an offset table instead of an object per point), which is a Phase 3 item. The first is a small, safe change and is
-  proposed to be done before Phase 1.
+  the lump with an offset table instead of an object per point). Both are done, see below.
 - Without the lightgrid the structures cost about 29 MB for 24 MB of file on `hw_village`, so the object-graph cost is real but
   small next to it. Per element: a node or leaf about 1.3 KB (disk: 24 to 28 bytes), a plane about 250 B (disk 20, flat 17), a clipnode
   about 110 B (disk 8, flat 8), a face about 1.3 KB.
@@ -348,9 +384,68 @@ to a per-realm scratch array there.
 
 ### Phase 3: faces, vertexes, texinfo
 
-As in C. Done when `loadRenderData: false` allocates no face objects.
+**Postponed (decided 2026-10-17), see "Outcome".** The survey below is the baseline for deciding again.
+
+As in C. Done when `loadRenderData: false` allocates no face objects (see the survey below: the tables are small enough that the
+server keeps them, which navigation needs).
+
+#### Phase 3: survey (2026-10-17, nothing built)
+
+**What it costs now**, per realm (server-style load, `scripts/measure-bsp-memory.mts`, after Phase 2):
+
+| | hw_village | hw_e1m2 | lqdm3 |
+| :-- | --: | --: | --: |
+| faces | 4.7 MB | 6.0 MB | 9.4 MB |
+| vertexes | 1.4 | 2.0 | 3.0 |
+| edges + surfedges | 1.1 | 1.6 | 2.2 |
+| texinfo | 0.6 | 0.1 | 0.8 |
+| marksurfaces | 0.1 | 0.1 | 0.1 |
+| **together** | **7.9 MB of 15.7 MB** | **11.9 of 19.3** | **15.7 of 26.7** |
+
+That is about 800 bytes per face. The client thread pays more, because it holds three things the server never builds:
+
+- `Face.verts`, the per-face vertex arrays of the display list builder (`number[][]`, a record of 7 to 16 doubles per vertex, fan
+  triangulated): measured 6.2 MB on hw_village (37,932 entries) and 8.8 MB on hw_e1m2 (55,095), kept for the life of the map
+  although only the builder (four passes) and one tangent fallback read them.
+- The BSPX `FACENORMALS` lump as `Vector` objects per face and vertex (normal, tangent, bitangent). The Hellwave maps carry it
+  for every face (5783 of 5783 on hw_village, 8025 of 8025, 11025 of 11025 on hw_doom); with the deluxemap they cost 2.9, 2.0 and
+  5.5 MB.
+- The mutable per-face renderer state inside `Face`: `light_s`, `light_t` (lightmap atlas position), `dlightbits`, `dlightframe`.
+
+So the client's face data is roughly 14 to 17 MB per map of this size, and a flat layout should bring it to 2 or 3 MB; the
+server thread goes from 8 to about 0.5 MB. For a map ten times the size that is 100 to 150 MB per thread.
+
+**Who reads it** (engine only; no game imports `Face`, `BrushTexInfo` or the arrays, the `faces` of `id1`'s HUD are its
+face sprites): the three loaders (they build faces, texture extents, flags and the oriented normal from the lumps), `BSPXLoader`
+(face normals), `BrushModelRenderer` (display list builder, tangent fallback, lighting setup), `DynamicLights`
+(marking, impact, add/remove), `Lightmaps` (atlas allocation and the build of the maps), `LightSampler`, `ShadowMap` (the
+`submodel` flag), `Navigation` (the surfaces of the mesh build, server), `Mod.ts` (submodel views share the arrays) and about
+eight tests that construct `Face` objects.
+
+**Proposed layout** (Phase 2's recipe: typed tables, an end state in one go, `tsc` lists the callers):
+
+- `FaceTable` (immutable): plane index, back-side flag, first edge, edge count, texinfo, texture, the four light styles
+  (`Uint8Array`, 255 for none), light offset, texture mins and extents, lightmap shift, flags (turbulent, sky, submodel), the
+  oriented normal. `VertexTable` (`Float32Array`), `EdgeTable` (`Uint32Array`), `surfedges` (`Int32Array`), `TexInfoTable` (the two
+  texture vectors, texture, flags, value, next), `marksurfaces` (`Uint32Array`).
+- `FACENORMALS` as three `Float32Array`s aligned to the surfedges (three floats per `firstedge + i`), so no per-face offset is needed.
+- The mutable part goes into `WorldRenderState` next to the leaf state: `lightS`, `lightT`, `dlightBits`, `dlightFrames`.
+- **`Face.verts` disappears.** The display list builder asks a function for the vertex records of one face (position, texture and
+  lightmap coordinates, the BSPX vectors) into a scratch `Float32Array`, once per pass; that costs milliseconds at load and frees
+  the 6 to 9 MB. The tangent fallback reads the first two vertices from the tables.
+
+**What proves it** (the Phase 2 evidence, extended): every face field, vertex, edge, texinfo and marksurface of the same 8 maps
+hashed before and after; the vertex records the builder produces for every face hashed before and after (that is the
+display list, byte for byte); `LightPoint` and the dynamic light marking at random points; the lightmap atlas the allocator and the
+builder write, if it can run without GL; scripted walks (unchanged, the faces are not collision data) and the nine capture views, whose
+second view has two dynamic lights.
+
+**Risks**: `DynamicLights` and `Lightmaps` do a lot of per-face float math that must not change a bit; the vertex records
+are what the shaders read; the BSP38 loader has its own texinfo and face layout (linked texinfo for animated textures).
 
 ### Phase 4: shared buffers
+
+**Postponed (decided 2026-10-17), see "Outcome".**
 
 As in D. Done when a listen server holds one copy of the geometry (heap measurement in both threads) and the fallback path is
 tested.
@@ -371,9 +466,10 @@ tested.
 
 ## Open questions
 
-Decided on 2026-10-16: sky handling, scope of the first deliverable and the cold-caller view (see "Decisions"). Still open:
+Decided on 2026-10-16: sky handling, scope of the first deliverable and the cold-caller view (see "Decisions"). Postponed with
+Phase 4 (2026-10-17):
 
 1. **Who parses in Phase 4** (server worker or page), and whether the page keeps a second parse of the render-only lumps.
 2. **SAB policy.** Recommended: feature-detect with a clone fallback. Requiring isolation would simplify the code and break the
-   dev server and third-party hosts. Both wait for Phase 4.
+   dev server and third-party hosts.
 3. ~~**Hot-path cost.**~~ Settled by Phase 1: 1.75x faster than the objects, see "Phase 1: what shipped".

@@ -1525,6 +1525,10 @@ change in other phases:
 - Revisit when: the typed-array BSP layout exists, the deployed site is confirmed `crossOriginIsolated`, and the
   embedding constraint is acceptable. Until then new loader code should be SAB-compatible (plain `Uint8Array` over an
   `ArrayBuffer`, no per-model objects) at no cost.
+- **Update 2026-10-17:** `plans/bsp-flat-layout.md` built that layout for the collision and tree data (Phases 0 to 2) and measured
+  what a listen server would still share: 2 to 4 MB, because the lightgrid and the hull copies that were the large duplicates went
+  away without it. Shared buffers are postponed there until a map ten times today's size shows a duplication worth the embedding
+  constraint; that plan says what to measure first.
 
 Replay is in scope (decision 14). New questions get added here as phases surface them, for example the replay plan's open
 details (storage format, whether the recorder ships in production builds).
