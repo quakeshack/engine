@@ -40,7 +40,7 @@ COPY data/id1/maps/test_*.nav ./data/id1/maps/
 COPY data/bsp38-tests ./data/bsp38-tests
 # test/common/event-map-docs.test.ts compares the typed event table with it
 COPY docs/events.md ./docs/events.md
-# test/eslint/control-statement-blocks.test.mjs runs the local lint rule
+# test/eslint/control-statement-blocks.test.ts runs the local lint rule
 COPY eslint.rules.mjs ./eslint.rules.mjs
 
 # Vite/esbuild strip types without checking them, so tsc is the only thing that catches contract drift

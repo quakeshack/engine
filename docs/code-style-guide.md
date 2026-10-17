@@ -76,7 +76,7 @@ There is no registry. A module gets what it needs in one of these ways, in this 
 - **Injection.** Anything that exists per realm or per server (`Server`, `ServerEngineAPI`, `ServerHost`, `Navigation`, the network layer, ...) is a class that receives its collaborators through its constructor, built by the composition root of its realm (`createBrowserClient`, `createDedicatedServer`, `createServerWorker`). Do not carry singletons around in context objects.
 - **Hooks.** A shared singleton that must reach into a realm-specific part gets an interface and an assignable member (`Cmd.files`, `Cmd.forwardToServer`, `Cvar.serverState`, `Host.files`, ...) that the composition root fills in.
 
-Code under `network/` and `server/` must not import `client/`, and the import closure of the server worker may contain only the few client data classes that model loading needs (`test/common/engine-boundaries.test.mjs` enforces both).
+Code under `network/` and `server/` must not import `client/`, and the import closure of the server worker may contain only the few client data classes that model loading needs (`test/common/engine-boundaries.test.ts` enforces both).
 
 ### Event Bus Usage
 

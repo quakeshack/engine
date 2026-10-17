@@ -34,7 +34,7 @@ system, so it runs in Node tests. `ShaderLibrary` (`client/renderer/programs/Sha
 `import.meta.glob` calls (programs `shaders/*.{vert,frag}`, chunks `shaders/include/*.glsl`) and caches the expanded
 program. `bootstrap/createBrowserClient.ts` installs it into `GL.shaderLibrary`, and `GL.CreateProgram` asks it for the
 sources. `GL.ts` itself holds no shader text, so the server worker bundle does not either (pinned by
-`test/common/engine-boundaries.test.mjs`). A new shader file is picked up by the glob; restart a running
+`test/common/engine-boundaries.test.ts`). A new shader file is picked up by the glob; restart a running
 `vite build --watch` after adding one.
 
 ## Error messages

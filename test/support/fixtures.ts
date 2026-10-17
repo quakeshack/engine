@@ -94,7 +94,7 @@ export type MockServer = DeepPartial<Server> & { [member: string]: unknown };
 /** What a test mocks of the client (`engineMocks.CL`); the members that `withMockEngine` itself reads are typed. */
 export interface MockClient {
   serverController?: { state?: { active?: boolean } };
-  cls?: { serverInfo?: { sv_cheats?: string } };
+  cls?: { state?: number; serverInfo?: { sv_cheats?: string } };
   [member: string]: unknown;
 }
 
@@ -102,7 +102,9 @@ export interface MockClient {
 export interface MockConsole {
   Print: (...args: never[]) => void;
   DPrint: (...args: never[]) => void;
-  [member: string]: unknown;
+  PrintWarning?: (...args: never[]) => void;
+  PrintError?: (...args: never[]) => void;
+  PrintSuccess?: (...args: never[]) => void;
 }
 
 /** The engine parts `withMockEngine` installs for the duration of a callback. */
@@ -112,7 +114,8 @@ export interface MockEngineConfig {
   CL?: MockClient | null;
   Con: MockConsole;
   Host: { frametime: number; [member: string]: unknown };
-  SV: MockServer;
+  /** The server; a test of a client with a server in a worker has none. */
+  SV?: MockServer;
 }
 
 /** One call of a mocked `collision.move`: where it was asked to sweep from and to. */

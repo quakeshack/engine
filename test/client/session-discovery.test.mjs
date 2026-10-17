@@ -45,7 +45,7 @@ class FakeWebRTCDriver {
 
 /**
  * Installs the minimal `COM`/`urls`/`Con`/`NET` registry SessionDiscovery needs (`Con` silenced the
- * same way `network-drivers.test.mjs`'s `withSignalingScenario` does, since `subscribe()` logs
+ * same way `network-drivers.test.ts`'s `withSignalingScenario` does, since `subscribe()` logs
  * through it). `NET.driverRegistry.get('webrtc')` resolves to a fresh `FakeWebRTCDriver`, passed to
  * `callback` so tests can assert on/drive the ping-probe lifecycle.
  * @param {string} game active COM.game to simulate for the local client
@@ -162,7 +162,7 @@ void describe('SessionDiscovery.listSessions', () => {
 
 /**
  * A minimal `/browser` WebSocket test double. Tracks every constructed instance (there's no
- * shared one in this repo yet, see `test/common/network-drivers.test.mjs`, which only exercises
+ * shared one in this repo yet, see `test/common/network-drivers.test.ts`, which only exercises
  * `WebRTCDriver.Init()`'s URL derivation and never opens a socket) so tests can reach in and
  * simulate server behavior.
  */
@@ -211,7 +211,7 @@ class FakeWebSocket {
 
 /**
  * Installs `FakeWebSocket` as the global `WebSocket` constructor plus a bare `location` (matching
- * how `network-drivers.test.mjs`'s `withSignalingScenario` mocks it -- `SessionDiscovery` derives
+ * how `network-drivers.test.ts`'s `withSignalingScenario` mocks it -- `SessionDiscovery` derives
  * the `/browser` scheme from `location.protocol`, the same rule `WebRTCDriver.Init()` uses for
  * `/signaling`), restoring both afterward.
  * @param {() => Promise<void> | void} callback test callback

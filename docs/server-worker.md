@@ -68,7 +68,7 @@ once every variable of the page exists, right before the configuration runs:
 | Only the page (`cl_*`, `volume`, the renderer) | Client-owned | The page; it never goes over |
 | Both (`developer`, `host_framerate`, `cl_rollangle`, ...) | Shared | Both; the page's value is pushed to the worker when they meet, and changes travel both ways |
 
-Rules the sync keeps, each with a test (`test/server/server-cvar-realms.test.mjs` runs them against a real
+Rules the sync keeps, each with a test (`test/server/server-cvar-realms.test.ts` runs them against a real
 second realm in a `worker_threads` worker):
 
 1. A write on the page is on the same port as the packets that follow it, so server code sees it before its next frame.
@@ -196,7 +196,7 @@ the same one the page and the dedicated server use) and hands them to the worker
 shared singletons (`Con`, `Cmd`, `Mod`, `W`). `ServerRealm` plays the part `Host` plays on the page: frame timing, scheduling and the cvars
 (`developer`, `host_framerate`, `host_speeds`, `sys_ticrate`) the server code reads.
 
-The worker never loads a client: `test/common/engine-boundaries.test.mjs` fails when the import closure of
+The worker never loads a client: `test/common/engine-boundaries.test.ts` fails when the import closure of
 `server/ServerWorker.ts` reaches client code other than the data classes the model loaders import. The
 navigation worker is started from inside the server worker, with its own factory list.
 
@@ -243,13 +243,13 @@ the frame time and is a lot lower with a GPU.
 
 ## Testing
 
-- `test/common/channel-driver.test.mjs`: the driver, in-process and over a real `MessageChannel`.
-- `test/server/server-worker-runtime.test.mjs`, `server-realm.test.mjs`, `server-worker-console.test.mjs`:
+- `test/common/channel-driver.test.ts`: the driver, in-process and over a real `MessageChannel`.
+- `test/server/server-worker-runtime.test.ts`, `server-realm.test.ts`, `server-worker-console.test.ts`:
   the worker side with stand-ins.
 - `test/client/worker-server-controller.test.mjs`: the page side against a scripted worker.
-- `test/server/server-worker-control-plane.test.mjs`: both sides over a real `MessageChannel`, with a fake
+- `test/server/server-worker-control-plane.test.ts`: both sides over a real `MessageChannel`, with a fake
   server in the middle.
-- `test/server/server-cvar-realms.test.mjs`: cvar and command sync against a second realm in a real worker thread
+- `test/server/server-cvar-realms.test.ts`: cvar and command sync against a second realm in a real worker thread
   (`test/server/fixtures/cvar-realm.mjs`).
 - `server-cvar-sync`, `server-cvar-mirror`, `server-local-console`, `server-savegame`: the pieces on their own.
 - `test/client/peer-relay.test.mjs`: the relay between a made-up WebRTC driver and a worker-side network layer.

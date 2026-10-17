@@ -1,4 +1,4 @@
-// The server side of test/server/server-cvar-realms.test.mjs: a realm of its own with its own cvar
+// The server side of test/server/server-cvar-realms.test.ts: a realm of its own with its own cvar
 // table, answering the same control plane a server worker does. The probes at the end let the test
 // look into this realm and play the part of the game.
 import { parentPort } from 'node:worker_threads';

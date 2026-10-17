@@ -214,7 +214,7 @@ export default defineConfig([
     },
   },
   {
-    // The server runtime must not know the client runtime. `test/common/engine-boundaries.test.mjs`
+    // The server runtime must not know the client runtime. `test/common/engine-boundaries.test.ts`
     // enforces the same boundary in `npm test`.
     files: ['source/engine/server/**/*.ts'],
     rules: {

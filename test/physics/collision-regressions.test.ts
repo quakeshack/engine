@@ -3070,7 +3070,7 @@ async function loadBSPMap(mapName: string): Promise<BrushModel> {
   Mod.Init({ files, con, loadRenderData: false });
 
   try {
-    // Request with the 'maps/' prefix like pmove.test.mjs does
+    // Request with the 'maps/' prefix like pmove.test.ts does
     const model = await Mod.ForNameAsync(`maps/${mapName}`, true) as BrushModel;
     return model;
   } finally {

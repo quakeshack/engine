@@ -63,7 +63,7 @@ withMockEngine({
 
 ### Writing New Tests
 
-1. **One file per production module**: `ServerPhysics` → `test/physics/server-physics.test.mjs`, `Mod` → `test/common/model-cache.test.mjs`.
+1. **One file per production module**: `ServerPhysics` → `test/physics/server-physics.test.ts`, `Mod` → `test/common/model-cache.test.ts`.
 2. **Game/mod tests live with their repo**: `source/game/id1/test/entity/items.test.mjs`, `source/game/id1/test/monster/ogre.test.mjs`, `source/game/hellwave/test/hellwave-game-api.test.mjs`.
 3. **Regression tests go in the relevant subsystem file**, not a catch-all file.
 4. **Document magic numbers** with a comment explaining the derivation. Example:
@@ -88,5 +88,5 @@ npm run test:game      # repo-local game/mod tests
 npm run test:common    # common engine tests
 npm run test:physics       # all physics tests
 npm run test:renderer      # renderer tests
-node --test test/physics/server-physics.test.mjs  # single file
+node --import tsx --test test/physics/server-physics.test.ts  # single file
 ```

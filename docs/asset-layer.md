@@ -79,7 +79,7 @@ answers from a snapshot of the slots' metadata that `SaveSlots.refresh()` takes 
 
 ## Testing
 
-`test/common/asset-source.test.mjs`, `user-store.test.mjs` and `com-storage.test.mjs` run the logic
+`test/common/asset-source.test.ts`, `user-store.test.ts` and `com-storage.test.ts` run the logic
 against fakes for `fetch`, Cache Storage, Web Locks and the key-value backend. The real browser parts
 (`IndexedDbBackend`, real Cache Storage and locks, the migration) need a browser: see
 [browser-verification.md](browser-verification.md).

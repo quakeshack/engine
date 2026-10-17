@@ -1,7 +1,7 @@
 # Track G, type-checked tests: the engine's `.mjs` tests become TypeScript
 
 Track G of `plans/engine-architecture-modernization.md`, the "type-checked tests" bullet. Status: **plan drafted 2026-10-17,
-forks settled the same day (see "Decisions"). Phase 0 is done and committed (`3537396`); Phase 1 (`test/physics/`) is done and committed (`5d9ff36`); Phase 2 (`test/server/`, `test/shared/`, `test/eslint/`) is done (2026-10-17) and waits for review.**
+forks settled the same day (see "Decisions"). Phase 0 is done and committed (`3537396`); Phase 1 (`test/physics/`) is done and committed (`5d9ff36`); Phase 2 (`test/server/`, `test/shared/`, `test/eslint/`) is done and committed (`5d07eb7`); Phase 3 (`test/common/`) is done (2026-10-17) and waits for review.**
 Written for the maintainers. Counts are from a read of the tree on that date (branch `engine-architecture-modernization`).
 
 ## Context
@@ -203,6 +203,31 @@ No shared helper changed in this phase.
 ### Phase 3: `test/common/` (51 files)
 
 Split in two commits' worth of review (network and cvar/command tests, then models and savegames) because of the file count.
+
+#### Phase 3: what shipped (2026-10-17)
+
+All 51 `.mjs` tests of `test/common/` are `.test.ts`. `npm test` 2602 pass (the baseline), `npm run typecheck` 0 errors, ESLint clean
+on `test/common` and `test/support`. Starting point was 675 type errors. 38 `.mjs` tests are left, all in `test/client/` (30) and
+`test/renderer/` (8).
+
+What the checker found:
+
+- **Fakes that no longer matched the class they fake:** the `BaseDriver` fake in `driver-registry.test` was built without the network
+  layer the base class takes; `host-alert.test` declared the recorded `disconnected` as a boolean and then called it.
+- **Promises nobody awaited:** `host-identity.test` ran `runConsoleCommand` (typed `void | Promise<void>`) inside a callback typed
+  `() => void`, so a command that went asynchronous would have passed anyway. The helper is `async` now and the tests await.
+- **Typed events:** `workers.test` published a made-up payload through the typed `publish`; it uses `publishUntyped`, the transport call.
+- **Mocks of shapes that grew:** `ServerHost`/`ServerClient`/`Server` stand-ins, `UserStore` stand-ins that lacked members, and
+  the build config (`com.test`, `com-storage.test`) was a half-filled object where `BuildConfig` has five fields.
+- **Static singletons swapped by hand:** `user-store.test` and `asset-source.test` replaced `console.warn` and restored it; they use
+  `mock.method` now. `network-drivers.test` swapped six browser globals one by one in two places and shares one `installGlobals`.
+
+Shared pieces: `MockEngineConfig.SV` is optional (a client with its server in a worker has none), `MockConsole` lists the `Print*`
+members it may have instead of an index signature, `MockClient.cls` has `state`.
+
+Lint warnings the `.mjs` files never showed were fixed rather than silenced, except two kinds that are the test's purpose:
+`require-atomic-updates` where a test puts a swapped global back in `finally` after an `await` (a documented `eslint-disable`
+comment, file-wide in `savegame.test.ts` which does it a dozen times, and `unbound-method` there for reading a static to restore it).
 
 ### Phase 4: `test/client/` (30 files) and `test/renderer/` (8 files)
 

@@ -540,13 +540,13 @@ how) a game module chooses to present them (see [`events.md`](events.md#host) fo
 - `test/client/session-discovery.test.mjs`, `test/client/save-slots.test.mjs` — the
   `SessionDiscovery`/`SaveSlots` services `ClientEngineAPI.Multiplayer`/`ClientEngineAPI.SaveSlots`
   wrap.
-- `test/common/client-engine-api-menu.test.mjs`,
-  `test/common/client-engine-api-multiplayer.test.mjs`,
-  `test/common/client-engine-api-save-slots.test.mjs`,
-  `test/common/client-engine-api-connection-state.test.mjs` — `ClientEngineAPI.Menu`/
+- `test/common/client-engine-api-menu.test.ts`,
+  `test/common/client-engine-api-multiplayer.test.ts`,
+  `test/common/client-engine-api-save-slots.test.ts`,
+  `test/common/client-engine-api-connection-state.test.ts` — `ClientEngineAPI.Menu`/
   `.Multiplayer`/`.SaveSlots`/`.CL.connected`/`.SV.active` register/open/add-item round-trips,
   using the same `engineMocks` pattern as other client API tests.
-- `test/common/host-alert.test.mjs` — `ClientHost.EndGame`/`Host.Error` publish `host.alert` with the
+- `test/common/host-alert.test.ts` — `ClientHost.EndGame`/`Host.Error` publish `host.alert` with the
   right severity, and `Con.PrintError`/`PrintSuccess` still fire even with nothing subscribed.
 - `source/game/id1/test/client/menu.test.mjs` — `Id1Menu.Init()`: every built-in page registers
   and the root is `'main'`; each page's actual behavior (main menu navigation, new-game/load/save
