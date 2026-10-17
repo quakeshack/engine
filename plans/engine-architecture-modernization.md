@@ -1176,7 +1176,8 @@ closure of its entry only reads the registry in the client data classes model lo
   and answered, `say` works; the dedicated server boots and spawns a map from a fresh build; both production builds
   compile. The only failed requests are the three missing assets that were already missing (`conback.png`,
   `concharslarge.png`, `beam.mdl`). Not verified: pointer lock and mouse look (no change expected, but a live test is
-  still wanted), Firefox, the navigation worker with a real path request on the new `WorkerFramework`.
+  still wanted), Firefox, the navigation worker with a real path request on the new `WorkerFramework` (the last one was
+verified on 2026-10-17, see "Open as of 2026-10-09").
 
 #### Memory check after 4a (2026-10-07)
 
@@ -1402,8 +1403,9 @@ Modules"; dead `registry.frozen` comments and an `isDedicatedServer` option name
 What the developer verified live: pointer lock and mouse look, Firefox, multiplayer over
 WebRTC and WebSocket, sound output. All work. Memory is stable (see "Memory check after 4a").
 
-Still unverified: the navigation worker with a real path request on the new `WorkerFramework`. It needs `.nav` files, so it
-waits for the navigation meshes of the Hellwave maps and is checked there.
+The navigation worker with a real path request on the new `WorkerFramework` needed `.nav` files, so it waited for the
+navigation meshes of the Hellwave maps. **Verified 2026-10-17** by the developer in a singleplayer Hellwave session: the
+`.nav` file loads and path queries are answered.
 
 ### Later tracks (own plans, order flexible after Phase 3)
 
@@ -1447,7 +1449,8 @@ form their own plans define as done, and no open item left in "Open questions".
 part of "everything". D3 (frame graph) was done the same day, `plans/frame-graph.md`. Track E was done on 2026-10-16. **Amended 2026-10-17:** the
 type-checked engine tests (the first bullet of Track G) were back in and are done, see `plans/tests-to-typescript.md`. What 1.3.0 still waits for:
 the one open item in "Open questions" (the navigation worker check with a real path request, which needs the
-Hellwave `.nav` files).
+Hellwave `.nav` files). **That check was done on 2026-10-17** (singleplayer Hellwave session: `.nav` loading and querying
+work), so nothing is left open.
 
 The bump itself, in one commit with no other change:
 
@@ -1506,7 +1509,8 @@ Open as of 2026-10-09 (one item):
   games' `ServerGameAPI`, and `MapDetails` and `StartServerListEntry` from `shared/GameInterfaces.ts`. The menus own that data
   now: Hellwave's `client/MapCatalog.ts` (`MAP_CATALOG`), id1's `START_SERVER_ACTIONS` in `client/Menu.ts`. Client game code no
   longer imports the server game class. Hellwave's `GetStartServerList` override was dead code (id1's menu never saw it).
-- The navigation worker check above.
+- ~~The navigation worker check above.~~ **Done 2026-10-17**: `.nav` loading and querying verified in a singleplayer Hellwave
+  session.
 
 **Parked: SharedArrayBuffer (2026-10-09).** The non-goal was justified by "needs isolation headers on the hosting
 setup", and the engine already sends them, so the premise was stale. Parked rather than adopted, because it has not
