@@ -4,26 +4,41 @@ import { describe, test } from 'node:test';
 import Vector from '../../source/shared/Vector.ts';
 import { moveType } from '../../source/shared/Defs.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
-import SV from '../../source/engine/server/Server.ts';
+import type Server from '../../source/engine/server/Server.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerMessages } from '../../source/engine/server/ServerMessages.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import { PM_TYPE } from '../../source/engine/common/Pmove.ts';
-import { mockedSV } from '../support/fixtures.ts';
+import { createMockEdict, createTestServer } from '../support/fixtures.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
+/** The mock player of a clientdata test: the fields the clientdata message reads, as plain values the test changes. */
+interface ClientdataEntity {
+  classname: string;
+  dmg_inflictor: null;
+  dmg_take: number;
+  dmg_save: number;
+  fixangle: boolean;
+  view_ofs: Vector;
+  idealpitch: number;
+  flags: number;
+  waterlevel: number;
+  punchangle: Vector;
+  health: number;
+  alive: boolean;
+  deadflag: number;
+  movetype: number;
+}
+
 /**
- * Install a minimal registry state for writeClientdataToMessage tests.
- * @returns {{restore: () => void, client: ServerClient, entity: Record<string, unknown>}} Test context.
+ * Install a minimal server state for writeClientdataToMessage tests.
+ * @returns The test context: the server, a client of it, the player entity, and a function that puts the engine back.
  */
-function installClientdataContext() {
+function installClientdataContext(): { restore: () => void; sv: Server; client: ServerClient; entity: ClientdataEntity } {
   const previousCon = engineMocks.Con;
   const previousHost = engineMocks.Host;
-  const previousNET = engineMocks.NET;
-  const previousSV = engineMocks.SV;
-  const previousServer = SV.server;
 
-  const entity = {
+  const entity: ClientdataEntity = {
     classname: 'player',
     dmg_inflictor: null,
     dmg_take: 0,
@@ -40,29 +55,26 @@ function installClientdataContext() {
     movetype: moveType.MOVETYPE_WALK,
   };
 
-  SV.server = {
-    ...SV.server,
+  const sv = createTestServer();
+
+  Object.assign(sv.server, {
     time: 1,
     clientdataFields: ['health', 'alive'],
     clientdataFieldsBitsWriter: 'writeByte',
-    edicts: [null, { num: 1, entity }],
-  };
+    edicts: [createMockEdict({}, 0), createMockEdict(entity, 1)],
+  });
 
   engineMocks.Con = { Print() {}, DPrint() {}, PrintWarning() {} };
   engineMocks.Host = { realtime: 0, version: { string: 'test' } };
-  engineMocks.NET = { SendUnreliableMessage() { return 0; } };
-  engineMocks.SV = SV;
 
-  const client = new ServerClient(0, mockedSV());
+  const client = new ServerClient(0, sv);
 
   return {
     restore() {
       engineMocks.Con = previousCon;
       engineMocks.Host = previousHost;
-      engineMocks.NET = previousNET;
-      engineMocks.SV = previousSV;
-      SV.server = previousServer;
     },
+    sv,
     client,
     entity,
   };
@@ -70,10 +82,10 @@ function installClientdataContext() {
 
 /**
  * Read back only the sparse custom clientdata payload from a clientdata message.
- * @param {SzBuffer} buffer Source message buffer.
- * @returns {{fieldbits: number, values: unknown[]}} Decoded sparse field payload.
+ * @param buffer Source message buffer.
+ * @returns The decoded sparse field payload.
  */
-function readSparseClientdataPayload(buffer) {
+function readSparseClientdataPayload(buffer: SzBuffer): { fieldbits: number; values: unknown[] } {
   buffer.beginReading();
   assert.equal(buffer.readByte(), Protocol.svc.clientdata);
   void buffer.readShort();
@@ -92,10 +104,10 @@ function readSparseClientdataPayload(buffer) {
 /**
  * Reads the pmType byte written as part of the moveack block, right after
  * pmOldButtons and before the clientdata fieldbits.
- * @param {SzBuffer} buffer Source message buffer.
- * @returns {number} Decoded PM_TYPE value.
+ * @param buffer Source message buffer.
+ * @returns The decoded PM_TYPE value.
  */
-function readMoveAckPmType(buffer) {
+function readMoveAckPmType(buffer: SzBuffer): number {
   buffer.beginReading();
   buffer.readByte(); // svc.clientdata
   buffer.readShort(); // bits
@@ -111,7 +123,7 @@ void describe('ServerMessages clientdata sparse updates', () => {
     const context = installClientdataContext();
 
     try {
-      const messages = new ServerMessages(mockedSV());
+      const messages = new ServerMessages(context.sv);
       const msgFirst = new SzBuffer(256, 'first clientdata message');
 
       messages.writeClientdataToMessage(context.client, msgFirst);
@@ -148,7 +160,7 @@ void describe('ServerMessages clientdata sparse updates', () => {
     const context = installClientdataContext();
 
     try {
-      const messages = new ServerMessages(mockedSV());
+      const messages = new ServerMessages(context.sv);
 
       const walkingMsg = new SzBuffer(256, 'walking clientdata message');
       messages.writeClientdataToMessage(context.client, walkingMsg);

@@ -7,33 +7,34 @@ import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerEntityState } from '../../source/engine/server/ServerEntityState.ts';
 import { ServerMessages } from '../../source/engine/server/ServerMessages.ts';
 import Vector from '../../source/shared/Vector.ts';
-import { createTestServer, mockedSV } from '../support/fixtures.ts';
+import type Server from '../../source/engine/server/Server.ts';
+import type { ServerEdict } from '../../source/engine/server/Edict.ts';
+import type { BrushModel, Visibility } from '../../source/engine/common/model/BSP.ts';
+import { createTestServer } from '../support/fixtures.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
 /**
- * Installs a minimal server registry context for delta-entity message tests.
- * @returns {{ restore: () => void }} A restore handle for the mocked registry state.
+ * Installs a minimal server context for delta-entity message tests.
+ * @returns The server, and a function that puts the mocked engine parts back.
  */
-function installWriteDeltaEntityContext() {
+function installWriteDeltaEntityContext(): { sv: Server; restore: () => void } {
   const previousCon = engineMocks.Con;
   const previousHost = engineMocks.Host;
-  const previousSV = engineMocks.SV;
 
   engineMocks.Con = { Print() {}, DPrint() {}, PrintWarning() {} };
   engineMocks.Host = { frametime: 0.1 };
-  engineMocks.SV = /** @type {any} */ ({
-    server: {
-      time: 1,
-      gameCapabilities: [],
-      clientEntityFields: {},
-    },
-  });
+
+  const sv = createTestServer();
+
+  sv.server.time = 1;
+  sv.server.gameCapabilities = [];
+  sv.server.clientEntityFields = {};
 
   return {
+    sv,
     restore() {
       engineMocks.Con = previousCon;
       engineMocks.Host = previousHost;
-      engineMocks.SV = previousSV;
     },
   };
 }
@@ -43,7 +44,7 @@ void describe('ServerMessages.writeDeltaEntity', () => {
     const context = installWriteDeltaEntityContext();
 
     try {
-      const messages = new ServerMessages(mockedSV());
+      const messages = new ServerMessages(context.sv);
       const from = new ServerEntityState(1);
       const to = new ServerEntityState(1);
       const buffer = new SzBuffer(64, 'ServerMessages.writeDeltaEntity alpha fallback');
@@ -67,7 +68,7 @@ void describe('ServerMessages.writeDeltaEntity', () => {
     const context = installWriteDeltaEntityContext();
 
     try {
-      const messages = new ServerMessages(mockedSV());
+      const messages = new ServerMessages(context.sv);
       const from = new ServerEntityState(1);
       const to = new ServerEntityState(1);
       const buffer = new SzBuffer(64, 'ServerMessages.writeDeltaEntity alpha scaling');
@@ -89,14 +90,14 @@ void describe('ServerMessages.writeDeltaEntity', () => {
     const context = installWriteDeltaEntityContext();
 
     try {
-      engineMocks.SV.server.clientEntityFields = {
+      context.sv.server.clientEntityFields = {
         monster_ogre: {
           fields: ['scale'],
           bitsWriter: 'writeByte',
         },
       };
 
-      const messages = new ServerMessages(mockedSV());
+      const messages = new ServerMessages(context.sv);
       const from = new ServerEntityState(1);
       const to = new ServerEntityState(1);
       const buffer = new SzBuffer(64, 'ServerMessages.writeDeltaEntity extended fields');
@@ -137,19 +138,26 @@ void describe('ServerMessages.startParticle', () => {
 });
 
 void describe('ServerMessages.startSound', () => {
+  /** A spawned client with a controllable PHS membership answer and its own `expedited_message` buffer to inspect after the call. */
+  interface FakeClient {
+    state: number;
+    edict: { isInPXS: (pxs: Visibility) => boolean };
+    expedited_message: SzBuffer;
+    isInPXSCalls: Visibility[];
+  }
+
   /**
-   * Builds a fake spawned client with a controllable PHS membership answer
-   * and its own `expedited_message` buffer to inspect after the call.
-   * @param {boolean} inPhs whether `isInPXS` should report this client as reachable
-   * @returns {{ state: number, edict: { isInPXS: (pxs: unknown) => boolean }, expedited_message: SzBuffer, isInPXSCalls: unknown[] }} fake client
+   * Builds a fake spawned client.
+   * @param inPhs Whether `isInPXS` should report this client as reachable.
+   * @returns The fake client.
    */
-  function createFakeClient(inPhs) {
-    const isInPXSCalls = [];
+  function createFakeClient(inPhs: boolean): FakeClient {
+    const isInPXSCalls: Visibility[] = [];
 
     return {
       state: ServerClient.STATE.SPAWNED,
       edict: {
-        isInPXS(pxs) {
+        isInPXS(pxs: Visibility) {
           isInPXSCalls.push(pxs);
           return inPhs;
         },
@@ -160,33 +168,45 @@ void describe('ServerMessages.startSound', () => {
   }
 
   /**
-   * Installs a minimal server registry context for startSound tests.
-   * @param {{ soundPrecache?: string[], clients?: object[], leafnums?: number[] }} options fixture overrides
-   * @returns {{
-   *   messages: ServerMessages, edict: object, phsMarker: object,
-   *   getPhsByLeafsCalls: unknown[][], getPhsByPointCalls: unknown[], restore: () => void,
-   * }} context handle
+   * Installs a minimal server context for startSound tests.
+   * @param options Fixture overrides.
+   * @param options.soundPrecache The server's sound precache list.
+   * @param options.clients The clients of the server.
+   * @param options.leafnums The leafs the sounding entity is linked into.
+   * @returns The context handle.
    */
-  function installStartSoundContext({ soundPrecache = ['', 'weapons/sgun1.wav'], clients = [], leafnums = [3, 7, 9] } = {}) {
-    const phsMarker = { marker: 'phs' };
-    const getPhsByLeafsCalls = [];
-    const getPhsByPointCalls = [];
+  function installStartSoundContext({ soundPrecache = ['', 'weapons/sgun1.wav'], clients = [], leafnums = [3, 7, 9] }: { soundPrecache?: string[]; clients?: FakeClient[]; leafnums?: number[] } = {}): {
+    sv: Server;
+    messages: ServerMessages;
+    edict: ServerEdict;
+    phsMarker: Visibility;
+    getPhsByLeafsCalls: number[][];
+    getPhsByPointCalls: Vector[];
+    restore: () => void;
+  } {
+    // The tests only compare the visibility they are handed back by identity, so a marker object stands in for it.
+    const phsMarker = { marker: 'phs' } as unknown as Visibility;
+    const getPhsByLeafsCalls: number[][] = [];
+    const getPhsByPointCalls: Vector[] = [];
     const sv = createTestServer();
 
     sv.server.datagram = new SzBuffer(2048, 'test datagram');
     sv.server.soundPrecache = [...soundPrecache];
-    sv.server.worldmodel = /** @type {any} */ ({
-      getPhsByLeafs(leafIndices) {
+    // Only the two PHS lookups of the world model are called by startSound.
+    sv.server.worldmodel = {
+      getPhsByLeafs(leafIndices: number[]) {
         getPhsByLeafsCalls.push(leafIndices);
         return phsMarker;
       },
-      getPhsByPoint(origin) {
+      getPhsByPoint(origin: Vector) {
         getPhsByPointCalls.push(origin);
         return phsMarker;
       },
-    });
-    sv.svs.clients = clients;
+    } as unknown as BrushModel;
+    // The fake clients have the state, edict and message buffer startSound reads.
+    sv.svs.clients = clients as unknown as ServerClient[];
 
+    // Only the position, bounds and leafs of the sounding entity are read.
     const edict = {
       num: 5,
       leafnums,
@@ -195,7 +215,7 @@ void describe('ServerMessages.startSound', () => {
         mins: new Vector(-16, -16, -24),
         maxs: new Vector(16, 16, 32),
       },
-    };
+    } as unknown as ServerEdict;
 
     return {
       sv,

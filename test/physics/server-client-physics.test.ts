@@ -7,13 +7,17 @@ import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerClientPhysics } from '../../source/engine/server/physics/ServerClientPhysics.ts';
 
+import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
+import type { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
+import type { Pmove } from '../../source/engine/common/Pmove.ts';
+import type { BaseEntity, ServerEdict } from '../../source/engine/server/Edict.ts';
 import { createBoxBrushModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV } from '../support/fixtures.ts';
 
 /**
- * @param {{msec?: number, forwardmove?: number, sidemove?: number, upmove?: number, impulse?: number}} [options]
- * @returns {UserCmd} command fixture
+ * @param [options]
+ * @returns command fixture
  */
-function createUserCmd(options = {}) {
+function createUserCmd(options: {msec?: number, forwardmove?: number, sidemove?: number, upmove?: number, impulse?: number} = {}): UserCmd {
   const cmd = new UserCmd();
   cmd.msec = options.msec ?? 0;
   cmd.forwardmove = options.forwardmove ?? 0;
@@ -23,13 +27,21 @@ function createUserCmd(options = {}) {
   return cmd;
 }
 
+/** What the stand-in mover was asked to do at one move. */
+interface MoveCall {
+  msec: number;
+  impulse: number;
+  origin: Vector;
+  velocity: Vector;
+}
+
 void describe('ServerClientPhysics', () => {
   void describe('_runSharedPmove', () => {
     void test('syncs pmove state, splits long commands, and deduplicates touch impacts', () => {
       const clientPhysics = new ServerClientPhysics(mockedSV());
-      const impacts = [];
-      const addEntityCalls = [];
-      const moveCalls = [];
+      const impacts: Array<{ ent: ServerEdict; touchEdict: ServerEdict; pushVector: Vector }> = [];
+      const addEntityCalls: Array<{ entity: BaseEntity | ClientEdict; model: BrushModel | null }> = [];
+      const moveCalls: MoveCall[] = [];
 
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
       const playerEntity = createMockEntity({
@@ -45,8 +57,7 @@ void describe('ServerClientPhysics', () => {
       playerEntity.deadflag = 0;
       playerEntity.waterlevel = 1;
       playerEntity.watertype = -3;
-      const playerEdict = createMockEdict(playerEntity);
-      playerEdict.num = 1;
+      const playerEdict = createMockEdict(playerEntity, 1);
 
       const monsterEntity = createMockEntity({
         origin: new Vector(50, 0, 0),
@@ -56,8 +67,7 @@ void describe('ServerClientPhysics', () => {
         solidType: solid.SOLID_BBOX,
       });
       monsterEntity.num = 2;
-      const monsterEdict = createMockEdict(monsterEntity);
-      monsterEdict.num = 2;
+      const monsterEdict = createMockEdict(monsterEntity, 2);
 
       const brushEntity = createMockEntity({
         origin: new Vector(80, 0, 0),
@@ -67,13 +77,11 @@ void describe('ServerClientPhysics', () => {
       });
       brushEntity.num = 3;
       brushEntity.modelindex = 1;
-      const brushEdict = createMockEdict(brushEntity);
-      brushEdict.num = 3;
+      const brushEdict = createMockEdict(brushEntity, 3);
 
       const ignoredTrigger = createMockEdict(createMockEntity({
         solidType: solid.SOLID_TRIGGER,
-      }));
-      ignoredTrigger.num = 4;
+      }), 4);
 
       const fakeMove = {
         origin: new Vector(),
@@ -86,7 +94,7 @@ void describe('ServerClientPhysics', () => {
         dead: false,
         spectator: false,
         pmType: -1,
-        onground: null,
+        onground: null as number | null,
         waterlevel: 0,
         watertype: -1,
         cmd: new UserCmd(),
@@ -128,9 +136,9 @@ void describe('ServerClientPhysics', () => {
           this.physents.length = 1;
           return this;
         },
-        addEntity(entity, model = null) {
+        addEntity(entity: BaseEntity | ClientEdict, model: BrushModel | null = null) {
           addEntityCalls.push({ entity, model });
-          this.physents.push({ edictId: entity.num ?? entity.edictId ?? 0 });
+          this.physents.push({ edictId: ('num' in entity ? entity.num : entity.edictId) ?? 0 });
           return this;
         },
         newPlayerMove() {
@@ -153,15 +161,16 @@ void describe('ServerClientPhysics', () => {
 
       const client = new ServerClient(0, mockedSV());
       client.state = ServerClient.STATE.CONNECTED;
-      client.cmd = createUserCmd({ msec: 100, forwardmove: 200, impulse: 7 });
+      Object.assign(client.cmd, createUserCmd({ msec: 100, forwardmove: 200, impulse: 7 }));
       client.pmOldButtons = 1;
       client.pmFlags = 2;
       client.pmTime = 3;
 
-      void withMockEngine(defaultMockEngine({
-        pmove,
+      withMockEngine(defaultMockEngine({
+        // The stand-in mover answers only what the server's player movement asks of it.
+        pmove: pmove as unknown as Pmove,
         physics: {
-          impact(ent, touchEdict, pushVector) {
+          impact(ent: ServerEdict, touchEdict: ServerEdict, pushVector: Vector) {
             impacts.push({ ent, touchEdict, pushVector: pushVector.copy() });
           },
         },
@@ -210,17 +219,17 @@ void describe('ServerClientPhysics', () => {
   void describe('_runSharedPmove: long commands', () => {
     /**
      * Runs one command through the server's player movement with a recording stand-in for the mover.
-     * @param {number} msec duration of the command
-     * @returns {{msec: number, impulse: number}[]} the moves the mover was asked for
+     * @param msec duration of the command
+     * @returns the moves the mover was asked for
      */
-    function movesOfCommand(msec) {
-      const moves = [];
+    function movesOfCommand(msec: number): {msec: number, impulse: number}[] {
+      const moves: Array<{ msec: number; impulse: number }> = [];
       const mover = {
         origin: new Vector(),
         velocity: new Vector(),
         angles: new Vector(),
         cmd: new UserCmd(),
-        touchindices: [],
+        touchindices: [] as number[],
         onground: null,
         move() {
           moves.push({ msec: this.cmd.msec, impulse: this.cmd.impulse });
@@ -239,10 +248,11 @@ void describe('ServerClientPhysics', () => {
       playerEntity.deadflag = 0;
       const playerEdict = createMockEdict(playerEntity);
       const client = new ServerClient(0, mockedSV());
-      client.cmd = createUserCmd({ msec, impulse: 7 });
+      Object.assign(client.cmd, createUserCmd({ msec, impulse: 7 }));
 
-      void withMockEngine(defaultMockEngine({
-        pmove,
+      withMockEngine(defaultMockEngine({
+        // The stand-in mover answers only what the server's player movement asks of it.
+        pmove: pmove as unknown as Pmove,
         server: { time: 1.0, num_edicts: 2, edicts: [createMockEdict(createMockEntity()), playerEdict], models: [] },
       }), () => {
         new ServerClientPhysics(mockedSV())._runSharedPmove(playerEdict, client);
@@ -278,7 +288,7 @@ void describe('ServerClientPhysics', () => {
   void describe('physicsClient', () => {
     void test('drains queued walk commands and links once per frame', () => {
       const clientPhysics = new ServerClientPhysics(mockedSV());
-      const events = [];
+      const events: Array<[string, ...unknown[]]> = [];
       const entity = createMockEntity({
         movetype: moveType.MOVETYPE_WALK,
         solidType: solid.SOLID_BBOX,
@@ -286,23 +296,23 @@ void describe('ServerClientPhysics', () => {
       const edict = createMockEdict(entity);
       const client = new ServerClient(0, mockedSV());
       client.state = ServerClient.STATE.CONNECTED;
-      client.pendingCmds = [
+      client.pendingCmds.push(
         createUserCmd({ msec: 20, forwardmove: 10, impulse: 1 }),
         createUserCmd({ msec: 30, sidemove: 20, impulse: 2 }),
-      ];
+      );
       edict.getClient = () => client;
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
-          linkEdict(linkedEdict, touchTriggers) {
+          linkEdict(linkedEdict: ServerEdict, touchTriggers: boolean) {
             events.push(['linkEdict', linkedEdict, touchTriggers]);
           },
         },
         physics: {
-          checkVelocity(checkedEdict) {
+          checkVelocity(checkedEdict: ServerEdict) {
             events.push(['checkVelocity', checkedEdict]);
           },
-          runThink(thunkEdict) {
+          runThink(thunkEdict: ServerEdict) {
             events.push(['runThink', thunkEdict]);
             return true;
           },
@@ -311,16 +321,17 @@ void describe('ServerClientPhysics', () => {
           },
           flyMove() {
             events.push(['flyMove']);
+            return { blocked: 0, steptrace: null };
           },
         },
         server: {
           time: 8.0,
           gameAPI: {
             time: 0,
-            PlayerPreThink(thunkEdict) {
+            PlayerPreThink(thunkEdict: ServerEdict) {
               events.push(['preThink', thunkEdict]);
             },
-            PlayerPostThink(thunkEdict) {
+            PlayerPostThink(thunkEdict: ServerEdict) {
               events.push(['postThink', thunkEdict]);
             },
           },
@@ -342,16 +353,19 @@ void describe('ServerClientPhysics', () => {
         'linkEdict',
         'postThink',
       ]);
-      assert.equal(events[3][2].msec, 20);
-      assert.equal(events[3][2].impulse, 1);
-      assert.equal(events[4][2].msec, 30);
-      assert.equal(events[4][2].impulse, 2);
+      const firstCmd = events[3][2] as UserCmd;
+      const secondCmd = events[4][2] as UserCmd;
+
+      assert.equal(firstCmd.msec, 20);
+      assert.equal(firstCmd.impulse, 1);
+      assert.equal(secondCmd.msec, 30);
+      assert.equal(secondCmd.impulse, 2);
       assert.equal(client.pendingCmds.length, 0);
     });
 
     void test('skips movement when no walk commands are queued', () => {
       const clientPhysics = new ServerClientPhysics(mockedSV());
-      const events = [];
+      const events: string[] = [];
       const entity = createMockEntity({
         movetype: moveType.MOVETYPE_WALK,
         solidType: solid.SOLID_BBOX,
@@ -361,7 +375,7 @@ void describe('ServerClientPhysics', () => {
       client.state = ServerClient.STATE.CONNECTED;
       edict.getClient = () => client;
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           linkEdict() {
             events.push('linkEdict');
@@ -380,6 +394,7 @@ void describe('ServerClientPhysics', () => {
           },
           flyMove() {
             events.push('flyMove');
+            return { blocked: 0, steptrace: null };
           },
         },
         server: {

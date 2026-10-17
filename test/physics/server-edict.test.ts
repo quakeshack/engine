@@ -2,18 +2,22 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
+import { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
+import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerEdict } from '../../source/engine/server/Edict.ts';
 
 import { defaultMockEngine, withMockEngine, mockedSV } from '../support/fixtures.ts';
 
 void describe('ServerEdict', () => {
   void test('keeps getClient slot mapping separate from isClient semantics', () => {
-    const reservedSlotClient = { state: 0 };
+    // Slot 15 is past maxclients: the slot of edict 16 is looked up all the same.
+    const clients = Array.from({ length: 16 }, (_, slot) => new ServerClient(slot, mockedSV()));
+    const reservedSlotClient = clients[15];
 
-    void withMockEngine(defaultMockEngine({
+    withMockEngine(defaultMockEngine({
       svs: {
         maxclients: 4,
-        clients: [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, reservedSlotClient],
+        clients,
       },
       server: {
         num_edicts: 32,
@@ -28,17 +32,20 @@ void describe('ServerEdict', () => {
   });
 
   void test('can suppress trigger touches during model relinks', () => {
-    const linkCalls = [];
+    const linkCalls: boolean[] = [];
+    const playerModel = new BaseModel('progs/player.mdl');
+    playerModel.mins = new Vector(-16, -16, -24);
+    playerModel.maxs = new Vector(16, 16, 32);
 
-    void withMockEngine(defaultMockEngine({
+    withMockEngine(defaultMockEngine({
       area: {
-        linkEdict(_edict, touchTriggers) {
+        linkEdict(_edict: ServerEdict, touchTriggers: boolean) {
           linkCalls.push(touchTriggers);
         },
       },
       server: {
         modelPrecache: ['progs/player.mdl'],
-        models: [{ mins: new Vector(-16, -16, -24), maxs: new Vector(16, 16, 32) }],
+        models: [playerModel],
       },
     }), () => {
       const edict = new ServerEdict(1, mockedSV());

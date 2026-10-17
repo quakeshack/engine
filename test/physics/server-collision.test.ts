@@ -9,18 +9,23 @@ import { MeshModel } from '../../source/engine/common/model/MeshModel.ts';
 import { DIST_EPSILON, Pmove } from '../../source/engine/common/Pmove.ts';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.ts';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';
-import { AliasCollisionState, HullCollisionState, MeshCollisionState } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
+import { AliasCollisionState, CollisionPlane, CollisionTrace, HullCollisionState, MeshCollisionState } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 
 import { createClipTree, createLegacyHull } from '../support/hulls.ts';
-import { assertNear, createAxisPlane, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV, mockedCollisionModelSource } from '../support/fixtures.ts';
+import { assertNear, createAxisPlane, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV, mockedCollisionModelSource, createPmoveTrace, type MockEntity } from '../support/fixtures.ts';
 import { createModelLoadContext } from '../support/modelContext.ts';
+import type { Octree } from '../../source/shared/Octree.ts';
+import type { ServerEdict } from '../../source/engine/server/Edict.ts';
+import type { AliasSingleFrame } from '../../source/engine/common/model/AliasModel.ts';
+import type { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
 
 /**
- *
- * @param x
+ * Build a mesh model that is a single wall of two triangles at the given x.
+ * @param x Where the wall stands.
+ * @returns The mesh model.
  */
-function createWallMeshModel(x = 0) {
+function createWallMeshModel(x = 0): MeshModel {
   const model = new MeshModel(`wall-${x}.obj`);
   model.vertices = new Float32Array([
     x, 0, 0,
@@ -37,11 +42,12 @@ function createWallMeshModel(x = 0) {
 }
 
 /**
- *
- * @param nearX
- * @param farX
+ * Build a mesh model of two parallel walls.
+ * @param nearX Where the first wall stands.
+ * @param farX Where the second wall stands.
+ * @returns The mesh model.
  */
-function createDoubleWallMeshModel(nearX = 0, farX = 256) {
+function createDoubleWallMeshModel(nearX = 0, farX = 256): MeshModel {
   const model = new MeshModel(`double-wall-${nearX}-${farX}.obj`);
   model.vertices = new Float32Array([
     nearX, 0, 0,
@@ -62,12 +68,13 @@ function createDoubleWallMeshModel(nearX = 0, farX = 256) {
 }
 
 /**
- *
- * @param x
- * @param y
- * @param z
+ * Build one vertex of an alias pose.
+ * @param x X of the vertex.
+ * @param y Y of the vertex.
+ * @param z Z of the vertex.
+ * @returns The pose vertex.
  */
-function createAliasPoseVertex(x, y, z) {
+function createAliasPoseVertex(x: number, y: number, z: number): AliasSingleFrame['v'][number] {
   return {
     v: new Vector(x, y, z),
     lightnormalindex: 0,
@@ -75,11 +82,12 @@ function createAliasPoseVertex(x, y, z) {
 }
 
 /**
- *
- * @param name
- * @param x
+ * Build an alias animation frame that is a wall at the given x.
+ * @param name Name of the frame.
+ * @param x Where the wall stands.
+ * @returns The frame.
  */
-function createAliasWallFrame(name, x) {
+function createAliasWallFrame(name: string, x: number): AliasSingleFrame {
   return {
     group: false,
     bboxmin: new Vector(x, 0, 0),
@@ -95,10 +103,11 @@ function createAliasWallFrame(name, x) {
 }
 
 /**
- *
- * @param frames
+ * Build an alias model out of wall frames.
+ * @param frames The animation frames.
+ * @returns The alias model.
  */
-function createAliasWallModel(frames) {
+function createAliasWallModel(frames: AliasModel['frames']): AliasModel {
   const model = new AliasModel('progs/wall-test.mdl');
   model._scale = new Vector(1, 1, 1);
   model._scale_origin = new Vector();
@@ -112,25 +121,33 @@ function createAliasWallModel(frames) {
 
   const bounds = model.getCollisionBounds();
   assert.notEqual(bounds, null);
-  model.mins = bounds.mins;
-  model.maxs = bounds.maxs;
+  model.mins = bounds!.mins;
+  model.maxs = bounds!.maxs;
   return model;
 }
 
+/** Options of {@link assertMonsterTouchUsesMeshHullFallback}. */
+interface MonsterTouchOptions {
+  /** The model of the blocking entity. */
+  model: BaseModel;
+  /** The collision state class the blocker is expected to get. */
+  expectedStateCtor: abstract new (...args: never[]) => object;
+  /** Changes the blocking entity before it is linked. */
+  configureEntity?: (entity: MockEntity) => void;
+  /** The server time. */
+  time?: number;
+}
+
 /**
- *
- * @param root0
- * @param root0.model
- * @param root0.expectedStateCtor
- * @param root0.configureEntity
- * @param root0.time
+ * Asserts that a monster moving into a model with no hull falls back to the model's mesh or pose for the touch test.
+ * @param options What to test.
  */
 function assertMonsterTouchUsesMeshHullFallback({
   model,
   expectedStateCtor,
   configureEntity = () => {},
   time = 0.0,
-}) {
+}: MonsterTouchOptions): void {
   const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
   const area = new ServerArea(mockedSV(), mockedCollisionModelSource());
   const movingMonsterEdict = createMockEdict(createMockEntity({
@@ -154,7 +171,7 @@ function assertMonsterTouchUsesMeshHullFallback({
 
   const blockerEdict = createMockEdict(blockerEntity);
 
-  void withMockEngine(defaultMockEngine({
+  withMockEngine(defaultMockEngine({
     area,
     server: {
       edicts: [createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP })), blockerEdict],
@@ -168,14 +185,13 @@ function assertMonsterTouchUsesMeshHullFallback({
     assert.ok(collisionState instanceof expectedStateCtor);
 
     const trace = collision._traceTouch({
-      trace: {
+      trace: new CollisionTrace(new Vector(80, 16, 16), {
         fraction: 1.0,
         allsolid: false,
         startsolid: false,
-        endpos: new Vector(80, 16, 16),
-        plane: { normal: new Vector(), dist: 0.0 },
+        plane: new CollisionPlane(new Vector(), 0.0),
         ent: null,
-      },
+      }),
       start: new Vector(-200, 16, 16),
       end: new Vector(80, 16, 16),
       mins: Pmove.PLAYER_MINS.copy(),
@@ -227,7 +243,7 @@ void describe('ServerCollision', () => {
       });
       const worldEdict = createMockEdict(worldEntity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           hulls: {
             forEntity(_ent, _mins, _maxs, offset) {
@@ -237,7 +253,7 @@ void describe('ServerCollision', () => {
           },
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -276,7 +292,7 @@ void describe('ServerCollision', () => {
       });
       const worldEdict = createMockEdict(worldEntity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           hulls: {
             forEntity() {
@@ -285,7 +301,7 @@ void describe('ServerCollision', () => {
           },
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -315,7 +331,7 @@ void describe('ServerCollision', () => {
       // _clipMoveToHullState is stubbed below and never touches this, but a non-empty
       // array is required to represent a world that has legacy hulls at all (BSP29/BSP2),
       // which is what this test's hull-preference scenario is about.
-      worldModel.hulls = [{}];
+      worldModel.hulls = [{}] as unknown as BrushModel['hulls'];
       const worldEntity = createMockEntity({
         origin: new Vector(),
         angles: new Vector(),
@@ -324,11 +340,11 @@ void describe('ServerCollision', () => {
       });
       const worldEdict = createMockEdict(worldEntity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -337,40 +353,14 @@ void describe('ServerCollision', () => {
           worldmodel: worldModel,
         },
       }), () => {
-        collision._traceBrushModel = () => ({
-          fraction: 0.25,
-          allsolid: false,
-          startsolid: false,
-          endpos: new Vector(25, 0, 0),
-          plane: { normal: new Vector(-1, 0, 0), dist: -25 },
-          inopen: true,
-          inwater: false,
-        });
+        collision._traceBrushModel = () => (createPmoveTrace({ endpos: new Vector(25, 0, 0), fraction: 0.25, allsolid: false, startsolid: false, normal: new Vector(-1, 0, 0), dist: -25, inopen: true, inwater: false }));
 
         collision._clipMoveToHullState = (state, start, mins, maxs, end) => {
           if (state.ent !== worldEdict) {
-            return {
-              fraction: 1.0,
-              allsolid: false,
-              startsolid: false,
-              endpos: end.copy(),
-              plane: { normal: new Vector(), dist: 0.0 },
-              ent: null,
-              inopen: false,
-              inwater: false,
-            };
+            return new CollisionTrace(end.copy(), { fraction: 1.0, allsolid: false, startsolid: false, plane: new CollisionPlane(new Vector(), 0.0), ent: null, inopen: false, inwater: false });
           }
 
-          return {
-            fraction: 0.5,
-            allsolid: false,
-            startsolid: false,
-            endpos: new Vector(50, 0, 0),
-            plane: { normal: new Vector(-1, 0, 0), dist: -50 },
-            ent: worldEdict,
-            inopen: true,
-            inwater: false,
-          };
+          return new CollisionTrace(new Vector(50, 0, 0), { fraction: 0.5, allsolid: false, startsolid: false, plane: new CollisionPlane(new Vector(-1, 0, 0), -50), ent: worldEdict, inopen: true, inwater: false });
         };
 
         const trace = collision.move(
@@ -405,8 +395,7 @@ void describe('ServerCollision', () => {
           { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
         ],
       });
-      const worldModel = new BrushModel();
-      worldModel.name = 'legacy-world';
+      const worldModel = new BrushModel('legacy-world');
       worldModel.hulls = [worldHull, worldHull, worldHull];
 
       const worldEntity = createMockEntity({
@@ -417,7 +406,7 @@ void describe('ServerCollision', () => {
       });
       const worldEdict = createMockEdict(worldEntity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           hulls: {
             forEntity() {
@@ -426,7 +415,7 @@ void describe('ServerCollision', () => {
           },
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -469,8 +458,7 @@ void describe('ServerCollision', () => {
           { planenum: 2, children: [content.CONTENT_SOLID, content.CONTENT_EMPTY] },
         ],
       });
-      const worldModel = new BrushModel();
-      worldModel.name = 'legacy-midpoint-world';
+      const worldModel = new BrushModel('legacy-midpoint-world');
       worldModel.hulls = [worldHull, worldHull, worldHull];
 
       const worldEntity = createMockEntity({
@@ -481,7 +469,7 @@ void describe('ServerCollision', () => {
       });
       const worldEdict = createMockEdict(worldEntity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           hulls: {
             forEntity() {
@@ -490,7 +478,7 @@ void describe('ServerCollision', () => {
           },
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -524,7 +512,7 @@ void describe('ServerCollision', () => {
       // _clipMoveToHullState is stubbed below and never touches this, but a non-empty
       // array is required to represent an entity model with legacy hulls (BSP29/BSP2),
       // which is what this test's hull-preference scenario is about.
-      entityModel.hulls = [{}];
+      entityModel.hulls = [{}] as unknown as BrushModel['hulls'];
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
       const bspEntity = createMockEntity({
         origin: new Vector(64, 0, 0),
@@ -535,11 +523,11 @@ void describe('ServerCollision', () => {
       bspEntity.modelindex = 1;
       const bspEdict = createMockEdict(bspEntity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [bspEdict];
+              return [bspEdict].values();
             },
           },
         },
@@ -551,52 +539,18 @@ void describe('ServerCollision', () => {
       }), () => {
         collision._traceBrushModel = (model, _start, _mins, _maxs, end) => {
           if (model === entityModel) {
-            return {
-              fraction: 0.25,
-              allsolid: false,
-              startsolid: false,
-              endpos: new Vector(25, 0, 0),
-              plane: { normal: new Vector(-1, 0, 0), dist: -25 },
-              inopen: true,
-              inwater: false,
-            };
+            return createPmoveTrace({ endpos: new Vector(25, 0, 0), fraction: 0.25, allsolid: false, startsolid: false, normal: new Vector(-1, 0, 0), dist: -25, inopen: true, inwater: false });
           }
 
-          return {
-            fraction: 1.0,
-            allsolid: false,
-            startsolid: false,
-            endpos: end.copy(),
-            plane: { normal: new Vector(), dist: 0.0 },
-            inopen: true,
-            inwater: false,
-          };
+          return createPmoveTrace({ endpos: end.copy(), fraction: 1.0, allsolid: false, startsolid: false, normal: new Vector(), dist: 0.0, inopen: true, inwater: false });
         };
 
         collision._clipMoveToHullState = (state, _start, _mins, _maxs, end) => {
           if (state.ent !== bspEdict) {
-            return {
-              fraction: 1.0,
-              allsolid: false,
-              startsolid: false,
-              endpos: end.copy(),
-              plane: { normal: new Vector(), dist: 0.0 },
-              ent: null,
-              inopen: false,
-              inwater: false,
-            };
+            return new CollisionTrace(end.copy(), { fraction: 1.0, allsolid: false, startsolid: false, plane: new CollisionPlane(new Vector(), 0.0), ent: null, inopen: false, inwater: false });
           }
 
-          return {
-            fraction: 0.5,
-            allsolid: false,
-            startsolid: false,
-            endpos: new Vector(50, 0, 0),
-            plane: { normal: new Vector(-1, 0, 0), dist: -50 },
-            ent: bspEdict,
-            inopen: true,
-            inwater: false,
-          };
+          return new CollisionTrace(new Vector(50, 0, 0), { fraction: 0.5, allsolid: false, startsolid: false, plane: new CollisionPlane(new Vector(-1, 0, 0), -50), ent: bspEdict, inopen: true, inwater: false });
         };
 
         const trace = collision.move(
@@ -627,15 +581,12 @@ void describe('ServerCollision', () => {
       });
       monsterEntity.absmin = monsterEntity.origin.copy().add(monsterEntity.mins);
       monsterEntity.absmax = monsterEntity.origin.copy().add(monsterEntity.maxs);
-      const monsterEdict = createMockEdict(monsterEntity);
-      monsterEdict.num = 1;
+      const monsterEdict = createMockEdict(monsterEntity, 1);
 
-      /** @type {{ boxmins: Vector, boxmaxs: Vector }[]} */
-      const queryCalls = [];
-      /** @type {{ ent: object, mins: Vector, maxs: Vector, end: Vector }[]} */
-      const traceCalls = [];
+      const queryCalls: { boxmins: Vector, boxmaxs: Vector }[] = [];
+      const traceCalls: Array<{ ent: ServerEdict; mins: Vector; maxs: Vector; end: Vector }> = [];
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB(boxmins, boxmaxs) {
@@ -650,7 +601,7 @@ void describe('ServerCollision', () => {
                 || boxmaxs[2] < monsterEntity.absmin[2]
               );
 
-              return overlapsMonster ? [monsterEdict] : [];
+              return (overlapsMonster ? [monsterEdict] : []).values();
             },
           },
         },
@@ -663,24 +614,10 @@ void describe('ServerCollision', () => {
           traceCalls.push({ ent: state.ent, mins: mins.copy(), maxs: maxs.copy(), end: end.copy() });
 
           if (state.ent === worldEdict) {
-            return {
-              fraction: 1.0,
-              allsolid: false,
-              startsolid: false,
-              endpos: end.copy(),
-              plane: { normal: new Vector(), dist: 0.0 },
-              ent: null,
-            };
+            return new CollisionTrace(end.copy(), { fraction: 1.0, allsolid: false, startsolid: false, plane: new CollisionPlane(new Vector(), 0.0), ent: null });
           }
 
-          return {
-            fraction: 0.25,
-            allsolid: false,
-            startsolid: false,
-            endpos: new Vector(25, 0, 0),
-            plane: { normal: new Vector(-1, 0, 0), dist: 0.0 },
-            ent: monsterEdict,
-          };
+          return new CollisionTrace(new Vector(25, 0, 0), { fraction: 0.25, allsolid: false, startsolid: false, plane: new CollisionPlane(new Vector(-1, 0, 0), 0.0), ent: monsterEdict });
         };
 
         const start = new Vector(0, 0, 0);
@@ -704,8 +641,8 @@ void describe('ServerCollision', () => {
 
         assert.ok(missileQuery.boxmaxs[1] >= monsterEntity.absmin[1]);
         assert.notEqual(missileMonsterTrace, undefined);
-        assert.deepEqual([...missileMonsterTrace.mins], [...ServerCollision.MISSILE_MINS]);
-        assert.deepEqual([...missileMonsterTrace.maxs], [...ServerCollision.MISSILE_MAXS]);
+        assert.deepEqual([...missileMonsterTrace!.mins], [...ServerCollision.MISSILE_MINS]);
+        assert.deepEqual([...missileMonsterTrace!.maxs], [...ServerCollision.MISSILE_MAXS]);
         assert.equal(missileTrace.ent, monsterEdict);
         assert.equal(missileTrace.fraction, 0.25);
       });
@@ -757,17 +694,15 @@ void describe('ServerCollision', () => {
         solidType: solid.SOLID_BBOX,
       }));
 
-      /** @type {{ boxmins: Vector, boxmaxs: Vector }[]} */
-      const queryCalls = [];
-      /** @type {object[]} */
-      const traceCalls = [];
+      const queryCalls: { boxmins: Vector, boxmaxs: Vector }[] = [];
+      const traceCalls: Array<{ ent: ServerEdict; start: Vector; mins: Vector; maxs: Vector; end: Vector }> = [];
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB(boxmins, boxmaxs) {
               queryCalls.push({ boxmins: boxmins.copy(), boxmaxs: boxmaxs.copy() });
-              return [passedict, triggerEdict, offBoundsEdict, blockingEdict];
+              return [passedict, triggerEdict, offBoundsEdict, blockingEdict].values();
             },
           },
         },
@@ -780,28 +715,10 @@ void describe('ServerCollision', () => {
           traceCalls.push({ ent: state.ent, start: start.copy(), mins: mins.copy(), maxs: maxs.copy(), end: end.copy() });
 
           if (state.ent === worldEdict) {
-            return {
-              fraction: 1.0,
-              allsolid: false,
-              startsolid: false,
-              endpos: end.copy(),
-              plane: { normal: new Vector(), dist: 0.0 },
-              ent: null,
-              inopen: false,
-              inwater: false,
-            };
+            return new CollisionTrace(end.copy(), { fraction: 1.0, allsolid: false, startsolid: false, plane: new CollisionPlane(new Vector(), 0.0), ent: null, inopen: false, inwater: false });
           }
 
-          return {
-            fraction: 0.5,
-            allsolid: false,
-            startsolid: false,
-            endpos: new Vector(20, 40, 40),
-            plane: { normal: new Vector(-1, 0, 0), dist: -20 },
-            ent: state.ent,
-            inopen: true,
-            inwater: false,
-          };
+          return new CollisionTrace(new Vector(20, 40, 40), { fraction: 0.5, allsolid: false, startsolid: false, plane: new CollisionPlane(new Vector(-1, 0, 0), -20), ent: state.ent, inopen: true, inwater: false });
         };
 
         const start = new Vector(10, 20, 30);
@@ -814,7 +731,7 @@ void describe('ServerCollision', () => {
           maxs,
           end,
           moveTypes.MOVE_NORMAL,
-          /** @type {import('../../source/engine/server/Client.ts').ServerEdict} */ (passedict),
+          /** @type {ServerEdict} */ (passedict),
         );
 
         assert.equal(queryCalls.length, 1);
@@ -849,14 +766,13 @@ void describe('ServerCollision', () => {
         solidType: solid.SOLID_BBOX,
       }));
 
-      /** @type {object[]} */
-      const traceCalls = [];
+      const traceCalls: Array<{ ent: ServerEdict; start: Vector; mins: Vector; maxs: Vector; end: Vector }> = [];
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [farEdict, nearEdict];
+              return [farEdict, nearEdict].values();
             },
           },
         },
@@ -869,39 +785,14 @@ void describe('ServerCollision', () => {
           traceCalls.push({ ent: state.ent, start: start.copy(), mins: mins.copy(), maxs: maxs.copy(), end: end.copy() });
 
           if (state.ent === worldEdict) {
-            return {
-              fraction: 1.0,
-              allsolid: false,
-              startsolid: false,
-              endpos: end.copy(),
-              plane: { normal: new Vector(), dist: 0.0 },
-              ent: null,
-              inopen: false,
-              inwater: false,
-            };
+            return new CollisionTrace(end.copy(), { fraction: 1.0, allsolid: false, startsolid: false, plane: new CollisionPlane(new Vector(), 0.0), ent: null, inopen: false, inwater: false });
           }
 
           if (state.ent === farEdict) {
-            return {
-              fraction: 0.6,
-              allsolid: false,
-              startsolid: false,
-              endpos: new Vector(60, 0, 0),
-              plane: { normal: new Vector(-1, 0, 0), dist: -60 },
-              ent: farEdict,
-            };
+            return new CollisionTrace(new Vector(60, 0, 0), { fraction: 0.6, allsolid: false, startsolid: false, plane: new CollisionPlane(new Vector(-1, 0, 0), -60), ent: farEdict });
           }
 
-          return {
-            fraction: 0.2,
-            allsolid: false,
-            startsolid: false,
-            endpos: new Vector(20, 0, 0),
-            plane: { normal: new Vector(-1, 0, 0), dist: -20 },
-            ent: nearEdict,
-            inopen: true,
-            inwater: false,
-          };
+          return new CollisionTrace(new Vector(20, 0, 0), { fraction: 0.2, allsolid: false, startsolid: false, plane: new CollisionPlane(new Vector(-1, 0, 0), -20), ent: nearEdict, inopen: true, inwater: false });
         };
 
         const trace = collision.move(
@@ -935,11 +826,11 @@ void describe('ServerCollision', () => {
       meshEntity.modelindex = 1;
       const meshEdict = createMockEdict(meshEntity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -977,11 +868,11 @@ void describe('ServerCollision', () => {
       meshEntity.modelindex = 1;
       const meshEdict = createMockEdict(meshEntity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -1017,11 +908,11 @@ void describe('ServerCollision', () => {
       meshEntity.modelindex = 1;
       const meshEdict = createMockEdict(meshEntity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -1044,7 +935,7 @@ void describe('ServerCollision', () => {
         );
 
         assert.notEqual(triangleTrace, null);
-        assert.deepEqual([...triangleTrace.getCandidateTriangleIndices()].sort((a, b) => a - b), [0, 1]);
+        assert.deepEqual([...triangleTrace!.getCandidateTriangleIndices()].sort((a, b) => a - b), [0, 1]);
       });
     });
 
@@ -1064,11 +955,11 @@ void describe('ServerCollision', () => {
       aliasEntity.frame = 0;
       const aliasEdict = createMockEdict(aliasEntity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -1112,9 +1003,9 @@ void describe('ServerCollision', () => {
       aliasEntity.classname = 'monster_test';
       aliasEntity.modelindex = 1;
       const aliasEdict = createMockEdict(aliasEntity);
-      const warnings = [];
+      const warnings: string[] = [];
 
-      void withMockEngine({
+      withMockEngine({
         ...defaultMockEngine({
           server: {
             edicts: [worldEdict, aliasEdict],
@@ -1122,7 +1013,7 @@ void describe('ServerCollision', () => {
             models: [null, aliasModel],
           },
         }),
-        Con: { Print() {}, DPrint() {}, PrintWarning(message) { warnings.push(message); } },
+        Con: { Print() {}, DPrint() {}, PrintWarning(message: string) { warnings.push(message); } },
       }, () => {
         assert.ok(collision._getEntityCollisionState(aliasEdict) instanceof HullCollisionState);
         assert.ok(collision._getEntityCollisionState(aliasEdict) instanceof HullCollisionState);
@@ -1169,11 +1060,11 @@ void describe('ServerCollision', () => {
         time: 0.25,
       };
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -1217,11 +1108,11 @@ void describe('ServerCollision', () => {
       bspEntity.modelindex = 1;
       const bspEdict = createMockEdict(bspEntity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -1231,15 +1122,7 @@ void describe('ServerCollision', () => {
           models: [null, entityModel],
         },
       }), () => {
-        collision._traceBrushModel = () => ({
-          fraction: 0.25,
-          allsolid: false,
-          startsolid: false,
-          endpos: new Vector(25, 0, 0),
-          plane: { normal: new Vector(-1, 0, 0), dist: -25 },
-          inopen: true,
-          inwater: false,
-        });
+        collision._traceBrushModel = () => (createPmoveTrace({ endpos: new Vector(25, 0, 0), fraction: 0.25, allsolid: false, startsolid: false, normal: new Vector(-1, 0, 0), dist: -25, inopen: true, inwater: false }));
 
         collision._clipMoveToHullState = () => {
           throw new Error('rotated BSP point traces should not use legacy hull fallback');
@@ -1304,11 +1187,11 @@ void describe('ServerCollision', () => {
         ],
       });
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -1329,11 +1212,11 @@ void describe('ServerCollision', () => {
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -1353,11 +1236,11 @@ void describe('ServerCollision', () => {
       worldModel.leafTable.contents[1] = content.CONTENT_CURRENT_DOWN;
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -1381,11 +1264,11 @@ void describe('ServerCollision', () => {
         solidType: solid.SOLID_BSP,
       }));
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -1407,11 +1290,11 @@ void describe('ServerCollision', () => {
       const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -1450,8 +1333,7 @@ void describe('ServerCollision', () => {
           { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
         ],
       });
-      const worldModel = new BrushModel();
-      worldModel.name = 'legacy-world-line';
+      const worldModel = new BrushModel('legacy-world-line');
       worldModel.hulls = [worldHull, worldHull, worldHull];
 
       const worldEntity = createMockEntity({
@@ -1462,7 +1344,7 @@ void describe('ServerCollision', () => {
       });
       const worldEdict = createMockEdict(worldEntity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           hulls: {
             forEntity() {
@@ -1471,7 +1353,7 @@ void describe('ServerCollision', () => {
           },
           tree: {
             queryAABB() {
-              return [];
+              return [].values();
             },
           },
         },
@@ -1505,7 +1387,7 @@ void describe('ServerArea', () => {
     const movingEdict = createMockEdict(movingEntity);
     const offset = new Vector(1, 1, 1);
 
-    void withMockEngine(defaultMockEngine({
+    withMockEngine(defaultMockEngine({
       server: {
         edicts: [],
         models: [null, worldModel],
@@ -1528,7 +1410,7 @@ void describe('ServerArea', () => {
       solidType: solid.SOLID_BBOX,
     });
     const subjectEdict = createMockEdict(subjectEntity);
-    const touchedEntities = [];
+    const touchedEntities: Array<{ spawnflags: number | undefined; other: unknown }> = [];
     const triggerEntity = createMockEntity({
       origin: new Vector(),
       mins: new Vector(-32, -32, -32),
@@ -1542,13 +1424,14 @@ void describe('ServerArea', () => {
       touchedEntities.push({ spawnflags: this.spawnflags, other });
     };
 
+    // Only the box query is called while touching links.
     area.tree = {
       queryAABB() {
-        return [subjectEdict, triggerEdict];
+        return [subjectEdict, triggerEdict].values();
       },
-    };
+    } as unknown as Octree<ServerEdict>;
 
-    void withMockEngine(defaultMockEngine({
+    withMockEngine(defaultMockEngine({
       server: {
         time: 4.2,
         gameAPI: { time: 0 },
@@ -1577,8 +1460,8 @@ void describe('BSP29Loader', () => {
     const worldMask = loader._buildAllowedClipnodeMask(createClipTree(clipnodes), 0);
     const submodelMask = loader._buildAllowedClipnodeMask(createClipTree(clipnodes), 2);
 
-    assert.deepEqual(Array.from(worldMask), [1, 1, 1, 1, 1]);
-    assert.deepEqual(Array.from(submodelMask), [0, 0, 1, 0, 1]);
+    assert.deepEqual(Array.from(worldMask!), [1, 1, 1, 1, 1]);
+    assert.deepEqual(Array.from(submodelMask!), [0, 0, 1, 0, 1]);
     assert.equal(loader._buildAllowedClipnodeMask(createClipTree(clipnodes), -1), null);
     assert.equal(loader._buildAllowedClipnodeMask(createClipTree(clipnodes), 99), null);
   });

@@ -3,16 +3,18 @@ import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
 import { content, flags, solid } from '../../source/shared/Defs.ts';
+import type { BaseEntity, ServerEdict } from '../../source/engine/server/Edict.ts';
 import { ServerMovement } from '../../source/engine/server/physics/ServerMovement.ts';
 
-import { assertNear, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV } from '../support/fixtures.ts';
+import { assertNear, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV, type RecordedMove } from '../support/fixtures.ts';
+import { CollisionTrace } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
 
-describe('ServerMovement', () => {
-  describe('checkBottom', () => {
-    test('returns early when all four corners are solid', () => {
+void describe('ServerMovement', () => {
+  void describe('checkBottom', () => {
+    void test('returns early when all four corners are solid', () => {
       const movement = new ServerMovement(mockedSV());
-      const moveCalls = [];
-      const cornerChecks = [];
+      const moveCalls: unknown[][] = [];
+      const cornerChecks: Vector[] = [];
       const entity = createMockEntity({
         origin: new Vector(64, 64, 32),
         mins: new Vector(-16, -16, -24),
@@ -26,9 +28,9 @@ describe('ServerMovement', () => {
             cornerChecks.push(point.copy());
             return content.CONTENT_SOLID;
           },
-          move(...args) {
+          move(...args: unknown[]) {
             moveCalls.push(args);
-            return null;
+            return new CollisionTrace(new Vector(), { fraction: 1.0 });
           },
         },
       }), () => {
@@ -39,9 +41,9 @@ describe('ServerMovement', () => {
       assert.equal(moveCalls.length, 0);
     });
 
-    test('rejects support when a corner drops more than step size', () => {
+    void test('rejects support when a corner drops more than step size', () => {
       const movement = new ServerMovement(mockedSV());
-      const moveCalls = [];
+      const moveCalls: RecordedMove[] = [];
       let pointContentCalls = 0;
       const entity = createMockEntity({
         origin: new Vector(64, 64, 32),
@@ -60,16 +62,10 @@ describe('ServerMovement', () => {
             moveCalls.push({ start: start.copy(), end: end.copy(), type, passedict });
 
             if (moveCalls.length === 1) {
-              return {
-                fraction: 0.5,
-                endpos: new Vector(start[0], start[1], 0),
-              };
+              return new CollisionTrace(new Vector(start[0], start[1], 0), { fraction: 0.5 });
             }
 
-            return {
-              fraction: 0.5,
-              endpos: new Vector(start[0], start[1], -19),
-            };
+            return new CollisionTrace(new Vector(start[0], start[1], -19), { fraction: 0.5 });
           },
         },
       }), () => {
@@ -81,11 +77,11 @@ describe('ServerMovement', () => {
     });
   });
 
-  describe('movestep', () => {
-    test('preserves horizontal progress on partial ground fallback', () => {
+  void describe('movestep', () => {
+    void test('preserves horizontal progress on partial ground fallback', () => {
       const movement = new ServerMovement(mockedSV());
-      const linkCalls = [];
-      const moveCalls = [];
+      const linkCalls: Array<{ linkedEdict: ServerEdict; touchTriggers: boolean | undefined }> = [];
+      const moveCalls: RecordedMove[] = [];
       const entity = createMockEntity({
         origin: new Vector(10, 20, 30),
         mins: new Vector(-16, -16, -24),
@@ -103,13 +99,7 @@ describe('ServerMovement', () => {
         collision: {
           move(start, mins, maxs, end, type, passedict) {
             moveCalls.push({ start: start.copy(), end: end.copy(), type, passedict });
-            return {
-              allsolid: false,
-              startsolid: false,
-              fraction: 1.0,
-              endpos: end.copy(),
-              ent: null,
-            };
+            return new CollisionTrace(end.copy(), { allsolid: false, startsolid: false, fraction: 1.0, ent: null });
           },
         },
       }), () => {
@@ -126,10 +116,10 @@ describe('ServerMovement', () => {
       assert.equal(linkCalls[0].touchTriggers, true);
     });
 
-    test('returns false when both the raised trace and retry stay startsolid', () => {
+    void test('returns false when both the raised trace and retry stay startsolid', () => {
       const movement = new ServerMovement(mockedSV());
       const linkCalls = [];
-      const moveCalls = [];
+      const moveCalls: RecordedMove[] = [];
       const entity = createMockEntity({
         origin: new Vector(10, 20, 30),
         mins: new Vector(-16, -16, -24),
@@ -148,13 +138,7 @@ describe('ServerMovement', () => {
           move(start, mins, maxs, end, type, passedict) {
             moveCalls.push({ start: start.copy(), end: end.copy(), type, passedict });
 
-            return {
-              allsolid: false,
-              startsolid: true,
-              fraction: 0.0,
-              endpos: end.copy(),
-              ent: null,
-            };
+            return new CollisionTrace(end.copy(), { allsolid: false, startsolid: true, fraction: 0.0, ent: null });
           },
         },
       }), () => {
@@ -167,10 +151,10 @@ describe('ServerMovement', () => {
     });
   });
 
-  describe('stepDirection', () => {
-    test('restores origin when yaw delta stays too large', () => {
+  void describe('stepDirection', () => {
+    void test('restores origin when yaw delta stays too large', () => {
       const movement = new ServerMovement(mockedSV());
-      const linkCalls = [];
+      const linkCalls: Array<{ linkedEdict: ServerEdict; touchTriggers: boolean | undefined }> = [];
       const entity = createMockEntity({
         origin: new Vector(10, 20, 30),
         angles: new Vector(0, 200, 0),
@@ -186,7 +170,7 @@ describe('ServerMovement', () => {
         },
       }), () => {
         movement.movestep = (ent, move) => {
-          ent.entity.origin = ent.entity.origin.copy().add(move);
+          ent.entity!.origin = ent.entity!.origin.copy().add(move);
           return true;
         };
 
@@ -203,16 +187,16 @@ describe('ServerMovement', () => {
     });
   });
 
-  describe('moveToGoal', () => {
-    test('returns false when already close enough to a non-world enemy goal', () => {
+  void describe('moveToGoal', () => {
+    void test('returns false when already close enough to a non-world enemy goal', () => {
       const movement = new ServerMovement(mockedSV());
       const actor = createMockEdict(createMockEntity({ flagsValue: flags.FL_ONGROUND }));
       const goal = createMockEdict(createMockEntity());
       const enemy = createMockEdict(createMockEntity());
       enemy.isWorld = () => false;
 
-      actor.entity.goalentity = { edict: goal };
-      actor.entity.enemy = { edict: enemy };
+      actor.entity.goalentity = { edict: goal } as unknown as BaseEntity;
+      actor.entity.enemy = { edict: enemy } as unknown as BaseEntity;
 
       movement.closeEnough = () => true;
       movement.stepDirection = () => {
@@ -225,11 +209,11 @@ describe('ServerMovement', () => {
       assert.equal(movement.moveToGoal(actor, 16), false);
     });
 
-    test('uses the direct stepDirection to movestep chain when the ideal yaw step succeeds', () => {
+    void test('uses the direct stepDirection to movestep chain when the ideal yaw step succeeds', () => {
       const movement = new ServerMovement(mockedSV());
-      const linkCalls = [];
-      const moveCalls = [];
-      const callOrder = [];
+      const linkCalls: Array<{ linkedEdict: ServerEdict; touchTriggers: boolean | undefined }> = [];
+      const moveCalls: RecordedMove[] = [];
+      const callOrder: string[] = [];
       const actor = createMockEdict(createMockEntity({
         origin: new Vector(10, 20, 30),
         mins: new Vector(-16, -16, -24),
@@ -239,7 +223,7 @@ describe('ServerMovement', () => {
       }));
       actor.entity.yaw_speed = 360;
       actor.entity.ideal_yaw = 90;
-      actor.entity.goalentity = { edict: createMockEdict(createMockEntity({ origin: new Vector(10, 120, 30) })) };
+      actor.entity.goalentity = { edict: createMockEdict(createMockEntity({ origin: new Vector(10, 120, 30) })) } as unknown as BaseEntity;
       actor.entity.enemy = null;
 
       const groundEntity = createMockEntity({ solidType: solid.SOLID_BSP });
@@ -260,7 +244,7 @@ describe('ServerMovement', () => {
       const originalNewChaseDir = movement.newChaseDir.bind(movement);
       movement.newChaseDir = (...args) => {
         callOrder.push('newChaseDir');
-        return originalNewChaseDir(...args);
+        originalNewChaseDir(...args);
       };
 
       const originalRandom = Math.random;
@@ -278,13 +262,7 @@ describe('ServerMovement', () => {
             },
             move(start, mins, maxs, end, type, passedict) {
               moveCalls.push({ start: start.copy(), mins: mins.copy(), maxs: maxs.copy(), end: end.copy(), type, passedict });
-              return {
-                allsolid: false,
-                startsolid: false,
-                fraction: 0.5,
-                endpos: new Vector(10, 32, 30),
-                ent: groundEdict,
-              };
+              return new CollisionTrace(new Vector(10, 32, 30), { allsolid: false, startsolid: false, fraction: 0.5, ent: groundEdict });
             },
           },
         }), () => {
@@ -306,15 +284,15 @@ describe('ServerMovement', () => {
       assert.equal(linkCalls[0].touchTriggers, true);
     });
 
-    test('falls back to newChaseDir when stepDirection fails', () => {
+    void test('falls back to newChaseDir when stepDirection fails', () => {
       const movement = new ServerMovement(mockedSV());
       const actor = createMockEdict(createMockEntity({ flagsValue: flags.FL_ONGROUND }));
       const goal = createMockEdict(createMockEntity({ origin: new Vector(100, 50, 0) }));
       const explicitTarget = new Vector(12, 34, 56);
       const originalRandom = Math.random;
-      const calls = [];
+      const calls: Array<{ kind: string; ent: ServerEdict; yaw?: number; target?: Vector; dist: number }> = [];
 
-      actor.entity.goalentity = { edict: goal };
+      actor.entity.goalentity = { edict: goal } as unknown as BaseEntity;
       actor.entity.enemy = null;
       actor.entity.ideal_yaw = 90;
 
@@ -338,15 +316,15 @@ describe('ServerMovement', () => {
       assert.equal(calls[0].yaw, 90);
       assert.equal(calls[0].dist, 24);
       assert.equal(calls[1].kind, 'chase');
-      assert.deepEqual([...calls[1].target], [...explicitTarget]);
+      assert.deepEqual([...calls[1].target!], [...explicitTarget]);
       assert.equal(calls[1].dist, 24);
     });
 
-    test('falls through to newChaseDir and then succeeds via stepDirection plus movestep', () => {
+    void test('falls through to newChaseDir and then succeeds via stepDirection plus movestep', () => {
       const movement = new ServerMovement(mockedSV());
-      const linkCalls = [];
-      const moveCalls = [];
-      const stepAngles = [];
+      const linkCalls: Array<{ linkedEdict: ServerEdict; touchTriggers: boolean | undefined }> = [];
+      const moveCalls: RecordedMove[] = [];
+      const stepAngles: number[] = [];
       const actor = createMockEdict(createMockEntity({
         origin: new Vector(0, 0, 0),
         mins: new Vector(-16, -16, -24),
@@ -356,7 +334,7 @@ describe('ServerMovement', () => {
       }));
       actor.entity.yaw_speed = 360;
       actor.entity.ideal_yaw = 180;
-      actor.entity.goalentity = { edict: createMockEdict(createMockEntity({ origin: new Vector(100, 100, 0) })) };
+      actor.entity.goalentity = { edict: createMockEdict(createMockEntity({ origin: new Vector(100, 100, 0) })) } as unknown as BaseEntity;
       actor.entity.enemy = null;
 
       const groundEntity = createMockEntity({ solidType: solid.SOLID_BSP });
@@ -385,22 +363,10 @@ describe('ServerMovement', () => {
               moveCalls.push({ start: start.copy(), end: end.copy(), type, passedict });
 
               if (end[0] < 0) {
-                return {
-                  allsolid: true,
-                  startsolid: false,
-                  fraction: 0.0,
-                  endpos: end.copy(),
-                  ent: null,
-                };
+                return new CollisionTrace(end.copy(), { allsolid: true, startsolid: false, fraction: 0.0, ent: null });
               }
 
-              return {
-                allsolid: false,
-                startsolid: false,
-                fraction: 0.5,
-                endpos: new Vector(Math.SQRT1_2 * 12, Math.SQRT1_2 * 12, 0),
-                ent: groundEdict,
-              };
+              return new CollisionTrace(new Vector(Math.SQRT1_2 * 12, Math.SQRT1_2 * 12, 0), { allsolid: false, startsolid: false, fraction: 0.5, ent: groundEdict });
             },
           },
         }), () => {
@@ -424,14 +390,14 @@ describe('ServerMovement', () => {
     });
   });
 
-  describe('newChaseDir', () => {
-    test('restores old yaw and marks partial ground when every direction fails', () => {
+  void describe('newChaseDir', () => {
+    void test('restores old yaw and marks partial ground when every direction fails', () => {
       const movement = new ServerMovement(mockedSV());
       const actor = createMockEdict(createMockEntity({
         origin: new Vector(0, 0, 0),
         flagsValue: flags.FL_ONGROUND,
       }));
-      const attemptedDirs = [];
+      const attemptedDirs: number[] = [];
       const originalRandom = Math.random;
 
       actor.entity.ideal_yaw = 90;
@@ -460,8 +426,8 @@ describe('ServerMovement', () => {
     });
   });
 
-  describe('walkMove', () => {
-    test('returns false when entity is not grounded, flying, or swimming', () => {
+  void describe('walkMove', () => {
+    void test('returns false when entity is not grounded, flying, or swimming', () => {
       const movement = new ServerMovement(mockedSV());
       const actor = createMockEdict(createMockEntity({ flagsValue: 0 }));
 
@@ -473,8 +439,8 @@ describe('ServerMovement', () => {
     });
   });
 
-  describe('changeYaw', () => {
-    test('wraps and clamps using the shortest turn direction', () => {
+  void describe('changeYaw', () => {
+    void test('wraps and clamps using the shortest turn direction', () => {
       const movement = new ServerMovement(mockedSV());
       const actor = createMockEdict(createMockEntity({ angles: new Vector(0, 350, 0) }));
       actor.entity.yaw_speed = 5;

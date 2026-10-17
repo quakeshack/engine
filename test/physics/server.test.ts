@@ -5,25 +5,25 @@ import Vector from '../../source/shared/Vector.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 
-import { createMockEdict, createMockEntity, createTestServer } from '../support/fixtures.ts';
-
-/** @typedef {import('../../source/engine/server/Server.ts').default} Server */
+import type Server from '../../source/engine/server/Server.ts';
+import type { ServerDependencies } from '../../source/engine/server/ServerDependencies.ts';
+import { createMockEdict, createMockEntity, createTestServer, type MockEntity } from '../support/fixtures.ts';
 
 /**
- * @param {{paused: boolean}} options test options
- * @returns {{sv: Server, client: ServerClient, entity: ReturnType<typeof createMockEntity>}} test context
+ * @param options Test options.
+ * @returns The test context.
  */
-function createReadClientMoveContext({ paused }) {
+function createReadClientMoveContext({ paused }: { paused: boolean }): { sv: Server; client: ServerClient; entity: MockEntity } {
   const entity = createMockEntity();
   const worldEdict = createMockEdict(createMockEntity());
-  const playerEdict = createMockEdict(entity);
-  playerEdict.num = 1;
+  const playerEdict = createMockEdict(entity, 1);
 
   const byteReads = [40, Protocol.button.attack | Protocol.button.jump, 7, 9];
   const shortReads = [100, -25, 5];
 
   const sv = createTestServer({
-    net: /** @type {any} */ ({
+    // Only the message reads are answered; the rest of the network layer is not used by ReadClientMove.
+    net: {
       message: {
         readByte() {
           return byteReads.shift() ?? 0;
@@ -35,7 +35,7 @@ function createReadClientMoveContext({ paused }) {
           return shortReads.shift() ?? 0;
         },
       },
-    }),
+    } as unknown as ServerDependencies['net'],
   });
 
   sv.server.paused = paused;
@@ -60,7 +60,7 @@ void describe('SV.ReadClientMove', () => {
     assert.equal(context.entity.button1, false);
     assert.equal(context.entity.button2, true);
     assert.equal(context.entity.impulse, 7);
-    assert.deepEqual([...context.entity.v_angle], [1, 2, 3]);
+    assert.deepEqual([...context.entity.v_angle!], [1, 2, 3]);
   });
 
   void test('does not enqueue paused movement backlog', () => {
@@ -75,6 +75,6 @@ void describe('SV.ReadClientMove', () => {
     assert.equal(context.entity.button1, false);
     assert.equal(context.entity.button2, true);
     assert.equal(context.entity.impulse, 7);
-    assert.deepEqual([...context.entity.v_angle], [1, 2, 3]);
+    assert.deepEqual([...context.entity.v_angle!], [1, 2, 3]);
   });
 });

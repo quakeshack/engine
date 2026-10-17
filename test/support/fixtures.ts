@@ -10,6 +10,8 @@ import { useClientStateOf } from './clientState.ts';
 import { useHostOf } from './host.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
+import type { BaseEntity, ServerEdict } from '../../source/engine/server/Edict.ts';
+import { CollisionTrace } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
 import Server from '../../source/engine/server/Server.ts';
 import type { ServerDependencies } from '../../source/engine/server/ServerDependencies.ts';
@@ -21,14 +23,18 @@ import type { ChannelEndpoint, ChannelMessage } from '../../source/engine/networ
 import NET from '../../source/engine/network/Network.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import type { URLs } from '../../source/engine/build-config';
+import { Trace } from '../../source/engine/common/Pmove.ts';
 import { engineMocks } from './engineMocks.ts';
 import { createRoomHull } from './hulls.ts';
 import { setBspTree } from './bspTree.ts';
 
 // ── Mock shapes ─────────────────────────────────────────────────────────────
 
+/** The members of the engine's entity interface that a mock entity has only when a test sets them. */
+type OptionalEntityMembers = Partial<Pick<BaseEntity, 'classname' | 'deadflag' | 'frame' | 'gravity' | 'waterlevel' | 'watertype' | 'view_ofs' | 'v_angle' | 'oldorigin' | 'ideal_yaw' | 'yaw_speed' | 'teleport_time' | 'enemy' | 'goalentity'>>;
+
 /** A minimal entity for server physics tests; tests add the members their scenario needs. */
-export interface MockEntity {
+export interface MockEntity extends OptionalEntityMembers {
   origin: Vector;
   mins: Vector;
   maxs: Vector;
@@ -51,16 +57,19 @@ export interface MockEntity {
   absmin: Vector;
   absmax: Vector;
   equals: (other: unknown) => boolean;
+  /** Fields the engine's entity interface does not have, which a test sets for the code under test to read. */
+  spawnflags?: number;
+  button0?: boolean;
+  button1?: boolean;
+  button2?: boolean;
+  impulse?: number;
 }
 
-/** A minimal server edict around a {@link MockEntity}. */
-export interface MockEdict {
-  entity: MockEntity;
-  num: number;
-  isFree: () => boolean;
-  isClient: () => boolean;
-  equals: (other: unknown) => boolean;
-}
+/**
+ * A server edict around a {@link MockEntity}. It is typed as the real thing because the code under test takes a
+ * `ServerEdict`; {@link createMockEdict} is the one place that makes the mock pass for it.
+ */
+export type MockEdict<Entity extends object = MockEntity> = ServerEdict & { entity: Entity };
 
 /** The server state a test sets up; `defaultMockEngine` completes `frametime`. */
 export interface MockServerState {
@@ -69,11 +78,18 @@ export interface MockServerState {
   [member: string]: unknown;
 }
 
-/** What a test mocks of the server (`engineMocks.SV`); any other member it needs is added as it goes. */
-export interface MockServer {
-  server?: MockServerState;
-  [member: string]: unknown;
-}
+/** Every member optional all the way down, so a test mocks just the parts the code under test reads. Methods keep their signature. */
+export type DeepPartial<T> = T extends (...args: never[]) => unknown ? T
+  : T extends readonly unknown[] ? T
+    : T extends Vector ? T
+      : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> }
+        : T;
+
+/**
+ * What a test mocks of the server (`engineMocks.SV`): the members of a `Server` it has, with the parts it does not need
+ * left out, and any other member the test needs is added as it goes.
+ */
+export type MockServer = DeepPartial<Server> & { [member: string]: unknown };
 
 /** What a test mocks of the client (`engineMocks.CL`); the members that `withMockEngine` itself reads are typed. */
 export interface MockClient {
@@ -99,6 +115,16 @@ export interface MockEngineConfig {
   SV: MockServer;
 }
 
+/** One call of a mocked `collision.move`: where it was asked to sweep from and to. */
+export interface RecordedMove {
+  start: Vector;
+  mins?: Vector;
+  maxs?: Vector;
+  end: Vector;
+  type: number;
+  passedict: ServerEdict | null;
+}
+
 /** What `withMockServerPhysics` hands to its callback. */
 export interface MockServerPhysicsContext {
   serverPhysics: ServerPhysics;
@@ -109,6 +135,9 @@ export interface MockServerPhysicsContext {
   testCalls: MockEdict[];
   blockedCalls: MockEntity[];
 }
+
+/** A brush model whose brushes and brush sides exist, as the fixtures build them. */
+export type BrushModelWithBrushes = BrushModel & { brushsides: BrushSide[]; brushes: Brush[] };
 
 /** Options of {@link createBoxBrushModel}. */
 export interface BoxBrushModelOptions {
@@ -168,6 +197,48 @@ export interface TestNetworkOptions {
   game?: string;
 }
 
+/** The observable fields of a player movement trace; the ones left out are a clear, unobstructed trace. */
+export interface PmoveTraceOptions {
+  endpos: Vector;
+  fraction?: number;
+  normal?: Vector;
+  dist?: number;
+  ent?: number | null;
+  allsolid?: boolean;
+  startsolid?: boolean;
+  inopen?: boolean;
+  inwater?: boolean;
+}
+
+/**
+ * Build a player movement trace with the requested observable fields.
+ * @param options The trace options.
+ * @returns The trace.
+ */
+export function createPmoveTrace({
+  endpos,
+  fraction = 1.0,
+  normal = new Vector(),
+  dist = 0.0,
+  ent = null,
+  allsolid = false,
+  startsolid = false,
+  inopen = false,
+  inwater = false,
+}: PmoveTraceOptions): Trace {
+  const trace = new Trace();
+  trace.endpos.set(endpos);
+  trace.fraction = fraction;
+  trace.allsolid = allsolid;
+  trace.startsolid = startsolid;
+  trace.ent = ent;
+  trace.plane.normal.set(normal);
+  trace.plane.dist = dist;
+  trace.inopen = inopen;
+  trace.inwater = inwater;
+  return trace;
+}
+
 // ── Plane & Model Fixtures ─────────────────────────────────────────────────
 
 /**
@@ -188,7 +259,7 @@ export function createAxisPlane(normalComponents: number[], dist: number, type: 
  * @param options Fixture options.
  * @returns The brush model fixture.
  */
-export function createBoxBrushModel({ center = [0, 0, 0], halfExtents, name = '*test', submodel = true }: BoxBrushModelOptions): BrushModel {
+export function createBoxBrushModel({ center = [0, 0, 0], halfExtents, name = '*test', submodel = true }: BoxBrushModelOptions): BrushModelWithBrushes {
   const model = new BrushModel(name);
   model.submodel = submodel;
   model.firstBrush = 0;
@@ -223,7 +294,8 @@ export function createBoxBrushModel({ center = [0, 0, 0], halfExtents, name = '*
   brush._brushTraceCheck = 0;
   model.brushes = [brush];
 
-  return model;
+  // Both lists were assigned above; the property types still allow null.
+  return model as BrushModelWithBrushes;
 }
 
 /**
@@ -241,7 +313,7 @@ export function createRoomHullFromBounds(mins: Vector, maxs: Vector): Hull {
  * @param options Fixture options.
  * @returns The world brush model fixture.
  */
-export function createBrushWorldModel({ axis = 0, center = [64, 0, 0], halfExtents }: BrushWorldModelOptions): BrushModel {
+export function createBrushWorldModel({ axis = 0, center = [64, 0, 0], halfExtents }: BrushWorldModelOptions): BrushModelWithBrushes {
   const model = createBoxBrushModel({ center, halfExtents, name: 'test-brush-world', submodel: false });
   const axisNormal = [0, 0, 0];
   axisNormal[axis] = 1;
@@ -348,23 +420,25 @@ export function createMockEntity({
 
 /**
  * Create a minimal server edict wrapper.
- * @param entity The underlying entity.
+ * @param entity The underlying entity, usually a {@link MockEntity}.
+ * @param num The edict number; the entity's own when it has one.
  * @returns The mock edict.
  */
-export function createMockEdict(entity: MockEntity): MockEdict {
+export function createMockEdict<Entity extends object = MockEntity>(entity: Entity, num = (entity as { num?: number }).num ?? 0): MockEdict<Entity> {
+  // The mock has the few members the code under test reads; a real ServerEdict needs a whole server to be built.
   return {
     entity,
-    num: entity.num ?? 0,
+    num,
     isFree() {
       return false;
     },
     isClient() {
       return false;
     },
-    equals(other) {
+    equals(other: unknown) {
       return this === other;
     },
-  };
+  } as unknown as MockEdict<Entity>;
 }
 
 // ── Mock Engine Helpers ─────────────────────────────────────────────────────
@@ -510,13 +584,7 @@ export function withMockServerPhysics(callback: (context: MockServerPhysicsConte
       collision: {
         move(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
           moveCalls.push({ start: start.copy(), mins: mins.copy(), maxs: maxs.copy(), end: end.copy() });
-          return {
-            allsolid: false,
-            startsolid: false,
-            fraction: 1.0,
-            endpos: end.copy(),
-            ent: null,
-          };
+          return new CollisionTrace(end.copy());
         },
         testEntityPosition(edict: MockEdict) {
           testCalls.push(edict);
@@ -590,6 +658,15 @@ export function mockedSV(): Server {
   const engineAPI = new ServerEngineAPI(forwarding, () => ({ registered: true, hipnotic: false, rogue: false }));
 
   return forwarding;
+}
+
+/**
+ * The server a test mocked with `withMockEngine`, read back as the real thing: the tests ask it for the state their code changed.
+ * @returns The mocked server.
+ */
+export function mockedServer(): Server {
+  // The mock stands in for a Server; a test only reads members it set up itself.
+  return engineMocks.SV as Server;
 }
 
 /**

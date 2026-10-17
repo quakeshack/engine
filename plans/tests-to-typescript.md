@@ -1,7 +1,7 @@
 # Track G, type-checked tests: the engine's `.mjs` tests become TypeScript
 
 Track G of `plans/engine-architecture-modernization.md`, the "type-checked tests" bullet. Status: **plan drafted 2026-10-17,
-forks settled the same day (see "Decisions"). Phase 0 is done (2026-10-17, uncommitted, waits for review); no test file is converted yet.**
+forks settled the same day (see "Decisions"). Phase 0 is done and committed (`3537396`); Phase 1 (`test/physics/`) is done (2026-10-17) and waits for review.**
 Written for the maintainers. Counts are from a read of the tree on that date (branch `engine-architecture-modernization`).
 
 ## Context
@@ -130,6 +130,50 @@ Baseline on 2026-10-17: **2602 tests pass, typecheck clean.**
 ### Phase 1: `test/physics/` (17 files, the largest)
 
 The area with the most lines and the most hand-built geometry; doing it first means the fixtures get shaped by their heaviest user.
+
+#### Phase 1: what shipped (2026-10-17)
+
+All 17 `.mjs` tests in `test/physics/` are `.test.ts`, type-checked and ESLint clean. `npm test` 2602 pass (the baseline),
+`npm run typecheck` 0 errors. The deliberate-break check passed: adding a required parameter to `ServerMovement.checkBottom`
+made `npm run typecheck` fail in `server-movement.test.ts` and `collision-regressions.test.ts` (four call sites), and
+`.mjs` would have kept passing; reverted. Starting point was 1298 type errors.
+
+What the checker found that the `.mjs` hid, all fixed in the tests (no production code changed):
+
+- **`server-clientdata-sparse` mocked the `Server` class instead of a server.** It set `Server.server` as a static on the class
+  and installed the class as the mock; it passed because `mockedSV()` forwards everything. It now builds a real `Server` with
+  `createTestServer()`.
+- **`new BrushModel()` without the name** in 11 more places (see Phase 0); `ServerClient.cmd` and `.pendingCmds` are `readonly` and
+  tests reassigned them (now mutated in place); `entity.use(null)` where the signature takes an entity; `edict.num = n` on a
+  `readonly` field (the factory takes the number now).
+- **Mocks that were not what the API says:** `queryAABB` mocks returned arrays where the signature is an iterator (`.values()`),
+  `collision.move` mocks returned partial plain objects (now `CollisionTrace`), `_traceBrushModel` mocks returned that shape too
+  but the method returns the player-movement `Trace` (a different class, now `createPmoveTrace`), a `clients` array held `null`s
+  though slots are never null, and a trace passed to `wallFriction` had no `dist`.
+- **Missing declarations:** untyped `[]` recorders (152 sites), callbacks without parameter types, `@param {T}` JSDoc on a few
+  hundred helper parameters.
+
+Shared pieces added or changed:
+
+- `test/support/fixtures.ts`: `MockServer` is `DeepPartial<Server>` plus an index signature, so mock methods get the real
+  parameter types and a stale return shape fails; `MockEdict` is a `ServerEdict` (one documented cast in `createMockEdict`, which
+  takes the edict number); `MockEntity` takes its optional members from the engine's `BaseEntity` interface; new
+  `createPmoveTrace`, `mockedServer()` (replaces reading `engineMocks.SV.` untyped), `RecordedMove`, `BrushModelWithBrushes`.
+- `test/support/entityMocks.ts`: inert edicts and engine/game APIs for tests that build a game's entities (`func_plat`,
+  `func_door`, `func_train`, `func_rotating`), which each had a 60-line copy of them. Game entities are imported by class now,
+  not looked up in `entityClasses`.
+- `collision-regressions.test.ts` carried its own copy of nine fixtures (about 330 lines, left over from before they moved);
+  it uses the shared ones now. `pmove.test.ts`'s local `createTrace` moved to the shared `createPmoveTrace`.
+- `brushtrace.test.ts` swaps static methods with `t.mock.method` (the repo's convention since `7ee3236`) instead of assigning
+  and restoring them.
+
+Left as it is, on purpose:
+
+- `pmove.test.ts` and `mapPmoveHarness.ts` still have a copy each of the map entity parsing; worth one shared module, not done
+  here because the two differ in what they return.
+- `Math.random` is still saved and replaced by hand in a few tests; `t.mock.method(Math, 'random')` would do.
+- Casts that remain are `as unknown as X` with a comment, for stand-ins of whole subsystems (hulls, octrees, clients, world
+  models, the pmove mover). 34 in the physics tests.
 
 ### Phase 2: `test/server/`, `test/shared/`, `test/eslint/` (12 files)
 

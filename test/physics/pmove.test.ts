@@ -15,16 +15,18 @@ import {
   createBrushWorldModel,
   createLegacyWorldModel,
   createPmoveBoxEntity,
+  createPmoveTrace,
 } from '../support/fixtures.ts';
 import { engineMocks } from '../support/engineMocks.ts';
+import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 
 /**
  * Build a brush-backed world where a solid wall continues as a clip brush.
  * The seam at y=0 should remain slideable when the player is already tangent
  * to the shared x face of both brushes.
- * @returns {import('../../source/engine/common/model/BSP.ts').BrushModel} world model fixture
+ * @returns world model fixture
  */
-function createWallClipSeamWorldModel() {
+function createWallClipSeamWorldModel(): BrushModel {
   const model = createBrushWorldModel({ axis: 0, center: [24, -32, 0], halfExtents: [8, 32, 64] });
   const clipModel = createBoxBrushModel({ center: [24, 32, 0], halfExtents: [8, 32, 64], submodel: false });
   const planeOffset = model.planes.length;
@@ -55,53 +57,32 @@ function createWallClipSeamWorldModel() {
   return model;
 }
 
-/**
- * Build a trace fixture with the requested observable fields.
- * @param {{ endpos: Vector, fraction?: number, normal?: Vector, dist?: number, ent?: number|null, allsolid?: boolean, startsolid?: boolean }} options trace options
- * @returns {Trace} trace fixture
- */
-function createTrace({
-  endpos,
-  fraction = 1.0,
-  normal = new Vector(),
-  dist = 0.0,
-  ent = null,
-  allsolid = false,
-  startsolid = false,
-}) {
-  const trace = new Trace();
-  trace.endpos.set(endpos);
-  trace.fraction = fraction;
-  trace.allsolid = allsolid;
-  trace.startsolid = startsolid;
-  trace.ent = ent;
-  trace.plane.normal.set(normal);
-  trace.plane.dist = dist;
-  return trace;
+/** What one frame of a real-map movement probe moved. */
+interface MapPmoveFrame {
+  origin: Vector;
+  moved: Vector;
+  velocity: Vector;
+  onground: number | null;
 }
 
-/** @typedef {{ origin: Vector, moved: Vector, velocity: Vector, onground: number|null }} MapPmoveFrame */
-
-/**
- * @typedef {{
- *   basePath?: string,
- *   mapName: string,
- *   frames: number,
- *   startOrigin?: Vector|null,
- *   yaw?: number|null,
- *   buildCmd?: ((player: PmovePlayer, frame: number) => UserCmd)|null,
- * }} MapFrameRunOptions
- */
+/** Options of {@link runMapFrames}. */
+interface MapFrameRunOptions {
+  basePath?: string;
+  mapName: string;
+  frames: number;
+  startOrigin?: Vector | null;
+  yaw?: number | null;
+  buildCmd?: ((player: PmovePlayer, frame: number) => UserCmd) | null;
+}
 
 /**
  * Parse the BSP entity lump using the engine token parser.
- * @param {string} text entity lump text
- * @returns {Record<string, string>[]} parsed entities
+ * @param text entity lump text
+ * @returns parsed entities
  */
-function parseMapEntities(text) {
-  /** @type {Record<string, string>[]} */
-  const entities = [];
-  let data = text;
+function parseMapEntities(text: string): Record<string, string>[] {
+  const entities: Record<string, string>[] = [];
+  let data: string | null = text;
 
   while (data !== null) {
     let parsed = COMClass.Parse(data);
@@ -115,16 +96,23 @@ function parseMapEntities(text) {
       continue;
     }
 
-    /** @type {Record<string, string>} */
-    const entity = {};
+    const entity: Record<string, string> = {};
 
     while (true) {
+      if (data === null) {
+        throw new Error('Entity lump ends inside an entity');
+      }
+
       parsed = COMClass.Parse(data);
       data = parsed.data;
 
       if (parsed.token === '}') {
         entities.push(entity);
         break;
+      }
+
+      if (data === null) {
+        throw new Error('Entity lump ends inside an entity');
       }
 
       const key = parsed.token;
@@ -139,22 +127,22 @@ function parseMapEntities(text) {
 
 /**
  * Convert a Quake origin string into a Vector.
- * @param {string} origin entity origin string
- * @returns {Vector} parsed vector
+ * @param origin entity origin string
+ * @returns parsed vector
  */
-function parseMapOrigin(origin) {
+function parseMapOrigin(origin: string): Vector {
   const components = origin.split(/\s+/).map(Number);
   return new Vector(components[0], components[1], components[2]);
 }
 
 /**
  * Resolve the first entity matching the predicate.
- * @param {Record<string, string>[]} entities parsed entity list
- * @param {(entity: Record<string, string>) => boolean} predicate entity predicate
- * @param {string} label entity description for error messages
- * @returns {Record<string, string>} matching entity
+ * @param entities parsed entity list
+ * @param predicate entity predicate
+ * @param label entity description for error messages
+ * @returns matching entity
  */
-function requireMapEntity(entities, predicate, label) {
+function requireMapEntity(entities: Record<string, string>[], predicate: (entity: Record<string, string>) => boolean, label: string): Record<string, string> {
   const entity = entities.find(predicate);
 
   if (entity === undefined) {
@@ -168,11 +156,11 @@ function requireMapEntity(entities, predicate, label) {
  * Resolve the movement yaw for a real-map pmove probe.
  * Prefer the explicit spawn angle when present so map-authored repros do not
  * depend on a separate direction marker entity.
- * @param {Record<string, string>} spawn spawn entity
- * @param {Record<string, string>[]} entities parsed entity list
- * @returns {number} yaw in degrees
+ * @param spawn spawn entity
+ * @param entities parsed entity list
+ * @returns yaw in degrees
  */
-function resolveMapYaw(spawn, entities) {
+function resolveMapYaw(spawn: Record<string, string>, entities: Record<string, string>[]): number {
   if (spawn.angle !== undefined) {
     return Number(spawn.angle);
   }
@@ -187,8 +175,8 @@ function resolveMapYaw(spawn, entities) {
 
 /**
  * Run a real BSP-backed movement probe for a fixed number of frames.
- * @param {MapFrameRunOptions} options movement probe options
- * @returns {Promise<MapPmoveFrame[]>} per-frame movement snapshots
+ * @param options movement probe options
+ * @returns per-frame movement snapshots
  */
 async function runMapFrames({
   basePath = '../../data/id1/',
@@ -197,7 +185,7 @@ async function runMapFrames({
   startOrigin = null,
   yaw = null,
   buildCmd = null,
-}) {
+}: MapFrameRunOptions): Promise<MapPmoveFrame[]> {
   const baseUrl = new URL(basePath, import.meta.url);
   const previousRegistry = {
     COM: engineMocks.COM,
@@ -206,20 +194,19 @@ async function runMapFrames({
   };
   const knownKeysBefore = new Set(Object.keys(Mod.known));
 
-  engineMocks.Con = /** @type {typeof import('../../source/engine/common/Console.ts').default} */ ({
+  const con = {
     Print() {},
     DPrint() {},
     PrintWarning() {},
-    PrintError(...args) {
+    PrintError(...args: unknown[]) {
       console.error(...args);
     },
     PrintSuccess() {},
-  });
-  engineMocks.Mod = Mod;
-  engineMocks.COM = /** @type {typeof import('../../source/engine/common/Com.ts').default} */ ({
+  };
+  const files = {
     Parse: COMClass.Parse,
     ParseEntityLump: COMClass.ParseEntityLump,
-    async LoadFile(name) {
+    async LoadFile(name: string) {
       try {
         const data = await fs.readFile(new URL(name, baseUrl));
         return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
@@ -227,19 +214,22 @@ async function runMapFrames({
         return null;
       }
     },
-    async LoadTextFile(name) {
+    async LoadTextFile(name: string) {
       try {
         return await fs.readFile(new URL(name, baseUrl), 'utf8');
       } catch {
         return null;
       }
     },
-  });
-  Mod.Init({ files: engineMocks.COM, con: engineMocks.Con, loadRenderData: false });
+  };
+  engineMocks.Con = con;
+  engineMocks.Mod = Mod;
+  engineMocks.COM = files;
+  Mod.Init({ files, con, loadRenderData: false });
 
   try {
-    const model = /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ (await Mod.ForNameAsync(mapName, true));
-    const entities = parseMapEntities(model.entities);
+    const model = await Mod.ForNameAsync(mapName, true) as BrushModel;
+    const entities = parseMapEntities(model.entities!);
     const spawn = requireMapEntity(entities, (entity) => entity.classname === 'info_player_start', 'spawn entity classname=info_player_start');
 
     const spawnOrigin = startOrigin ?? parseMapOrigin(spawn.origin);
@@ -255,8 +245,7 @@ async function runMapFrames({
     player.pmFlags = PMF.ON_GROUND;
     player.onground = 0;
 
-    /** @type {MapPmoveFrame[]} */
-    const rows = [];
+    const rows: MapPmoveFrame[] = [];
 
     for (let frame = 0; frame < frames; frame++) {
       const before = player.origin.copy();
@@ -293,11 +282,11 @@ async function runMapFrames({
 
 /**
  * Run a real BSP-backed forward movement probe for a fixed number of frames.
- * @param {string} mapName map path relative to data/id1
- * @param {number} frames number of frames to simulate
- * @returns {Promise<MapPmoveFrame[]>} per-frame movement snapshots
+ * @param mapName map path relative to data/id1
+ * @param frames number of frames to simulate
+ * @returns per-frame movement snapshots
  */
-async function runMapForwardFrames(mapName, frames) {
+async function runMapForwardFrames(mapName: string, frames: number): Promise<MapPmoveFrame[]> {
   return runMapFrames({ mapName, frames });
 }
 
@@ -583,11 +572,10 @@ void describe('PmovePlayer', () => {
 
       pmove.clipPlayerMove = (start, end) => {
         void start;
-        return createTrace({ endpos: end.copy() });
+        return createPmoveTrace({ endpos: end.copy() });
       };
 
-      /** @type {number[][]} */
-      const probes = [];
+      const probes: number[][] = [];
       pmove.staticWorldContents = (point) => {
         probes.push([...point]);
         if (point[2] === 8) {
@@ -615,7 +603,7 @@ void describe('PmovePlayer', () => {
 
       pmove.clipPlayerMove = (start, end) => {
         void start;
-        return createTrace({
+        return createPmoveTrace({
           endpos: end.copy(),
           normal: new Vector(0.0, 0.0, 0.75),
           ent: 0,
@@ -691,7 +679,7 @@ void describe('PmovePlayer', () => {
       pmove.isValidPlayerPosition = () => true;
       pmove.clipPlayerMove = (start, end) => {
         void start;
-        return createTrace({ endpos: end.copy(), normal: new Vector(0, 0, 1) });
+        return createPmoveTrace({ endpos: end.copy(), normal: new Vector(0, 0, 1) });
       };
       pmove.staticWorldContents = () => content.CONTENT_EMPTY;
 
@@ -738,7 +726,7 @@ void describe('PmovePlayer', () => {
         assert.deepEqual([...start], [8, 0, 4]);
         assert.deepEqual([...end], [8, 0, -14]);
 
-        return createTrace({
+        return createPmoveTrace({
           endpos: new Vector(8, 0, 3.5),
           fraction: 0.03,
           normal: new Vector(0, 0.75, 0.75),
@@ -783,7 +771,7 @@ void describe('PmovePlayer', () => {
         if (traceCalls === 1) {
           assert.deepEqual([...start], [0, 0, 0]);
           assert.deepEqual([...end], [0, 0, 18]);
-          return createTrace({
+          return createPmoveTrace({
             endpos: new Vector(0, 0, 9),
             fraction: 0.5,
             normal: new Vector(0, 0, 1),
@@ -794,7 +782,7 @@ void describe('PmovePlayer', () => {
         if (traceCalls === 2) {
           assert.deepEqual([...start], [12, 0, 9]);
           assert.deepEqual([...end], [12, 0, -0.03125]);
-          return createTrace({
+          return createPmoveTrace({
             endpos: new Vector(12, 0, 4),
             normal: new Vector(0, 0, 1),
             ent: 4,
@@ -866,7 +854,7 @@ void describe('PmovePlayer', () => {
         if (traceCalls === 1) {
           assert.deepEqual([...start], [0, 0, 0]);
           assert.deepEqual([...end], [100, 100, 0]);
-          return createTrace({
+          return createPmoveTrace({
             endpos: new Vector(50, 50, 0),
             fraction: 0.5,
             normal: new Vector(-1, 0, 0),
@@ -876,7 +864,7 @@ void describe('PmovePlayer', () => {
 
         if (traceCalls === 2) {
           assert.deepEqual([...start], [50, 50, 0]);
-          return createTrace({
+          return createPmoveTrace({
             endpos: new Vector(50, 50, 0),
             fraction: 0.0,
             normal: new Vector(-0.9876883625984192, -0.15643446147441864, 0),
@@ -884,7 +872,7 @@ void describe('PmovePlayer', () => {
           });
         }
 
-        return createTrace({
+        return createPmoveTrace({
           endpos: end.copy(),
           fraction: 1.0,
         });
@@ -914,7 +902,7 @@ void describe('PmovePlayer', () => {
         if (traceCalls === 1) {
           assert.deepEqual([...start], [0, 0, 0]);
           assert.deepEqual([...end], [100, 100, 0]);
-          return createTrace({
+          return createPmoveTrace({
             endpos: new Vector(50, 50, 0),
             fraction: 0.5,
             normal: new Vector(-1, 0, 0),
@@ -924,7 +912,7 @@ void describe('PmovePlayer', () => {
 
         if (traceCalls === 2) {
           assert.deepEqual([...start], [50, 50, 0]);
-          return createTrace({
+          return createPmoveTrace({
             endpos: new Vector(50, 50, 0),
             fraction: 0.0,
             normal: new Vector(-1, 0, 0),
@@ -932,7 +920,7 @@ void describe('PmovePlayer', () => {
           });
         }
 
-        return createTrace({
+        return createPmoveTrace({
           endpos: end.copy(),
           fraction: 1.0,
         });
@@ -962,7 +950,7 @@ void describe('PmovePlayer', () => {
         if (traceCalls === 1) {
           assert.deepEqual([...start], [0, 0, 0]);
           assert.deepEqual([...end], [120, 40, 0]);
-          return createTrace({
+          return createPmoveTrace({
             endpos: new Vector(48, 16, 0),
             fraction: 0.4,
             normal: new Vector(-1, 0, 0),
@@ -972,7 +960,7 @@ void describe('PmovePlayer', () => {
 
         if (traceCalls === 2) {
           assert.deepEqual([...start], [48, 16, 0]);
-          return createTrace({
+          return createPmoveTrace({
             endpos: new Vector(48, 16, 0),
             fraction: 0.0,
             normal: new Vector(-0.95, -0.31224989991991997, 0),
@@ -980,7 +968,7 @@ void describe('PmovePlayer', () => {
           });
         }
 
-        return createTrace({
+        return createPmoveTrace({
           endpos: end.copy(),
           fraction: 1.0,
         });
@@ -999,7 +987,7 @@ void describe('PmovePlayer', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
 
-      const runCase = (secondNormalY) => {
+      const runCase = (secondNormalY: number) => {
         let traceCalls = 0;
 
         player.origin.clear();
@@ -1010,7 +998,7 @@ void describe('PmovePlayer', () => {
           traceCalls += 1;
 
           if (traceCalls === 1) {
-            return createTrace({
+            return createPmoveTrace({
               endpos: new Vector(48, secondNormalY > 0 ? -16 : 16, 0),
               fraction: 0.4,
               normal: new Vector(-1, 0, 0),
@@ -1019,7 +1007,7 @@ void describe('PmovePlayer', () => {
           }
 
           if (traceCalls === 2) {
-            return createTrace({
+            return createPmoveTrace({
               endpos: new Vector(48, secondNormalY > 0 ? -16 : 16, 0),
               fraction: 0.0,
               normal: new Vector(-0.95, secondNormalY, 0),
@@ -1027,7 +1015,7 @@ void describe('PmovePlayer', () => {
             });
           }
 
-          return createTrace({
+          return createPmoveTrace({
             endpos: end.copy(),
             fraction: 1.0,
           });
@@ -1102,12 +1090,12 @@ void describe('Pmove', () => {
         num: 1,
       }));
 
-      pmove.physents[0].tracePlayerMove = () => createTrace({
+      pmove.physents[0].tracePlayerMove = () => createPmoveTrace({
         endpos: start.copy(),
         fraction: 0.0,
         normal: new Vector(-1, 0, 0),
       });
-      pmove.physents[1].tracePlayerMove = () => createTrace({
+      pmove.physents[1].tracePlayerMove = () => createPmoveTrace({
         endpos: end.copy(),
         startsolid: true,
         allsolid: false,
@@ -1138,12 +1126,12 @@ void describe('Pmove', () => {
         num: 1,
       }));
 
-      pmove.physents[0].tracePlayerMove = () => createTrace({
+      pmove.physents[0].tracePlayerMove = () => createPmoveTrace({
         endpos: end.copy(),
         startsolid: true,
         allsolid: true,
       });
-      pmove.physents[1].tracePlayerMove = () => createTrace({
+      pmove.physents[1].tracePlayerMove = () => createPmoveTrace({
         endpos: end.copy(),
         startsolid: true,
         allsolid: false,
@@ -1278,7 +1266,7 @@ void describe('Pmove', () => {
     void test('uses duckspeed as the movement cap while ducked on the ground', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
-      const recordedWishspeeds = [];
+      const recordedWishspeeds: number[] = [];
 
       player.origin.clear();
       player.velocity.clear();
@@ -1308,7 +1296,7 @@ void describe('MoveVars', () => {
 
       for (const [variable, cvarName] of Object.entries(MOVEVAR_CVARS)) {
         assert.equal(vars.setFromCvar(cvarName, '123.5'), true, cvarName);
-        assert.equal(vars[variable], 123.5, cvarName);
+        assert.equal(vars[variable as keyof MoveVars], 123.5, cvarName);
       }
     });
 

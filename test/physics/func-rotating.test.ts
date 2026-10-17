@@ -3,104 +3,24 @@ import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
 import { moveType, solid } from '../../source/shared/Defs.ts';
-import { entityClasses } from '../../source/game/id1/GameAPI.ts';
-
-const RotatingEntity = entityClasses.find((entityClass) => entityClass.classname === 'func_rotating');
-
-assert.ok(RotatingEntity, 'func_rotating must be registered in GameAPI');
+// The game's entity modules import each other in a cycle that only resolves when its entry point is loaded first.
+import '../../source/game/id1/GameAPI.ts';
+import type BaseEntity from '../../source/game/id1/entity/BaseEntity.ts';
+import { RotatingEntity } from '../../source/game/id1/entity/props/Platforms.ts';
+import { createBoundedEdict, createInertEngineApi, createInertGameApi } from '../support/entityMocks.ts';
 
 /**
  * Create a minimal rotating-entity fixture.
- * @returns {{ entity: InstanceType<typeof RotatingEntity>, precachedModels: string[] }} Fixture data.
+ * @returns The entity, and the names of the models it precached.
  */
-function createRotatingEntityFixture() {
-  const modelMins = new Vector(-16, -16, -16);
-  const modelMaxs = new Vector(16, 16, 16);
-  const precachedModels = [];
-  const edict = {
-    num: 1,
-    entity: null,
-    setOrigin(origin) {
-      const entity = this.entity;
-      entity.origin.set(origin);
-      entity.absmin = origin.copy().add(entity.mins);
-      entity.absmax = origin.copy().add(entity.maxs);
-    },
-    setModel(modelname) {
-      const entity = this.entity;
-      entity.model = modelname;
-      entity.modelindex = modelname ? 1 : 0;
-      entity.mins.set(modelMins);
-      entity.maxs.set(modelMaxs);
-      entity.size = modelMaxs.copy().subtract(modelMins);
-      entity.absmin = entity.origin.copy().add(entity.mins);
-      entity.absmax = entity.origin.copy().add(entity.maxs);
-    },
-    setMinMaxSize(mins, maxs) {
-      const entity = this.entity;
-      entity.mins.set(mins);
-      entity.maxs.set(maxs);
-      entity.size = maxs.copy().subtract(mins);
-      entity.absmin = entity.origin.copy().add(entity.mins);
-      entity.absmax = entity.origin.copy().add(entity.maxs);
-    },
-    equals(other) {
-      return this === other;
-    },
-    freeEdict() {},
-    walkMove() {
-      return false;
-    },
-    changeYaw() {
-      return 0;
-    },
-    dropToFloor() {
-      return true;
-    },
-    isOnTheFloor() {
-      return false;
-    },
-    makeStatic() {},
-    aim() {
-      return new Vector();
-    },
-    getNextBestClient() {
-      return null;
-    },
-  };
-
-  const engine = {
-    IsLoading() {
-      return false;
-    },
-    PrecacheModel(modelname) {
+function createRotatingEntityFixture(): { entity: RotatingEntity; precachedModels: string[] } {
+  const precachedModels: string[] = [];
+  const edict = createBoundedEdict();
+  const gameAPI = createInertGameApi({}, createInertEngineApi({
+    PrecacheModel(modelname: string) {
       precachedModels.push(modelname);
     },
-    PrecacheSound() {},
-    StartSound() {},
-    SpawnAmbientSound() {},
-    FindByFieldAndValue() {
-      return null;
-    },
-    FindAllByFieldAndValue() {
-      return [];
-    },
-    ParseQC() {
-      return null;
-    },
-    Traceline() {
-      return null;
-    },
-    SetAreaPortalState() {},
-    GetCvar() {
-      return { value: 0 };
-    },
-  };
-
-  const gameAPI = {
-    engine,
-    time: 0,
-  };
+  }));
 
   const entity = new RotatingEntity(edict, gameAPI);
   edict.entity = entity;
@@ -142,11 +62,12 @@ void describe('RotatingEntity', () => {
 
       assert.deepEqual([...entity.avelocity], [0, 0, 0]);
 
-      entity.use(null);
+      // A rotating entity does not look at who used it, so it can be used by itself.
+      entity.use(entity);
       assert.deepEqual([...entity.avelocity], expected);
       assert.equal(entity._isRotating, true);
 
-      entity.use(null);
+      entity.use(entity);
       assert.deepEqual([...entity.avelocity], [0, 0, 0]);
       assert.equal(entity._isRotating, false);
     }
@@ -154,16 +75,17 @@ void describe('RotatingEntity', () => {
 
   void test('inflicts configured damage on touch and stops on block when requested', () => {
     const { entity } = createRotatingEntityFixture();
-    const damageCalls = [];
+    const damageCalls: unknown[][] = [];
+    // Only the damage handler and the position of the touched entity are read.
     const victim = {
       _damageHandler: {
-        damage(...args) {
+        damage(...args: unknown[]) {
           damageCalls.push(args);
         },
       },
       centerPoint: new Vector(4, 5, 6),
       origin: new Vector(1, 2, 3),
-    };
+    } as unknown as BaseEntity;
 
     entity.spawnflags = RotatingEntity.START_ON | RotatingEntity.TOUCH_PAIN | RotatingEntity.STOP;
     entity.dmg = 5;

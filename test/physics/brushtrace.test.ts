@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
 import { BrushTrace, DIST_EPSILON, Pmove } from '../../source/engine/common/Pmove.ts';
-import { BrushSide } from '../../source/engine/common/model/BSP.ts';
+import { BrushSide, type BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { content } from '../../source/shared/Defs.ts';
 
 import {
@@ -16,9 +16,9 @@ import { setBspTree } from '../support/bspTree.ts';
 
 /**
  * Build a minimal two-brush submodel fixture with a gap between brushes.
- * @returns {import('../../source/engine/common/model/BSP.ts').BrushModel} brush model fixture
+ * @returns brush model fixture
  */
-function createTwoBoxBrushModel() {
+function createTwoBoxBrushModel(): BrushModel {
   const model = createBoxBrushModel({ center: [-32, 0, 0], halfExtents: [16, 16, 16] });
   const secondModel = createBoxBrushModel({ center: [32, 0, 0], halfExtents: [16, 16, 16] });
   const planeOffset = model.planes.length;
@@ -44,16 +44,14 @@ function createTwoBoxBrushModel() {
 /**
  * Build a wedge brush whose inferred axial bounds bevel competes with a
  * walkable ramp face at almost the same enter fraction.
- * @returns {import('../../source/engine/common/model/BSP.ts').BrushModel} brush model fixture
+ * @returns brush model fixture
  */
-function createRampBevelBrushModel() {
+function createRampBevelBrushModel(): BrushModel {
   const model = createBoxBrushModel({ center: [0, 0, 0], halfExtents: [32, 16, 32] });
   const normal = new Vector(-1, 0, 1);
   normal.normalize();
-  const rampPlane = {
-    ...createAxisPlane([...normal], -22.627416610717773, 3),
-    signbits: /** @type {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7} */ (1),
-  };
+  const rampPlane = createAxisPlane([...normal], -22.627416610717773, 3);
+  rampPlane.signbits = 1;
 
   model.planes.push(rampPlane);
 
@@ -69,9 +67,9 @@ function createRampBevelBrushModel() {
 /**
  * Build a world model with one nearby brush and one distant child leaf whose
  * bounds do not intersect the current sweep.
- * @returns {import('../../source/engine/common/model/BSP.ts').BrushModel} world model fixture
+ * @returns world model fixture
  */
-function createPrunedLeafWorldModel() {
+function createPrunedLeafWorldModel(): BrushModel {
   const model = createBoxBrushModel({ center: [64, -16, 0], halfExtents: [16, 16, 16], name: 'test-pruned-world', submodel: false });
   const secondModel = createBoxBrushModel({ center: [224, 16, 0], halfExtents: [16, 16, 16], submodel: false });
   const planeOffset = model.planes.length;
@@ -105,9 +103,9 @@ function createPrunedLeafWorldModel() {
   return model;
 }
 
-describe('BrushTrace', () => {
-  describe('transformedTestPosition', () => {
-    test('keeps exact face contact walkable', () => {
+void describe('BrushTrace', () => {
+  void describe('transformedTestPosition', () => {
+    void test('keeps exact face contact walkable', () => {
       const model = createBoxBrushModel({ halfExtents: [16, 16, 16] });
       const origin = new Vector(100, 0, 0);
       const tangentPosition = new Vector(100, 0, 40);
@@ -152,8 +150,8 @@ describe('BrushTrace', () => {
     });
   });
 
-  describe('transformedBoxTrace', () => {
-    test('returns world-space impact points', () => {
+  void describe('transformedBoxTrace', () => {
+    void test('returns world-space impact points', () => {
       const model = createBoxBrushModel({ halfExtents: [16, 16, 16] });
       const trace = BrushTrace.transformedBoxTrace(
         model,
@@ -172,7 +170,7 @@ describe('BrushTrace', () => {
       assertNear(trace.endpos[2], 0);
     });
 
-    test('keeps exact floor contact out of startsolid', () => {
+    void test('keeps exact floor contact out of startsolid', () => {
       const model = createBoxBrushModel({ halfExtents: [16, 16, 16] });
       const origin = new Vector(100, 0, 0);
       const start = new Vector(100, 0, 40);
@@ -197,7 +195,7 @@ describe('BrushTrace', () => {
       assert.deepEqual([...trace.endpos], [...start]);
     });
 
-    test('clips against the nearest brush in a multi-brush submodel', () => {
+    void test('clips against the nearest brush in a multi-brush submodel', () => {
       const model = createTwoBoxBrushModel();
       const trace = BrushTrace.transformedBoxTrace(
         model,
@@ -220,35 +218,24 @@ describe('BrushTrace', () => {
       assertNear(trace.plane.normal[2], 0.0);
     });
 
-    test('skips submodel brushes whose cached bounds miss the swept move', () => {
+    void test('skips submodel brushes whose cached bounds miss the swept move', (t) => {
       const model = createTwoBoxBrushModel();
-      const originalClipBoxToBrush = BrushTrace._clipBoxToBrush;
-      /** @type {number[]} */
-      const testedBrushSides = [];
+      const clipBoxToBrush = t.mock.method(BrushTrace, '_clipBoxToBrush');
 
-      BrushTrace._clipBoxToBrush = (ctx, brush) => {
-        testedBrushSides.push(brush.firstside);
-        return originalClipBoxToBrush.call(BrushTrace, ctx, brush);
-      };
+      BrushTrace.transformedBoxTrace(
+        model,
+        new Vector(-100, 0, 0),
+        new Vector(-40, 0, 0),
+        new Vector(),
+        new Vector(),
+        Vector.origin,
+        Vector.origin,
+      );
 
-      try {
-        BrushTrace.transformedBoxTrace(
-          model,
-          new Vector(-100, 0, 0),
-          new Vector(-40, 0, 0),
-          new Vector(),
-          new Vector(),
-          Vector.origin,
-          Vector.origin,
-        );
-      } finally {
-        BrushTrace._clipBoxToBrush = originalClipBoxToBrush;
-      }
-
-      assert.deepEqual(testedBrushSides, [0]);
+      assert.deepEqual(clipBoxToBrush.mock.calls.map((call) => call.arguments[1].firstside), [0]);
     });
 
-    test('does not falsely clip edge-on brush sweeps', () => {
+    void test('does not falsely clip edge-on brush sweeps', () => {
       const model = createBoxBrushModel({ halfExtents: [16, 16, 16] });
       const end = new Vector(16, 16, -40);
       const trace = BrushTrace.transformedBoxTrace(
@@ -268,7 +255,7 @@ describe('BrushTrace', () => {
       assert.deepEqual([...trace.plane.normal], [0, 0, 0]);
     });
 
-    test('prefers a walkable ramp face over a nearly simultaneous axial bevel', () => {
+    void test('prefers a walkable ramp face over a nearly simultaneous axial bevel', () => {
       const model = createRampBevelBrushModel();
       const trace = BrushTrace.transformedBoxTrace(
         model,
@@ -288,7 +275,7 @@ describe('BrushTrace', () => {
       assertNear(trace.plane.normal[2], Math.SQRT1_2, 0.001);
     });
 
-    test('treats zero-extent submodel traces as point traces', () => {
+    void test('treats zero-extent submodel traces as point traces', () => {
       const model = createBoxBrushModel({ halfExtents: [16, 16, 16] });
       const trace = BrushTrace.transformedBoxTrace(
         model,
@@ -312,8 +299,8 @@ describe('BrushTrace', () => {
     });
   });
 
-  describe('contact edge cases', () => {
-    test('keeps edge-on point contacts walkable', () => {
+  void describe('contact edge cases', () => {
+    void test('keeps edge-on point contacts walkable', () => {
       const model = createBoxBrushModel({ halfExtents: [16, 16, 16] });
 
       assert.equal(
@@ -322,7 +309,7 @@ describe('BrushTrace', () => {
       );
     });
 
-    test('checks every brush in a multi-brush submodel for position tests', () => {
+    void test('checks every brush in a multi-brush submodel for position tests', () => {
       const model = createTwoBoxBrushModel();
 
       assert.equal(
@@ -340,8 +327,8 @@ describe('BrushTrace', () => {
     });
   });
 
-  describe('rotation', () => {
-    test('transformed tests honor rotated entity angles', () => {
+  void describe('rotation', () => {
+    void test('transformed tests honor rotated entity angles', () => {
       const model = createBoxBrushModel({ halfExtents: [8, 32, 16] });
       const point = new Vector(20, 0, 0);
 
@@ -378,8 +365,8 @@ describe('BrushTrace', () => {
     });
   });
 
-  describe('world brush lists', () => {
-    test('boxTrace traverses BSP nodes', () => {
+  void describe('world brush lists', () => {
+    void test('boxTrace traverses BSP nodes', () => {
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
       const trace = BrushTrace.boxTrace(
         worldModel,
@@ -397,7 +384,7 @@ describe('BrushTrace', () => {
       assertNear(trace.endpos[2], 0);
     });
 
-    test('a box that only touches the side of a brush falls past its top instead of landing on it', () => {
+    void test('a box that only touches the side of a brush falls past its top instead of landing on it', () => {
       // brush: x 32..96, y -16..16, z -16..16. A player box centered at y = 32 touches the face at y = 16 exactly.
       // Moving straight down along that face, the box cannot reach the brush, so it must not stop on the brush's top
       // (the player would be lifted on top of a ledge they only brush against, e.g. a step-high lower brush of a wall).
@@ -416,7 +403,7 @@ describe('BrushTrace', () => {
       assert.deepEqual([...trace.endpos], [64, 32, 0]);
     });
 
-    test('a box that overlaps the side of a brush by a little still lands on its top', () => {
+    void test('a box that overlaps the side of a brush by a little still lands on its top', () => {
       const worldModel = createBrushWorldModel({ halfExtents: [32, 16, 16] });
       const trace = BrushTrace.boxTrace(
         worldModel,
@@ -433,7 +420,7 @@ describe('BrushTrace', () => {
       assertNear(trace.plane.normal[2], 1);
     });
 
-    test('testPosition traverses BSP nodes', () => {
+    void test('testPosition traverses BSP nodes', () => {
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
 
       assert.equal(
@@ -459,7 +446,7 @@ describe('BrushTrace', () => {
       );
     });
 
-    test('treats zero-extent world traces as point traces', () => {
+    void test('treats zero-extent world traces as point traces', () => {
       const worldModel = createBrushWorldModel({ axis: 2, center: [0, 0, 0], halfExtents: [16, 16, 16] });
       const trace = BrushTrace.boxTrace(
         worldModel,
@@ -490,12 +477,13 @@ describe('BrushTrace', () => {
       );
     });
 
-    test('does not inherit allsolid from solid BSP leaves on tangent brush clips', () => {
+    void test('does not inherit allsolid from solid BSP leaves on tangent brush clips', () => {
       const worldModel = createBoxBrushModel({ center: [0, 0, 0], halfExtents: [16, 16, 16], submodel: false });
       // a tree needs a node at its root, both sides of this one lead into the same solid leaf
       setBspTree(worldModel, [{ planeNum: 0, children: [~0, ~0] }], [{ contents: content.CONTENT_SOLID, firstLeafBrush: 0, numLeafBrushes: 1 }]);
       worldModel.leafbrushes = [0];
-      worldModel.hulls = /** @type {typeof worldModel.hulls} */ ([{ firstClipNode: 0 }]);
+      // Only the first clip node of the hull is read by a brush world trace.
+      worldModel.hulls = [{ firstClipNode: 0 }] as unknown as typeof worldModel.hulls;
 
       const trace = BrushTrace.boxTrace(
         worldModel,
@@ -515,34 +503,25 @@ describe('BrushTrace', () => {
       assert.deepEqual([...trace.endpos], [0, 0, 40]);
     });
 
-    test('prunes BSP child bounds that miss a straddled world sweep', () => {
+    void test('prunes BSP child bounds that miss a straddled world sweep', (t) => {
       const worldModel = createPrunedLeafWorldModel();
-      const originalTraceToLeaf = BrushTrace._traceToLeaf;
-      /** @type {number[]} */
-      const visitedLeafs = [];
+      const traceToLeaf = t.mock.method(BrushTrace, '_traceToLeaf');
 
-      BrushTrace._traceToLeaf = (ctx, leaf) => {
-        visitedLeafs.push(leaf);
-        return originalTraceToLeaf.call(BrushTrace, ctx, leaf);
-      };
+      const trace = BrushTrace.boxTrace(
+        worldModel,
+        0,
+        new Vector(0, 0, 0),
+        new Vector(128, 0, 0),
+        Pmove.PLAYER_MINS,
+        Pmove.PLAYER_MAXS,
+      );
 
-      try {
-        const trace = BrushTrace.boxTrace(
-          worldModel,
-          0,
-          new Vector(0, 0, 0),
-          new Vector(128, 0, 0),
-          Pmove.PLAYER_MINS,
-          Pmove.PLAYER_MAXS,
-        );
+      assert.equal(trace.startsolid, false);
+      assert.ok(trace.fraction < 1.0);
+      assertNear(trace.endpos[0], 31.96875, 0.001);
+      assertNear(trace.endpos[1], 0.0, 0.001);
 
-        assert.equal(trace.startsolid, false);
-        assert.ok(trace.fraction < 1.0);
-        assertNear(trace.endpos[0], 31.96875, 0.001);
-        assertNear(trace.endpos[1], 0.0, 0.001);
-      } finally {
-        BrushTrace._traceToLeaf = originalTraceToLeaf;
-      }
+      const visitedLeafs = traceToLeaf.mock.calls.map((call) => call.arguments[1]);
 
       assert.equal(visitedLeafs.length, 1);
       assert.equal(worldModel.leafTable.firstLeafBrushes[visitedLeafs[0]], 1);

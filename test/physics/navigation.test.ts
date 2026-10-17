@@ -4,17 +4,20 @@ import { readFileSync } from 'node:fs';
 
 import Vector from '../../source/shared/Vector.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { Navigation } from '../../source/engine/server/Navigation.ts';
 import { mockedNavigationServices } from '../support/fixtures.ts';
+import { createCvarStub } from '../support/cvarStub.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
 const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);
 const NAV_MONSTER_MAXS = new Vector(16.0, 16.0, 40.0);
 
 /**
- * @returns {{faces: object[], surfedges: number[], edges: number[][], vertexes: Vector[], checksum: number}} minimal worldmodel
+ * @returns The minimal world model a navigation build reads: faces, edges and vertexes of one floor triangle.
  */
-function createNavigationWorldModel() {
+function createNavigationWorldModel(): BrushModel {
+  // A real BrushModel comes from a BSP file; the build reads just the members below.
   return {
     checksum: 1337,
     planes: [{ normal: new Vector(0, 0, 1) }],
@@ -40,31 +43,31 @@ function createNavigationWorldModel() {
       new Vector(512, 0, 0),
       new Vector(0, 512, 0),
     ],
-  };
+  } as unknown as BrushModel;
 }
 
 /**
- * @param {Vector} position stand origin to validate
- * @returns {boolean} true when the stand origin fits on the test floor
+ * @param position stand origin to validate
+ * @returns true when the stand origin fits on the test floor
  */
-function isSupportedStandOrigin(position) {
+function isSupportedStandOrigin(position: Vector): boolean {
   return position[2] >= 24
     && position[2] <= 128;
 }
 
 /**
- * @param {Vector} point world point to validate
- * @returns {boolean} true when the point sits over the default supporting floor
+ * @param point world point to validate
+ * @returns true when the point sits over the default supporting floor
  */
-function isSupportedFloorPoint(point) {
+function isSupportedFloorPoint(point: Vector): boolean {
   return point[2] <= 24.0;
 }
 
 /**
- * @param {Vector} mins trace mins
- * @param {Vector} maxs trace maxs
+ * @param mins trace mins
+ * @param maxs trace maxs
  */
-function assertExpectedTraceShape(mins, maxs) {
+function assertExpectedTraceShape(mins: Vector, maxs: Vector) {
   const isPointTrace = mins.isOrigin() && maxs.isOrigin();
 
   if (isPointTrace) {
@@ -76,14 +79,14 @@ function assertExpectedTraceShape(mins, maxs) {
 }
 
 /**
- * @param {Vector} start trace start
- * @param {Vector} mins trace mins
- * @param {Vector} maxs trace maxs
- * @param {Vector} end trace end
- * @param {(point: Vector) => boolean} hasFloorAt test floor predicate
- * @returns {{endpos: Vector, fraction: number, startsolid: boolean, allsolid: boolean, ent: null}} trace stub
+ * @param start trace start
+ * @param mins trace mins
+ * @param maxs trace maxs
+ * @param end trace end
+ * @param hasFloorAt test floor predicate
+ * @returns trace stub
  */
-function traceAgainstFlatFloor(start, mins, maxs, end, hasFloorAt) {
+function traceAgainstFlatFloor(start: Vector, mins: Vector, maxs: Vector, end: Vector, hasFloorAt: (point: Vector) => boolean): {endpos: Vector, fraction: number, startsolid: boolean, allsolid: boolean, ent: null} {
   const isPointTrace = mins.isOrigin() && maxs.isOrigin();
 
   if (!isPointTrace && !isSupportedStandOrigin(start)) {
@@ -113,23 +116,23 @@ function traceAgainstFlatFloor(start, mins, maxs, end, hasFloorAt) {
 }
 
 /**
- * @param {Vector} point world point to test
- * @param {(point: Vector) => boolean} hasFloorAt test floor predicate
- * @returns {number} point contents result
+ * @param point world point to test
+ * @param hasFloorAt test floor predicate
+ * @returns point contents result
  */
-function contentsAgainstFlatFloor(point, hasFloorAt) {
+function contentsAgainstFlatFloor(point: Vector, hasFloorAt: (point: Vector) => boolean): number {
   return hasFloorAt(point) ? -2 : 0;
 }
 
 /**
- * @param {Vector} end end position
- * @param {Vector} endpos resolved trace end position
- * @param {number} fraction travelled fraction
- * @param {boolean} [startsolid] whether the trace started in solid
- * @param {boolean} [allsolid] whether the trace stayed in solid
- * @returns {{endpos: Vector, fraction: number, startsolid: boolean, allsolid: boolean, ent: null}} trace stub
+ * @param end end position
+ * @param endpos resolved trace end position
+ * @param fraction travelled fraction
+ * @param [startsolid] whether the trace started in solid
+ * @param [allsolid] whether the trace stayed in solid
+ * @returns trace stub
  */
-function createTrace(end, endpos, fraction, startsolid = false, allsolid = false) {
+function createTrace(end: Vector, endpos: Vector, fraction: number, startsolid: boolean = false, allsolid: boolean = false): {endpos: Vector, fraction: number, startsolid: boolean, allsolid: boolean, ent: null} {
   return {
     endpos: endpos.copy(),
     fraction,
@@ -141,11 +144,11 @@ function createTrace(end, endpos, fraction, startsolid = false, allsolid = false
 
 /**
  * Run a callback with the registry state needed by Navigation tests.
- * @param {{ Con: object, COM: object, SV: object }} mockRegistry registry overrides
- * @param {() => Promise<void>|void} callback test body
- * @returns {Promise<void>} callback result after registry restoration
+ * @param mockRegistry registry overrides
+ * @param callback test body
+ * @returns callback result after registry restoration
  */
-function withNavigationRegistry(mockRegistry, callback) {
+function withNavigationRegistry(mockRegistry: { Con: object, COM: object, SV: object }, callback: () => Promise<void>|void): Promise<void> {
   const previousCL = engineMocks.CL;
   const previousCOM = engineMocks.COM;
   const previousCon = engineMocks.Con;
@@ -186,13 +189,13 @@ function withNavigationRegistry(mockRegistry, callback) {
 }
 
 /**
- * @param {Uint8Array} data nav file data
- * @returns {{nodeCount: number, surfaceCounts: number[]}} parsed node and surface metadata
+ * @param data nav file data
+ * @returns parsed node and surface metadata
  */
-function readNavSurfaceCounts(data) {
+function readNavSurfaceCounts(data: Uint8Array): {nodeCount: number, surfaceCounts: number[]} {
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   let offset = 0;
-  const readBytes = (count) => {
+  const readBytes = (count: number) => {
     const bytes = new Uint8Array(data.buffer, data.byteOffset + offset, count);
     offset += count;
     return bytes;
@@ -285,20 +288,20 @@ void describe('Navigation.build', () => {
     let lineTraceCount = 0;
 
     const collision = {
-      traceStaticWorld(start, mins, maxs, end) {
+      traceStaticWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         boxTraceCount++;
 
         assertExpectedTraceShape(mins, maxs);
 
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      move(start, mins, maxs, end) {
+      move(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      pointContents(point) {
+      pointContents(point: Vector) {
         return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
       },
-      staticWorldContents(point) {
+      staticWorldContents(point: Vector) {
         return isSupportedFloorPoint(point) ? -1 : 0;
       },
       traceStaticWorldLine() {
@@ -310,9 +313,9 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
+    Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
       COM: { WriteFile() { return Promise.resolve(); } },
@@ -348,18 +351,18 @@ void describe('Navigation.build', () => {
   void test('clears previously extracted surfaces before rebuilding', async () => {
     const worldmodel = createNavigationWorldModel();
     const collision = {
-      traceStaticWorld(start, mins, maxs, end) {
+      traceStaticWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         assertExpectedTraceShape(mins, maxs);
 
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      move(start, mins, maxs, end) {
+      move(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      pointContents(point) {
+      pointContents(point: Vector) {
         return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
       },
-      staticWorldContents(point) {
+      staticWorldContents(point: Vector) {
         return isSupportedFloorPoint(point) ? -1 : 0;
       },
       traceStaticWorldLine() {
@@ -370,9 +373,9 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
+    Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
       COM: { WriteFile() { return Promise.resolve(); } },
@@ -406,18 +409,18 @@ void describe('Navigation.build', () => {
   void test('does not collapse a large walkable region into a single node', async () => {
     const worldmodel = createNavigationWorldModel();
     const collision = {
-      traceStaticWorld(start, mins, maxs, end) {
+      traceStaticWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         assertExpectedTraceShape(mins, maxs);
 
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      move(start, mins, maxs, end) {
+      move(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      pointContents(point) {
+      pointContents(point: Vector) {
         return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
       },
-      staticWorldContents(point) {
+      staticWorldContents(point: Vector) {
         return isSupportedFloorPoint(point) ? -1 : 0;
       },
       traceStaticWorldLine() {
@@ -428,9 +431,9 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
+    Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
       COM: { WriteFile() { return Promise.resolve(); } },
@@ -460,7 +463,7 @@ void describe('Navigation.build', () => {
   void test('rejects walkable samples that lack monster-style corner support', async () => {
     const worldmodel = createNavigationWorldModel();
     const collision = {
-      traceStaticWorld(start, mins, maxs, end) {
+      traceStaticWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         assertExpectedTraceShape(mins, maxs);
 
         return traceAgainstFlatFloor(
@@ -471,7 +474,7 @@ void describe('Navigation.build', () => {
           (point) => point[0] >= -4 && point[0] <= 44 && Math.abs(point[1]) <= 16 && point[2] <= 24.0,
         );
       },
-      move(start, mins, maxs, end) {
+      move(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstFlatFloor(
           start,
           mins,
@@ -480,10 +483,10 @@ void describe('Navigation.build', () => {
           (point) => point[0] >= -4 && point[0] <= 44 && Math.abs(point[1]) <= 16 && point[2] <= 24.0,
         );
       },
-      pointContents(point) {
+      pointContents(point: Vector) {
         return contentsAgainstFlatFloor(point, (probe) => probe[0] >= -4 && probe[0] <= 44 && Math.abs(probe[1]) <= 16 && probe[2] <= 24.0);
       },
-      staticWorldContents(point) {
+      staticWorldContents(point: Vector) {
         return point[0] >= -4 && point[0] <= 44 && Math.abs(point[1]) <= 16 && point[2] <= 24.0 ? -1 : 0;
       },
       traceStaticWorldLine() {
@@ -494,9 +497,9 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
+    Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
       COM: { WriteFile() { return Promise.resolve(); } },
@@ -529,18 +532,18 @@ void describe('Navigation.build', () => {
     let writtenData = null;
 
     const collision = {
-      traceStaticWorld(start, mins, maxs, end) {
+      traceStaticWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         assertExpectedTraceShape(mins, maxs);
 
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      move(start, mins, maxs, end) {
+      move(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      pointContents(point) {
+      pointContents(point: Vector) {
         return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
       },
-      staticWorldContents(point) {
+      staticWorldContents(point: Vector) {
         return isSupportedFloorPoint(point) ? -1 : 0;
       },
       traceStaticWorldLine() {
@@ -551,13 +554,13 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
+    Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
       COM: {
-        WriteFile(_filename, data) {
+        WriteFile(_filename: string, data: ArrayLike<number>) {
           writtenData = new Uint8Array(data);
           return Promise.resolve();
         },
@@ -591,21 +594,21 @@ void describe('Navigation.build', () => {
 
   void test('publishes nav.load after saving a rebuilt graph in listen-server mode', async () => {
     const worldmodel = createNavigationWorldModel();
-    const publishedLoads = [];
+    const publishedLoads: Array<{ mapname: string; checksum: number | null }> = [];
 
     const collision = {
-      traceStaticWorld(start, mins, maxs, end) {
+      traceStaticWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         assertExpectedTraceShape(mins, maxs);
 
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      move(start, mins, maxs, end) {
+      move(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      pointContents(point) {
+      pointContents(point: Vector) {
         return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
       },
-      staticWorldContents(point) {
+      staticWorldContents(point: Vector) {
         return isSupportedFloorPoint(point) ? -1 : 0;
       },
       traceStaticWorldLine() {
@@ -616,9 +619,9 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
+    Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
       COM: { WriteFile() { return Promise.resolve(); } },
@@ -656,17 +659,17 @@ void describe('Navigation.build', () => {
     const worldmodel = createNavigationWorldModel();
 
     const collision = {
-      traceStaticWorld(start, mins, maxs, end) {
+      traceStaticWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         assertExpectedTraceShape(mins, maxs);
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
       move() {
         assert.fail('Navigation.build must not call SV.collision.move — use traceStaticWorld for static-only queries');
       },
-      pointContents(point) {
+      pointContents(point: Vector) {
         return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
       },
-      staticWorldContents(point) {
+      staticWorldContents(point: Vector) {
         return isSupportedFloorPoint(point) ? -1 : 0;
       },
       traceStaticWorldLine() {
@@ -677,9 +680,9 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
+    Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
       COM: { WriteFile() { return Promise.resolve(); } },
@@ -719,7 +722,7 @@ void describe('Navigation.build (tight corridor)', () => {
     const WALKER_TOP_EXTENT = 40; // walkerMaxs.z
 
     const collision = {
-      traceStaticWorld(start, mins, maxs, end) {
+      traceStaticWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         const isPointTrace = mins.isOrigin() && maxs.isOrigin();
 
         if (!isPointTrace && start[2] + WALKER_TOP_EXTENT > CORRIDOR_CEILING_Z) {
@@ -729,13 +732,13 @@ void describe('Navigation.build (tight corridor)', () => {
 
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      move(start, mins, maxs, end) {
+      move(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      pointContents(point) {
+      pointContents(point: Vector) {
         return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
       },
-      staticWorldContents(point) {
+      staticWorldContents(point: Vector) {
         return isSupportedFloorPoint(point) ? -1 : 0;
       },
       traceStaticWorldLine() {
@@ -746,9 +749,9 @@ void describe('Navigation.build (tight corridor)', () => {
     const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
+    Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
       COM: { WriteFile() { return Promise.resolve(); } },
@@ -782,30 +785,30 @@ const SLOPE_RATE = 0.5;
 const SLOPE_STAND_OFFSET = (-NAV_MONSTER_MINS[2]) + NAV_MONSTER_MAXS[0] * SLOPE_RATE; // 24 + 8 = 32
 
 /**
- * @param {number} x
- * @returns {number} floor surface z at x
+ * @param x
+ * @returns floor surface z at x
  */
-function slopeSurfaceZ(x) {
+function slopeSurfaceZ(x: number): number {
   return x * SLOPE_RATE;
 }
 
 /**
- * @param {number} x
- * @returns {number} stand origin z for walker centered at x
+ * @param x
+ * @returns stand origin z for walker centered at x
  */
-function slopeStandZ(x) {
+function slopeStandZ(x: number): number {
   return slopeSurfaceZ(x) + SLOPE_STAND_OFFSET;
 }
 
 /**
  * Box/point trace stub against a ramp surface whose height is z = x * SLOPE_RATE.
- * @param {Vector} start
- * @param {Vector} mins
- * @param {Vector} maxs
- * @param {Vector} end
- * @returns {{endpos: Vector, fraction: number, startsolid: boolean, allsolid: boolean, ent: null}} trace stub result
+ * @param start
+ * @param mins
+ * @param maxs
+ * @param end
+ * @returns trace stub result
  */
-function traceAgainstRamp(start, mins, maxs, end) {
+function traceAgainstRamp(start: Vector, mins: Vector, maxs: Vector, end: Vector): {endpos: Vector, fraction: number, startsolid: boolean, allsolid: boolean, ent: null} {
   const isPointTrace = mins.isOrigin() && maxs.isOrigin();
 
   if (!isPointTrace) {
@@ -858,7 +861,8 @@ function traceAgainstRamp(start, mins, maxs, end) {
  * Vertices: (0,0,0)→(128,0,64)→(128,128,64)→(0,128,0) — a quad tilted in X at 26.6°.
  * Face normal ≈ (-0.447, 0, 0.894), stability ≈ 0.894 > MIN_STEP_NORMAL.
  */
-function createSlopeWorldModel() {
+function createSlopeWorldModel(): BrushModel {
+  // A real BrushModel comes from a BSP file; the build reads just the members below.
   const invSqrt5 = 1.0 / Math.sqrt(5);
 
   return {
@@ -888,7 +892,7 @@ function createSlopeWorldModel() {
       new Vector(128, 128, 64),
       new Vector(0, 128, 0),
     ],
-  };
+  } as unknown as BrushModel;
 }
 
 void describe('Navigation.build (slope)', () => {
@@ -896,18 +900,18 @@ void describe('Navigation.build (slope)', () => {
     const worldmodel = createSlopeWorldModel();
 
     const collision = {
-      traceStaticWorld(start, mins, maxs, end) {
+      traceStaticWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstRamp(start, mins, maxs, end);
       },
-      move(start, mins, maxs, end) {
+      move(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         // move must not be called during nav build
         return traceAgainstRamp(start, mins, maxs, end);
       },
-      pointContents(point) {
+      pointContents(point: Vector) {
         // solid below the ramp surface
         return point[2] < slopeSurfaceZ(point[0]) ? -2 : 0;
       },
-      staticWorldContents(point) {
+      staticWorldContents(point: Vector) {
         return point[2] < slopeSurfaceZ(point[0]) ? -1 : 0;
       },
       traceStaticWorldLine() {
@@ -918,9 +922,9 @@ void describe('Navigation.build (slope)', () => {
     const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
+    Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
       COM: { WriteFile() { return Promise.resolve(); } },
@@ -950,13 +954,13 @@ void describe('Navigation.findPath', () => {
   void test('returns direct path when start and goal share the nearest node', async () => {
     const worldmodel = createNavigationWorldModel();
     const collision = {
-      traceStaticWorld(start, mins, maxs, end) {
+      traceStaticWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      move(start, mins, maxs, end) {
+      move(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      pointContents(point) {
+      pointContents(point: Vector) {
         return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
       },
     };
@@ -964,9 +968,9 @@ void describe('Navigation.findPath', () => {
     const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
+    Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
       COM: { WriteFile() { return Promise.resolve(); } },
@@ -995,13 +999,13 @@ void describe('Navigation.findPath', () => {
   void test('finds a multi-hop path across connected nodes', async () => {
     const worldmodel = createNavigationWorldModel();
     const collision = {
-      traceStaticWorld(start, mins, maxs, end) {
+      traceStaticWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      move(start, mins, maxs, end) {
+      move(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      pointContents(point) {
+      pointContents(point: Vector) {
         return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
       },
     };
@@ -1009,9 +1013,9 @@ void describe('Navigation.findPath', () => {
     const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
+    Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
       COM: { WriteFile() { return Promise.resolve(); } },
@@ -1047,7 +1051,7 @@ void describe('Navigation.findPath', () => {
   void test('returns null when graph is empty', () => {
     const navigation = new Navigation(null, mockedNavigationServices());
 
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_path = createCvarStub(0);
 
     const path = navigation.findPath(new Vector(0, 0, 24), new Vector(100, 100, 24));
     assert.equal(path, null);
@@ -1056,13 +1060,13 @@ void describe('Navigation.findPath', () => {
   void test('returns null when start or goal has no nearby node', async () => {
     const worldmodel = createNavigationWorldModel();
     const collision = {
-      traceStaticWorld(start, mins, maxs, end) {
+      traceStaticWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      move(start, mins, maxs, end) {
+      move(start: Vector, mins: Vector, maxs: Vector, end: Vector) {
         return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
       },
-      pointContents(point) {
+      pointContents(point: Vector) {
         return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
       },
     };
@@ -1070,9 +1074,9 @@ void describe('Navigation.findPath', () => {
     const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
+    Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
       COM: { WriteFile() { return Promise.resolve(); } },
@@ -1112,9 +1116,10 @@ void describe('Navigation.findPath', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * @returns {{faces: object[], surfedges: number[], edges: number[][], vertexes: Vector[], checksum: number}} two-level worldmodel
+ * @returns The world model of two floors, one above the other.
  */
-function createTwoLevelWorldModel() {
+function createTwoLevelWorldModel(): BrushModel {
+  // A real BrushModel comes from a BSP file; the build reads just the members below.
   return {
     checksum: 2024,
     planes: [
@@ -1167,7 +1172,7 @@ function createTwoLevelWorldModel() {
       new Vector(200, 400, -72),   // 6: lower (200,400)
       new Vector(0, 400, -72),     // 7: lower (0,400)
     ],
-  };
+  } as unknown as BrushModel;
 }
 
 // Upper floor (y≤200) surface at z=0, stand z=24.
@@ -1179,23 +1184,23 @@ const LOWER_FLOOR_SURFACE_Z = -72;
 const TWO_LEVEL_WALKER_CLEARANCE = 24; // -walkerMins.z
 
 /**
- * @param {number} y
- * @returns {number} floor surface z at this y position
+ * @param y
+ * @returns floor surface z at this y position
  */
-function twoLevelSurfaceZ(y) {
+function twoLevelSurfaceZ(y: number): number {
   return y <= TWO_LEVEL_BOUNDARY_Y ? UPPER_FLOOR_SURFACE_Z : LOWER_FLOOR_SURFACE_Z;
 }
 
 /**
  * Box/point trace stub for the two-level floor.
  * Uses the center y position to determine which floor level applies.
- * @param {Vector} start
- * @param {Vector} mins
- * @param {Vector} maxs
- * @param {Vector} end
- * @returns {{endpos: Vector, fraction: number, startsolid: boolean, allsolid: boolean, ent: null}} trace stub
+ * @param start
+ * @param mins
+ * @param maxs
+ * @param end
+ * @returns trace stub
  */
-function traceAgainstTwoLevelFloor(start, mins, maxs, end) {
+function traceAgainstTwoLevelFloor(start: Vector, mins: Vector, maxs: Vector, end: Vector): {endpos: Vector, fraction: number, startsolid: boolean, allsolid: boolean, ent: null} {
   const isPointTrace = mins.isOrigin() && maxs.isOrigin();
   const surfZ = twoLevelSurfaceZ(start[1]);
   // Box traces land when the bottom of the walker box reaches the floor surface.
@@ -1226,26 +1231,26 @@ function traceAgainstTwoLevelFloor(start, mins, maxs, end) {
 }
 
 /**
- * @param {Vector} point
- * @returns {number} CONTENT_SOLID (-2) when below the floor surface, else 0
+ * @param point
+ * @returns CONTENT_SOLID (-2) when below the floor surface, else 0
  */
-function twoLevelPointContents(point) {
+function twoLevelPointContents(point: Vector): number {
   return point[2] < twoLevelSurfaceZ(point[1]) ? -2 : 0;
 }
 
 void describe('Navigation (two-level floor — drop-link regression)', () => {
   /**
    * Build a navigation graph on the two-level test world and return it.
-   * @returns {Promise<import('../../source/engine/server/Navigation.ts').Navigation>} built navigation instance
+   * @returns built navigation instance
    */
-  async function buildTwoLevelNavigation() {
+  async function buildTwoLevelNavigation(): Promise<Navigation> {
     const worldmodel = createTwoLevelWorldModel();
     const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
-    Navigation.nav_debug_path = { value: 0 };
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
+    Navigation.nav_debug_path = createCvarStub(0);
 
     const collision = {
       traceStaticWorld: traceAgainstTwoLevelFloor,
@@ -1309,14 +1314,13 @@ const navFileBytes = readFileSync(new URL('../../data/id1/maps/test_e1m1.nav', i
 const navFileBuffer = navFileBytes.buffer.slice(navFileBytes.byteOffset, navFileBytes.byteOffset + navFileBytes.byteLength);
 
 void describe('Navigation.findPath (test_e1m1.nav — in-game path regression)', () => {
-  /** @type {import('../../source/engine/server/Navigation.ts').Navigation} */
-  let navigation;
+  let navigation: Navigation;
 
   before(async () => {
     navigation = new Navigation(null, mockedNavigationServices());
-    Navigation.nav_debug_path = { value: 0 };
-    Navigation.nav_debug_graph = { value: 0 };
-    Navigation.nav_debug_waypoints = { value: 0 };
+    Navigation.nav_debug_path = createCvarStub(0);
+    Navigation.nav_debug_graph = createCvarStub(0);
+    Navigation.nav_debug_waypoints = createCvarStub(0);
 
     await withNavigationRegistry({
       COM: { LoadFile: () => Promise.resolve(navFileBuffer) },

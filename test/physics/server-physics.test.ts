@@ -8,14 +8,17 @@ import { ServerCollision } from '../../source/engine/server/physics/ServerCollis
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
 import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics/Defs.ts';
 
-import { assertNear, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, withMockServerPhysics, mockedSV } from '../support/fixtures.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { assertNear, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, withMockServerPhysics, mockedSV, mockedServer, type MockEntity, type RecordedMove } from '../support/fixtures.ts';
+import type { Octree } from '../../source/shared/Octree.ts';
+import type { ServerClient } from '../../source/engine/server/Client.ts';
+import type { ServerEdict } from '../../source/engine/server/Edict.ts';
+import { CollisionTrace, CollisionPlane } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
 
 void describe('ServerPhysics', () => {
   void describe('checkVelocity', () => {
     void test('clears NaNs and clamps to maxvelocity', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const prints = [];
+      const prints: string[] = [];
       const entity = createMockEntity({
         origin: new Vector(1, 2, 3),
         velocity: new Vector(5000, -5000, 1),
@@ -25,7 +28,7 @@ void describe('ServerPhysics', () => {
       entity.classname = 'test_entity';
       const edict = createMockEdict(entity);
 
-      void withMockEngine({
+      withMockEngine({
         ...defaultMockEngine({ maxvelocity: { value: 2000 } }),
         Con: {
           Print(message) {
@@ -48,8 +51,8 @@ void describe('ServerPhysics', () => {
   void describe('pushEntity', () => {
     void test('uses MOVE_MISSILE and preserves origin on allsolid', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const linkCalls = [];
-      const moveCalls = [];
+      const linkCalls: ServerEdict[] = [];
+      const moveCalls: RecordedMove[] = [];
       const entity = createMockEntity({
         origin: new Vector(10, 20, 30),
         mins: new Vector(-1, -1, -1),
@@ -59,7 +62,7 @@ void describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           linkEdict(linkedEdict) {
             linkCalls.push(linkedEdict);
@@ -75,13 +78,7 @@ void describe('ServerPhysics', () => {
               type,
               passedict,
             });
-            return {
-              allsolid: true,
-              startsolid: true,
-              fraction: 0.0,
-              endpos: new Vector(999, 999, 999),
-              ent: null,
-            };
+            return new CollisionTrace(new Vector(999, 999, 999), { allsolid: true, startsolid: true, fraction: 0.0, ent: null });
           },
         },
         server: {
@@ -103,8 +100,8 @@ void describe('ServerPhysics', () => {
 
     void test('uses MOVE_NOMONSTERS for trigger and non-solid entities', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const moveCalls = [];
-      const touchCalls = [];
+      const moveCalls: Array<{ solidType: number; type: number; passedict: ServerEdict | null; end: Vector }> = [];
+      const touchCalls: Array<[string | number, unknown]> = [];
 
       const touchedEntity = createMockEntity({ solidType: solid.SOLID_BBOX });
       touchedEntity.touch = (other) => {
@@ -113,7 +110,7 @@ void describe('ServerPhysics', () => {
       const touchedEdict = createMockEdict(touchedEntity);
 
       /** @param {number} solidType solidity value to assign to the pushed test entity */
-      const runCase = (solidType) => {
+      const runCase = (solidType: number) => {
         const entity = createMockEntity({
           origin: new Vector(1, 2, 3),
           mins: new Vector(-1, -1, -1),
@@ -125,21 +122,14 @@ void describe('ServerPhysics', () => {
         };
         const edict = createMockEdict(entity);
 
-        void withMockEngine(defaultMockEngine({
+        withMockEngine(defaultMockEngine({
           area: {
             linkEdict() {},
           },
           collision: {
             move(start, mins, maxs, end, type, passedict) {
               moveCalls.push({ solidType, type, passedict, end: end.copy() });
-              return {
-                allsolid: false,
-                startsolid: false,
-                fraction: 1.0,
-                endpos: end.copy(),
-                plane: { normal: new Vector(), dist: 0.0 },
-                ent: touchedEdict,
-              };
+              return new CollisionTrace(end.copy(), { allsolid: false, startsolid: false, fraction: 1.0, plane: new CollisionPlane(new Vector(), 0.0), ent: touchedEdict });
             },
           },
           server: {
@@ -167,7 +157,7 @@ void describe('ServerPhysics', () => {
     void test('clips against a wall and records steptrace', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
       const moveCalls = [];
-      const impacts = [];
+      const impacts: Array<{ e1: ServerEdict; e2: ServerEdict; pushVector: Vector }> = [];
       const blocker = createMockEdict(createMockEntity({ solidType: solid.SOLID_BBOX }));
       const entity = createMockEntity({
         origin: new Vector(0, 0, 0),
@@ -178,18 +168,11 @@ void describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         collision: {
           move(start, mins, maxs, end, type, passedict) {
             moveCalls.push({ start: start.copy(), end: end.copy(), type, passedict });
-            return {
-              allsolid: false,
-              startsolid: false,
-              fraction: 0.5,
-              endpos: new Vector(5, 0, 0),
-              plane: { normal: new Vector(-1, 0, 0), dist: 5 },
-              ent: blocker,
-            };
+            return new CollisionTrace(new Vector(5, 0, 0), { allsolid: false, startsolid: false, fraction: 0.5, plane: new CollisionPlane(new Vector(-1, 0, 0), 5), ent: blocker });
           },
         },
         server: {
@@ -227,30 +210,16 @@ void describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         collision: {
           move() {
             moveCallCount += 1;
 
             if (moveCallCount === 1) {
-              return {
-                allsolid: false,
-                startsolid: false,
-                fraction: 0.0,
-                endpos: new Vector(0, 0, 0),
-                plane: { normal: new Vector(-1, 0, 0), dist: 0 },
-                ent: blockerA,
-              };
+              return new CollisionTrace(new Vector(0, 0, 0), { allsolid: false, startsolid: false, fraction: 0.0, plane: new CollisionPlane(new Vector(-1, 0, 0), 0), ent: blockerA });
             }
 
-            return {
-              allsolid: false,
-              startsolid: false,
-              fraction: 0.0,
-              endpos: new Vector(0, 0, 0),
-              plane: { normal: new Vector(0, -1, 0), dist: 0 },
-              ent: blockerB,
-            };
+            return new CollisionTrace(new Vector(0, 0, 0), { allsolid: false, startsolid: false, fraction: 0.0, plane: new CollisionPlane(new Vector(0, -1, 0), 0), ent: blockerB });
           },
         },
         server: {
@@ -285,41 +254,20 @@ void describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         collision: {
           move() {
             moveCallCount += 1;
 
             if (moveCallCount === 1) {
-              return {
-                allsolid: false,
-                startsolid: false,
-                fraction: 0.0,
-                endpos: new Vector(0, 0, 0),
-                plane: { normal: new Vector(-1, 0, 0), dist: 0 },
-                ent: blockerA,
-              };
+              return new CollisionTrace(new Vector(0, 0, 0), { allsolid: false, startsolid: false, fraction: 0.0, plane: new CollisionPlane(new Vector(-1, 0, 0), 0), ent: blockerA });
             }
 
             if (moveCallCount === 2) {
-              return {
-                allsolid: false,
-                startsolid: false,
-                fraction: 0.0,
-                endpos: new Vector(0, 0, 0),
-                plane: { normal: new Vector(0, -1, 0), dist: 0 },
-                ent: blockerB,
-              };
+              return new CollisionTrace(new Vector(0, 0, 0), { allsolid: false, startsolid: false, fraction: 0.0, plane: new CollisionPlane(new Vector(0, -1, 0), 0), ent: blockerB });
             }
 
-            return {
-              allsolid: false,
-              startsolid: false,
-              fraction: 0.0,
-              endpos: new Vector(0, 0, 0),
-              plane: { normal: new Vector(0, 0, -1), dist: 0 },
-              ent: blockerC,
-            };
+            return new CollisionTrace(new Vector(0, 0, 0), { allsolid: false, startsolid: false, fraction: 0.0, plane: new CollisionPlane(new Vector(0, 0, -1), 0), ent: blockerC });
           },
         },
         server: {
@@ -353,19 +301,12 @@ void describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         collision: {
           move() {
             moveCallCount += 1;
 
-            return {
-              allsolid: false,
-              startsolid: false,
-              fraction: 0.0,
-              endpos: new Vector(5, 6, 7),
-              plane: { normal: new Vector(0, 0, 0), dist: 0 },
-              ent: blocker,
-            };
+            return new CollisionTrace(new Vector(5, 6, 7), { allsolid: false, startsolid: false, fraction: 0.0, plane: new CollisionPlane(new Vector(0, 0, 0), 0), ent: blocker });
           },
         },
         server: {
@@ -395,8 +336,8 @@ void describe('ServerPhysics', () => {
   void describe('checkAllEnts', () => {
     void test('skips static entities and reports invalid dynamic positions', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const prints = [];
-      const tested = [];
+      const prints: string[] = [];
+      const tested: ServerEdict[] = [];
 
       const worldEdict = createMockEdict(createMockEntity({ movetype: moveType.MOVETYPE_NONE }));
       const freeEdict = createMockEdict(createMockEntity({ movetype: moveType.MOVETYPE_WALK }));
@@ -405,10 +346,9 @@ void describe('ServerPhysics', () => {
       const noneEdict = createMockEdict(createMockEntity({ movetype: moveType.MOVETYPE_NONE }));
       const noclipEdict = createMockEdict(createMockEntity({ movetype: moveType.MOVETYPE_NOCLIP }));
       const walkEntity = createMockEntity({ movetype: moveType.MOVETYPE_WALK });
-      const walkEdict = createMockEdict(walkEntity);
-      walkEdict.num = 5;
+      const walkEdict = createMockEdict(walkEntity, 5);
 
-      void withMockEngine({
+      withMockEngine({
         ...defaultMockEngine({
           collision: {
             testEntityPosition(edict) {
@@ -450,7 +390,7 @@ void describe('ServerPhysics', () => {
       const edict = createMockEdict(entity);
       edict.isFree = () => freed;
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         server: {
           time: 1.0,
           gameAPI: { time: 0 },
@@ -459,7 +399,7 @@ void describe('ServerPhysics', () => {
         const result = serverPhysics.runThink(edict);
 
         assert.equal(result, false);
-        assert.equal(engineMocks.SV.server.gameAPI.time, 1.0);
+        assert.equal(mockedServer().server.gameAPI!.time, 1.0);
       });
 
       assert.equal(thinkCalls, 1);
@@ -468,16 +408,16 @@ void describe('ServerPhysics', () => {
 
     void test('executes multiple thinks that become due within one frame', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const thinkTimes = [];
+      const thinkTimes: number[] = [];
       const entity = createMockEntity();
       entity.nextthink = 1.05;
       entity.think = () => {
-        thinkTimes.push(engineMocks.SV.server.gameAPI.time);
+        thinkTimes.push(mockedServer().server.gameAPI!.time);
         entity.nextthink = thinkTimes.length === 1 ? 1.15 : 0.0;
       };
       const edict = createMockEdict(entity);
 
-      void withMockEngine({
+      withMockEngine({
         ...defaultMockEngine({
           server: {
             time: 1.0,
@@ -489,7 +429,7 @@ void describe('ServerPhysics', () => {
         const result = serverPhysics.runThink(edict);
 
         assert.equal(result, true);
-        assert.equal(engineMocks.SV.server.gameAPI.time, 1.15);
+        assert.equal(mockedServer().server.gameAPI!.time, 1.15);
       });
 
       assert.deepEqual(thinkTimes, [1.05, 1.15]);
@@ -516,7 +456,7 @@ void describe('ServerPhysics', () => {
     void test('rolls back and calls blocked() when rider remains stuck', () => {
       withMockServerPhysics(({ serverPhysics, pusherEdict, riderEdict, blockedCalls }) => {
         let testCount = 0;
-        engineMocks.SV.collision.testEntityPosition = (edict) => {
+        mockedServer().collision.testEntityPosition = (edict) => {
           testCount += 1;
           return edict === riderEdict;
         };
@@ -534,7 +474,7 @@ void describe('ServerPhysics', () => {
 
     void test('restores earlier riders when a later rider blocks the push', () => {
       const linkCalls = [];
-      const blockedCalls = [];
+      const blockedCalls: MockEntity[] = [];
 
       const pusherEntity = createMockEntity({
         origin: new Vector(0, 0, 0),
@@ -569,29 +509,21 @@ void describe('ServerPhysics', () => {
 
       const worldEdict = createMockEdict(createMockEntity());
       const pusherEdict = createMockEdict(pusherEntity);
-      const riderAEdict = createMockEdict(riderAEntity);
-      riderAEdict.num = 2;
-      const riderBEdict = createMockEdict(riderBEntity);
-      riderBEdict.num = 3;
+      const riderAEdict = createMockEdict(riderAEntity, 2);
+      const riderBEdict = createMockEdict(riderBEntity, 3);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         maxvelocity: { value: 2000 },
         area: {
           linkEdict(edict) {
-            edict.entity.absmin = edict.entity.origin.copy().add(edict.entity.mins);
-            edict.entity.absmax = edict.entity.origin.copy().add(edict.entity.maxs);
+            edict.entity!.absmin = edict.entity!.origin.copy().add(edict.entity!.mins);
+            edict.entity!.absmax = edict.entity!.origin.copy().add(edict.entity!.maxs);
             linkCalls.push(edict);
           },
         },
         collision: {
           move(start, mins, maxs, end) {
-            return {
-              allsolid: false,
-              startsolid: false,
-              fraction: 1.0,
-              endpos: end.copy(),
-              ent: null,
-            };
+            return new CollisionTrace(end.copy(), { allsolid: false, startsolid: false, fraction: 1.0, ent: null });
           },
           testEntityPosition(edict) {
             return edict === riderBEdict;
@@ -644,26 +576,19 @@ void describe('ServerPhysics', () => {
 
       const worldEdict = createMockEdict(createMockEntity());
       const pusherEdict = createMockEdict(pusherEntity);
-      const triggerEdict = createMockEdict(triggerEntity);
-      triggerEdict.num = 2;
+      const triggerEdict = createMockEdict(triggerEntity, 2);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         maxvelocity: { value: 2000 },
         area: {
           linkEdict(edict) {
-            edict.entity.absmin = edict.entity.origin.copy().add(edict.entity.mins);
-            edict.entity.absmax = edict.entity.origin.copy().add(edict.entity.maxs);
+            edict.entity!.absmin = edict.entity!.origin.copy().add(edict.entity!.mins);
+            edict.entity!.absmax = edict.entity!.origin.copy().add(edict.entity!.maxs);
           },
         },
         collision: {
           move(start, mins, maxs, end) {
-            return {
-              allsolid: false,
-              startsolid: false,
-              fraction: 1.0,
-              endpos: end.copy(),
-              ent: null,
-            };
+            return new CollisionTrace(end.copy(), { allsolid: false, startsolid: false, fraction: 1.0, ent: null });
           },
           testEntityPosition(edict) {
             return edict === triggerEdict;
@@ -718,11 +643,10 @@ void describe('ServerPhysics', () => {
     });
 
     void test('ignores rider overlap that only collides with the current pusher after the move', () => {
-      const testCalls = [];
+      const testCalls: Array<{ edict: ServerEdict; pusherSolid: number }> = [];
       const blockedCalls = [];
 
-      const worldEdict = createMockEdict(createMockEntity());
-      worldEdict.num = 0;
+      const worldEdict = createMockEdict(createMockEntity(), 0);
 
       const pusherEntity = createMockEntity({
         origin: new Vector(0, 0, 0),
@@ -735,8 +659,7 @@ void describe('ServerPhysics', () => {
       pusherEntity.blocked = (blockingEntity) => {
         blockedCalls.push(blockingEntity);
       };
-      const pusherEdict = createMockEdict(pusherEntity);
-      pusherEdict.num = 1;
+      const pusherEdict = createMockEdict(pusherEntity, 1);
 
       const riderEntity = createMockEntity({
         origin: new Vector(0, 0, 40),
@@ -747,12 +670,11 @@ void describe('ServerPhysics', () => {
         flagsValue: flags.FL_ONGROUND,
         groundentity: pusherEntity,
       });
-      const riderEdict = createMockEdict(riderEntity);
-      riderEdict.num = 2;
+      const riderEdict = createMockEdict(riderEntity, 2);
 
       let testPositionCall = 0;
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           linkEdict() {},
         },
@@ -773,13 +695,7 @@ void describe('ServerPhysics', () => {
             return false;
           },
           move(start, mins, maxs, end) {
-            return {
-              allsolid: false,
-              startsolid: false,
-              fraction: 1.0,
-              endpos: end.copy(),
-              ent: null,
-            };
+            return new CollisionTrace(end.copy(), { allsolid: false, startsolid: false, fraction: 1.0, ent: null });
           },
         },
         server: {
@@ -803,11 +719,10 @@ void describe('ServerPhysics', () => {
     });
 
     void test('keeps non-rider overlaps with the current pusher blocking the move', () => {
-      const testCalls = [];
-      const blockedCalls = [];
+      const testCalls: Array<{ edict: ServerEdict; pusherSolid: number }> = [];
+      const blockedCalls: MockEntity[] = [];
 
-      const worldEdict = createMockEdict(createMockEntity());
-      worldEdict.num = 0;
+      const worldEdict = createMockEdict(createMockEntity(), 0);
 
       const pusherEntity = createMockEntity({
         origin: new Vector(0, 0, 0),
@@ -820,8 +735,7 @@ void describe('ServerPhysics', () => {
       pusherEntity.blocked = (blockingEntity) => {
         blockedCalls.push(blockingEntity);
       };
-      const pusherEdict = createMockEdict(pusherEntity);
-      pusherEdict.num = 1;
+      const pusherEdict = createMockEdict(pusherEntity, 1);
 
       const blockerEntity = createMockEntity({
         origin: new Vector(0, 0, 0),
@@ -830,10 +744,9 @@ void describe('ServerPhysics', () => {
         movetype: moveType.MOVETYPE_STEP,
         solidType: solid.SOLID_BBOX,
       });
-      const blockerEdict = createMockEdict(blockerEntity);
-      blockerEdict.num = 2;
+      const blockerEdict = createMockEdict(blockerEntity, 2);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           linkEdict() {},
         },
@@ -843,13 +756,7 @@ void describe('ServerPhysics', () => {
             return edict === blockerEdict;
           },
           move(start, mins, maxs, end) {
-            return {
-              allsolid: false,
-              startsolid: false,
-              fraction: 1.0,
-              endpos: end.copy(),
-              ent: null,
-            };
+            return new CollisionTrace(end.copy(), { allsolid: false, startsolid: false, fraction: 1.0, ent: null });
           },
         },
         server: {
@@ -874,7 +781,7 @@ void describe('ServerPhysics', () => {
     });
 
     void test('combines translation with non-yaw rotation when carrying riders', () => {
-      const transformPointToLocal = (point, origin, basis) => {
+      const transformPointToLocal = (point: Vector, origin: Vector, basis: number[]) => {
         const delta = point.copy().subtract(origin);
         const forward = new Vector(basis[0], basis[1], basis[2]);
         const right = new Vector(basis[3], basis[4], basis[5]);
@@ -887,7 +794,7 @@ void describe('ServerPhysics', () => {
         );
       };
 
-      const transformPointToWorld = (point, origin, basis) => {
+      const transformPointToWorld = (point: Vector, origin: Vector, basis: number[]) => {
         const forward = new Vector(basis[0], basis[1], basis[2]);
         const right = new Vector(basis[3], basis[4], basis[5]);
         const up = new Vector(basis[6], basis[7], basis[8]);
@@ -940,7 +847,7 @@ void describe('ServerPhysics', () => {
       const pusherModel = createBoxBrushModel({ halfExtents: [64, 64, 16], name: '*plat' });
       const worldModel = createBrushWorldModel({ center: [4096, 0, 0], halfExtents: [16, 16, 16] });
       const modelSource = {
-        getModelByIndex(index) {
+        getModelByIndex(index: number) {
           return index === 1 ? pusherModel : null;
         },
         getWorldEntity() {
@@ -957,8 +864,7 @@ void describe('ServerPhysics', () => {
       const worldEdict = createMockEdict(createMockEntity({
         movetype: moveType.MOVETYPE_NONE,
         solidType: solid.SOLID_BSP,
-      }));
-      worldEdict.num = 0;
+      }), 0);
 
       const pusherEntity = createMockEntity({
         origin: new Vector(0, 0, 0),
@@ -972,8 +878,7 @@ void describe('ServerPhysics', () => {
       pusherEntity.blocked = (blockingEntity) => {
         blockedCalls.push(blockingEntity);
       };
-      const pusherEdict = createMockEdict(pusherEntity);
-      pusherEdict.num = 1;
+      const pusherEdict = createMockEdict(pusherEntity, 1);
 
       const riderEntity = createMockEntity({
         origin: new Vector(0, 0, 39.99),
@@ -985,10 +890,9 @@ void describe('ServerPhysics', () => {
         groundentity: pusherEntity,
       });
       riderEntity.classname = 'player';
-      const riderEdict = createMockEdict(riderEntity);
-      riderEdict.num = 2;
+      const riderEdict = createMockEdict(riderEntity, 2);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         maxvelocity: { value: 2000 },
         area,
         collision,
@@ -1004,14 +908,15 @@ void describe('ServerPhysics', () => {
         },
       }), () => {
         const touches = [pusherEdict, riderEdict];
+        // Only inserting, removing and the box query are used while relinking.
         area.tree = {
           insert() {
             return { remove() {} };
           },
           queryAABB() {
-            return touches;
+            return touches.values();
           },
-        };
+        } as unknown as Octree<ServerEdict>;
 
         area.linkEdict(pusherEdict);
         area.linkEdict(riderEdict);
@@ -1029,7 +934,7 @@ void describe('ServerPhysics', () => {
   void describe('physicsPusher', () => {
     void test('limits movement to nextthink and then runs think', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const moveTimes = [];
+      const moveTimes: number[] = [];
       let observedGameTime = -1;
       let thinkCalls = 0;
       const entity = createMockEntity({
@@ -1043,7 +948,7 @@ void describe('ServerPhysics', () => {
       };
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         server: {
           time: 7.0,
           gameAPI: { time: 0 },
@@ -1051,12 +956,12 @@ void describe('ServerPhysics', () => {
       }), () => {
         serverPhysics.pushMove = (pusher, movetime) => {
           moveTimes.push(movetime);
-          pusher.entity.ltime += movetime;
+          pusher.entity!.ltime! += movetime;
         };
 
         serverPhysics.physicsPusher(edict);
 
-        observedGameTime = engineMocks.SV.server.gameAPI.time;
+        observedGameTime = mockedServer().server.gameAPI!.time;
       });
 
       assert.equal(moveTimes.length, 1);
@@ -1069,7 +974,7 @@ void describe('ServerPhysics', () => {
 
     void test('keeps think deferred when nextthink is beyond this frame', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const moveTimes = [];
+      const moveTimes: number[] = [];
       let observedGameTime = -1;
       let thinkCalls = 0;
       const entity = createMockEntity({
@@ -1083,7 +988,7 @@ void describe('ServerPhysics', () => {
       };
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         server: {
           time: 8.0,
           gameAPI: { time: 0 },
@@ -1091,12 +996,12 @@ void describe('ServerPhysics', () => {
       }), () => {
         serverPhysics.pushMove = (pusher, movetime) => {
           moveTimes.push(movetime);
-          pusher.entity.ltime += movetime;
+          pusher.entity!.ltime! += movetime;
         };
 
         serverPhysics.physicsPusher(edict);
 
-        observedGameTime = engineMocks.SV.server.gameAPI.time;
+        observedGameTime = mockedServer().server.gameAPI!.time;
       });
 
       assert.equal(moveTimes.length, 1);
@@ -1109,7 +1014,7 @@ void describe('ServerPhysics', () => {
 
     void test('moves pushers for a full frame when no think is scheduled', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const moveTimes = [];
+      const moveTimes: number[] = [];
       let thinkCalls = 0;
       const entity = createMockEntity({
         movetype: moveType.MOVETYPE_PUSH,
@@ -1123,7 +1028,7 @@ void describe('ServerPhysics', () => {
       };
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         server: {
           frametime: 0.1,
           time: 9.0,
@@ -1132,8 +1037,8 @@ void describe('ServerPhysics', () => {
       }), () => {
         serverPhysics.pushMove = (pusher, movetime) => {
           moveTimes.push(movetime);
-          pusher.entity.ltime += movetime;
-          pusher.entity.angles = pusher.entity.angles.add(pusher.entity.avelocity.copy().multiply(movetime));
+          pusher.entity!.ltime! += movetime;
+          pusher.entity!.angles = pusher.entity!.angles.add(pusher.entity!.avelocity.copy().multiply(movetime));
         };
 
         serverPhysics.physicsPusher(edict);
@@ -1151,8 +1056,8 @@ void describe('ServerPhysics', () => {
   void describe('checkStuck', () => {
     void test('restores oldorigin when the saved position is clear', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const prints = [];
-      const linkCalls = [];
+      const prints: string[] = [];
+      const linkCalls: Array<{ linkedEdict: ServerEdict; touchTriggers: boolean | undefined }> = [];
       let testCallCount = 0;
       const entity = createMockEntity({
         origin: new Vector(10, 20, 30),
@@ -1162,7 +1067,7 @@ void describe('ServerPhysics', () => {
       entity.oldorigin = new Vector(1, 2, 3);
       const edict = createMockEdict(entity);
 
-      void withMockEngine({
+      withMockEngine({
         ...defaultMockEngine({
           area: {
             linkEdict(linkedEdict, touchTriggers) {
@@ -1197,7 +1102,7 @@ void describe('ServerPhysics', () => {
     // checkStuck tries: 1 (current pos) + 1 (oldorigin) + 18 z-levels * 3 x * 3 y = 164
     void test('reports failure after exhausting all nudges', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const prints = [];
+      const prints: string[] = [];
       const linkCalls = [];
       let testCallCount = 0;
       const entity = createMockEntity({
@@ -1208,7 +1113,7 @@ void describe('ServerPhysics', () => {
       entity.oldorigin = new Vector(1, 2, 3);
       const edict = createMockEdict(entity);
 
-      void withMockEngine({
+      withMockEngine({
         ...defaultMockEngine({
           area: {
             linkEdict(linkedEdict, touchTriggers) {
@@ -1235,14 +1140,14 @@ void describe('ServerPhysics', () => {
       assert.equal(testCallCount, 164);
       assert.deepEqual(prints, ['player is stuck.\n']);
       assert.equal(linkCalls.length, 0);
-      assert.deepEqual([...edict.entity.oldorigin], [1, 2, 3]);
+      assert.deepEqual([...edict.entity!.oldorigin!], [1, 2, 3]);
     });
   });
 
   void describe('checkWater', () => {
     void test('leaves entities dry when feet probe is not water', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const probes = [];
+      const probes: Vector[] = [];
       const entity = createMockEntity({
         origin: new Vector(10, 20, 30),
         mins: new Vector(-16, -16, -24),
@@ -1251,7 +1156,7 @@ void describe('ServerPhysics', () => {
       entity.view_ofs = new Vector(0, 0, 22);
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         collision: {
           pointContents(point) {
             probes.push(point.copy());
@@ -1289,10 +1194,10 @@ void describe('ServerPhysics', () => {
       });
       headEntity.view_ofs = new Vector(0, 0, 22);
 
-      const runCase = (entity, contents) => {
+      const runCase = (entity: MockEntity, contents: content[]) => {
         let probeIndex = 0;
 
-        void withMockEngine(defaultMockEngine({
+        withMockEngine(defaultMockEngine({
           collision: {
             pointContents() {
               const result = contents[probeIndex];
@@ -1308,9 +1213,9 @@ void describe('ServerPhysics', () => {
       runCase(feetEntity, [content.CONTENT_WATER, content.CONTENT_EMPTY]);
       runCase(waistEntity, [content.CONTENT_WATER, content.CONTENT_WATER, content.CONTENT_EMPTY]);
       const headResult = (() => {
-        let result;
+        let result: ReturnType<ServerPhysics['checkWater']> | undefined;
 
-        void withMockEngine(defaultMockEngine({
+        withMockEngine(defaultMockEngine({
           collision: {
             pointContents() {
               return content.CONTENT_WATER;
@@ -1336,7 +1241,7 @@ void describe('ServerPhysics', () => {
   void describe('checkWaterTransition', () => {
     void test('plays a splash and marks waist-deep water when entering from air', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const startSoundCalls = [];
+      const startSoundCalls: unknown[][] = [];
       const entity = createMockEntity({
         origin: new Vector(10, 20, 30),
       });
@@ -1344,7 +1249,7 @@ void describe('ServerPhysics', () => {
       entity.waterlevel = 0;
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         collision: {
           pointContents() {
             return content.CONTENT_WATER;
@@ -1368,7 +1273,7 @@ void describe('ServerPhysics', () => {
 
     void test('plays a splash and clears watertype when leaving water', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const startSoundCalls = [];
+      const startSoundCalls: unknown[][] = [];
       const entity = createMockEntity({
         origin: new Vector(5, 6, 7),
       });
@@ -1376,7 +1281,7 @@ void describe('ServerPhysics', () => {
       entity.waterlevel = 2;
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         collision: {
           pointContents() {
             return content.CONTENT_EMPTY;
@@ -1409,9 +1314,9 @@ void describe('ServerPhysics', () => {
       entity.v_angle = new Vector();
       const edict = createMockEdict(entity);
 
-      serverPhysics.wallFriction(edict, {
-        plane: { normal: new Vector(-1, 0, 0) },
-      });
+      serverPhysics.wallFriction(edict, new CollisionTrace(new Vector(), {
+        plane: new CollisionPlane(new Vector(-1, 0, 0), 0.0),
+      }));
 
       assert.deepEqual([...entity.velocity], [0, 2, 3]);
     });
@@ -1426,7 +1331,7 @@ void describe('ServerPhysics', () => {
       entity.gravity = 0.5;
       const edict = createMockEdict(entity);
 
-      void withMockEngine({
+      withMockEngine({
         ...defaultMockEngine({ gravity: { value: 800 }, server: { frametime: 0.25 } }),
       }, () => {
         serverPhysics.addGravity(edict);
@@ -1458,7 +1363,7 @@ void describe('ServerPhysics', () => {
       const floorEdict = createMockEdict(floorEntity);
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         gravity: { value: 800 },
         maxvelocity: { value: 2000 },
         area: {
@@ -1466,14 +1371,7 @@ void describe('ServerPhysics', () => {
         },
         collision: {
           move(_start, _mins, _maxs, end) {
-            return {
-              allsolid: false,
-              startsolid: false,
-              fraction: 0.5,
-              endpos: end.copy(),
-              ent: floorEdict,
-              plane: { normal: new Vector(0, 0, 1), dist: 0.0 },
-            };
+            return new CollisionTrace(end.copy(), { allsolid: false, startsolid: false, fraction: 0.5, ent: floorEdict, plane: new CollisionPlane(new Vector(0, 0, 1), 0.0) });
           },
           pointContents() {
             return content.CONTENT_EMPTY;
@@ -1517,7 +1415,7 @@ void describe('ServerPhysics', () => {
       const floorEdict = createMockEdict(floorEntity);
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         gravity: { value: 800 },
         maxvelocity: { value: 2000 },
         area: {
@@ -1525,14 +1423,7 @@ void describe('ServerPhysics', () => {
         },
         collision: {
           move(_start, _mins, _maxs, end) {
-            return {
-              allsolid: false,
-              startsolid: false,
-              fraction: 0.5,
-              endpos: end.copy(),
-              ent: floorEdict,
-              plane: { normal: new Vector(0, 0, 1), dist: 0.0 },
-            };
+            return new CollisionTrace(end.copy(), { allsolid: false, startsolid: false, fraction: 0.5, ent: floorEdict, plane: new CollisionPlane(new Vector(0, 0, 1), 0.0) });
           },
           pointContents() {
             return content.CONTENT_EMPTY;
@@ -1560,9 +1451,9 @@ void describe('ServerPhysics', () => {
   void describe('physicsStep', () => {
     void test('applies airborne step movement, links, and plays the landing sound', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const soundCalls = [];
-      const linkCalls = [];
-      const sequence = [];
+      const soundCalls: unknown[][] = [];
+      const linkCalls: Array<{ linkedEdict: ServerEdict; touchTriggers: boolean | undefined }> = [];
+      const sequence: string[] = [];
       const entity = createMockEntity({
         origin: new Vector(0, 0, 64),
         velocity: new Vector(0, 0, -100),
@@ -1571,7 +1462,7 @@ void describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      void withMockEngine({
+      withMockEngine({
         ...defaultMockEngine({
           gravity: { value: 800 },
           area: {
@@ -1619,7 +1510,7 @@ void describe('ServerPhysics', () => {
 
     void test('still runs think and water transition while already grounded', () => {
       const serverPhysics = new ServerPhysics(mockedSV());
-      const sequence = [];
+      const sequence: string[] = [];
       const entity = createMockEntity({
         movetype: moveType.MOVETYPE_STEP,
         solidType: solid.SOLID_BBOX,
@@ -1627,7 +1518,7 @@ void describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           linkEdict() {
             sequence.push('linkEdict');
@@ -1667,7 +1558,7 @@ void describe('ServerPhysics', () => {
   void describe('physics', () => {
     void test('applies gravity and toss movement for one frame', () => {
       const linkCalls = [];
-      const moveCalls = [];
+      const moveCalls: Array<{ start: Vector; mins: Vector; maxs: Vector; end: Vector }> = [];
       let startFrameCount = 0;
       const worldEdict = createMockEdict(createMockEntity({ movetype: moveType.MOVETYPE_NONE }));
       const tossEntity = createMockEntity({
@@ -1686,30 +1577,22 @@ void describe('ServerPhysics', () => {
       tossEntity.waterlevel = 0;
       tossEntity.view_ofs = new Vector(0, 0, 22);
       tossEntity.oldorigin = tossEntity.origin.copy();
-      const tossEdict = createMockEdict(tossEntity);
-      tossEdict.num = 1;
+      const tossEdict = createMockEdict(tossEntity, 1);
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         gravity: { value: 800 },
         maxvelocity: { value: 2000 },
         area: {
           linkEdict(edict) {
-            edict.entity.absmin = edict.entity.origin.copy().add(edict.entity.mins);
-            edict.entity.absmax = edict.entity.origin.copy().add(edict.entity.maxs);
+            edict.entity!.absmin = edict.entity!.origin.copy().add(edict.entity!.mins);
+            edict.entity!.absmax = edict.entity!.origin.copy().add(edict.entity!.maxs);
             linkCalls.push(edict);
           },
         },
         collision: {
           move(start, mins, maxs, end) {
             moveCalls.push({ start: start.copy(), mins: mins.copy(), maxs: maxs.copy(), end: end.copy() });
-            return {
-              allsolid: false,
-              startsolid: false,
-              fraction: 1.0,
-              endpos: end.copy(),
-              ent: null,
-              plane: { normal: new Vector(), dist: 0.0 },
-            };
+            return new CollisionTrace(end.copy(), { allsolid: false, startsolid: false, fraction: 1.0, ent: null, plane: new CollisionPlane(new Vector(), 0.0) });
           },
           pointContents() {
             return content.CONTENT_EMPTY;
@@ -1753,13 +1636,12 @@ void describe('ServerPhysics', () => {
       const doorEdict = createMockEdict(createMockEntity({
         movetype: moveType.MOVETYPE_PUSH,
         solidType: solid.SOLID_BSP,
-      }));
-
-      doorEdict.num = 16;
+      }), 16);
       doorEdict.isClient = () => false;
-      doorEdict.getClient = () => ({ state: 0 });
+      // A client slot that is reserved but not in use.
+      doorEdict.getClient = () => ({ state: 0 }) as unknown as ServerClient;
 
-      void withMockEngine(defaultMockEngine({
+      withMockEngine(defaultMockEngine({
         area: {
           linkEdict() {},
         },
