@@ -506,7 +506,15 @@ export class Navigation {
     });
   }
 
+  /**
+   * Schedules the debug dots to be emitted again. The navigation of the worker thread has no server, no debug variables
+   * (`Init` runs only on the server's thread) and nobody to show dots to, so it does nothing there.
+   */
   #scheduleDebugRefresh(): void {
+    if (this.#sv === null) {
+      return;
+    }
+
     setTimeout((): void => {
       this.#debugWaypoints();
       this.#debugNavigation();

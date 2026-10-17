@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, test, before } from 'node:test';
+import { describe, test, before, mock } from 'node:test';
 import { readFileSync } from 'node:fs';
 
 import Vector from '../../source/shared/Vector.ts';
@@ -1359,5 +1359,36 @@ void describe('Navigation.findPath (test_e1m1.nav — in-game path regression)',
       'Failure indicates missing nav node coverage in the connecting corridor ' +
       '(z=-408 to z=-344 transition). Rebuild test_e1m1.nav.',
     );
+  });
+});
+
+void describe('Navigation.load on the worker thread', () => {
+  void test('does not touch the debug variables, which only the server thread registers', async () => {
+    const debugCvars = { nav_debug_path: Navigation.nav_debug_path, nav_debug_graph: Navigation.nav_debug_graph, nav_debug_waypoints: Navigation.nav_debug_waypoints };
+
+    mock.timers.enable({ apis: ['setTimeout'] });
+
+    try {
+      const services = { ...mockedNavigationServices(), sv: null };
+      const navigation = new Navigation(null, services);
+
+      Navigation.nav_debug_path = null;
+      Navigation.nav_debug_graph = null;
+      Navigation.nav_debug_waypoints = null;
+
+      await withNavigationRegistry({
+        COM: { LoadFile: () => Promise.resolve(navFileBuffer) },
+        Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
+        SV: {},
+      }, async () => {
+        await navigation.load('test_e1m1', 5874);
+      });
+
+      assert.doesNotThrow(() => { mock.timers.tick(2000); });
+    } finally {
+      mock.timers.reset();
+      // timers of earlier tests are still pending and read these
+      Object.assign(Navigation, debugCvars);
+    }
   });
 });
