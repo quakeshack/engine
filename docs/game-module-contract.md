@@ -48,7 +48,7 @@ export class ClientGameAPI implements ClientGameInterface { /* ... */ }
 - `implements` reports instance-side drift on the class member. The `satisfies` line covers what `implements` cannot: the constructor signature, the static hooks and the identification.
 - A game that extends another game's API class inherits the `implements` but still asserts `satisfies` in its own `main.ts`, because its statics and constructor can differ.
 - `npm run typecheck` runs these checks. It gates the Cloudflare build (`npm run build:wrangler`) and the Docker `test` stage, because Vite and esbuild strip types without checking them.
-- A game's unit tests (`source/game/<mod>/test/`) are `.mjs` files and are not type-checked. A test double that mirrors an outdated signature keeps passing, so grep the tests when you change a member.
+- A game's unit tests (`source/game/<mod>/test/`) are `.test.ts` files and are checked by the same command, so a test double that mirrors an outdated signature fails the typecheck. Their typed stand-ins (an edict, an engine API, a game API) are in the engine's `test/support/`.
 
 ## Identification and capabilities
 
@@ -151,4 +151,4 @@ two places and the engine carries both to the client:
 1. Add, change or remove the member in `GameInterfaces.ts`, with a JSDoc that says who calls or writes it and when. Check that statement against the call sites: the compiler cannot verify lifecycle claims.
 2. Run `npm run typecheck`. It lists every game that needs updating.
 3. Update this page if the call order or the ownership changed.
-4. Search the game's tests (`.mjs`) for the member: they are not type-checked.
+4. The game's tests (`source/game/<mod>/test/`) are type-checked too, so step 2 lists a test double that mirrors an outdated signature.

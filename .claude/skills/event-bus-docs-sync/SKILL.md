@@ -22,7 +22,7 @@ right.
 
 A game's own events are declared in the game's `Events.ts` (an interface of name to argument tuple, plus a list of the
 names), published and subscribed through its `serverEvents(engine)`/`clientEvents(engine)` helper, and the game's own
-test (`test/core/events-docs.test.mjs` in id1) fails when its `docs/events.md` names other events. A new game event is
+test (`test/core/events-docs.test.ts` in id1) fails when its `docs/events.md` names other events. A new game event is
 added to the interface, to the name list (or, for a client event, to `clientEvent` and `Id1ClientEventArguments`), and
 to the document; the compiler and the test tell you which one you forgot.
 

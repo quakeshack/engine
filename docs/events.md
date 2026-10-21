@@ -215,4 +215,4 @@ error for its own events as well:
   nothing is imported from the engine and a test that hands the game a hand-made bus keeps working.
 - The types say what is *published*. A listener that wants a subtype narrows with `instanceof`.
 - A test in the game's own test folder compares the names with the game's `docs/events.md`
-  (`test/core/events-docs.test.mjs` in id1).
+  (`test/core/events-docs.test.ts` in id1).

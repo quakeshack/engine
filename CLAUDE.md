@@ -22,7 +22,7 @@ npm run typecheck                 # tsc over engine, game and shared; gates the 
 npx eslint --fix <file>
 ```
 
-**Lint and typecheck before committing.** The ESLint config is strict — fix all warnings. `npm run typecheck` must stay at zero errors: it fails the Cloudflare build (`npm run build:wrangler`) and the Docker `test` stage. The engine's tests under `test/` are TypeScript and type-checked with it; a game's tests under `source/game/<mod>/test/` are `.mjs` and are not, so search them by hand when you change a signature.
+**Lint and typecheck before committing.** The ESLint config is strict — fix all warnings. `npm run typecheck` must stay at zero errors: it fails the Cloudflare build (`npm run build:wrangler`) and the Docker `test` stage. Every test is TypeScript and type-checked with it, the engine's under `test/` and a game's under `source/game/<mod>/test/` alike.
 
 ## Working Agreements
 
