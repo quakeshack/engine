@@ -1439,7 +1439,7 @@ conversion rides along with Phases 2 to 4.
 ## Release: 1.3.0
 
 Decided 2026-10-10. When everything this plan tracks is finished, the QuakeShack version becomes **1.3.0** (it is
-1.2.2 now). Nothing is bumped before that, so intermediate builds keep naming the version they branched from.
+1.2.2 then). Nothing was bumped before that, so intermediate builds kept naming the version they branched from.
 
 "Everything" means: Tracks A to D with their follow-ups (D2 is `plans/r-split.md`, finished at its Phase 7, which
 also ticks D2 here; the SCR and V dissolve in `plans/scr-v-split.md` is part of it), the later tracks E to G in the
@@ -1450,9 +1450,11 @@ part of "everything". D3 (frame graph) was done the same day, `plans/frame-graph
 type-checked engine tests (the first bullet of Track G) were back in and are done, see `plans/tests-to-typescript.md`. What 1.3.0 still waits for:
 the one open item in "Open questions" (the navigation worker check with a real path request, which needs the
 Hellwave `.nav` files). **That check was done on 2026-10-17** (singleplayer Hellwave session: `.nav` loading and querying
-work), so nothing is left open.
+work), so nothing is left open. **Released as 1.3.0:** the bump is `7238ba6` (2026-10-17), the last live checks of the scope (frame graph on a real GPU
+and in Firefox) passed on 2026-10-21, and the games' tests followed the same day (`plans/game-tests-to-typescript.md`).
+Open after 1.3.0: Track F, D4, and the rest of Track G (deterministic replay, the frame profiler), each postponed by decision.
 
-The bump itself, in one commit with no other change:
+The bump itself, in one commit with no other change (done):
 
 - `package.json` and `package-lock.json` (`version`).
 - `productVersion` in `source/engine/common/Def.ts`. It is what `Host` builds the `version` cvar from and, through
