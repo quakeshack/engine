@@ -1,8 +1,8 @@
 # Frame graph: render targets and passes as declarations, hazards checked
 
 Track D3 of `plans/engine-architecture-modernization.md`. Status: **plan drafted 2026-10-13. Option 1 (validated
-scopes) was chosen the same day. Phases 0 to 3 are done (2026-10-13); the plan is complete apart from the GPU and
-Firefox checks listed under Phase 3.**
+scopes) was chosen the same day. Phases 0 to 3 are done (2026-10-13), and the live checks listed under Phase 3 passed
+(2026-10-21): the plan is done.**
 Written for the maintainers. Numbers are from a read of the tree on that date (branch
 `engine-architecture-modernization`), not from a profiler.
 
@@ -473,8 +473,8 @@ reorganized. 2416 tests pass, `npm run typecheck` and eslint are clean.
   twenty thousand pixels in the quietest views (the sky and the liquids animate). The trace above is what shows it.
 - **Tests on an idle machine**: 2416 pass, 0 fail. A `worker-server-controller` test failed once while the captures
   were running and passes 32 of 32 alone, three times: a timing flake under load, in code this work does not touch.
-- **Not verified**: frame time of the transparent pass with the multisampled target on a real GPU, which is the cost the
-  developer accepted with this decision, and Firefox. The developer's own smoke test of the loading-frame fix passed.
+- **Verified live by the developer, 2026-10-21**: transparent sorting is correct with the multisampled target on a real GPU,
+  and Firefox works. The developer's own smoke test of the loading-frame fix passed earlier. No frame time number was taken.
 
 ## Testing
 
@@ -487,7 +487,7 @@ reorganized. 2416 tests pass, `npm run typecheck` and eslint are clean.
 - Regression for `5f8a761` (screen restored after the game's stack) stays and is expressed as a scope-exit check.
 - Browser (required, `browser-ui-verification`): capture/compare per Phase 0's list after every phase, no GL warnings
   in the console, the dump read for one frame with fog volumes and one underwater. Not verifiable here: driver quirks
-  on a real GPU, Firefox; those need the developer's run.
+  on a real GPU, Firefox; the developer ran both on 2026-10-21 and they pass.
 
 ## Open questions
 

@@ -1419,8 +1419,8 @@ State on 2026-10-11 (the release in the next section waits for these, or for an 
   above. A game's own events are typed too (a per-game `Events.ts`, `TypedEventBus`, a docs test in each game). Phase 4
   (server hot reload: `server_reload` in a development build, the browser worker only) is done, so is Track C.
 - **D3** (frame graph): **done 2026-10-13**, see `plans/frame-graph.md` (render targets, a frame that records and checks its
-  passes, effects handed their output, depth sampled from a copy with the frame staying multisampled). Open there: the
-  frame time of the transparent pass on a real GPU, and Firefox.
+  passes, effects handed their output, depth sampled from a copy with the frame staying multisampled). The live checks
+  (sorting on a real GPU, Firefox) passed on 2026-10-21; nothing is open there.
 - **D4** (GPU abstraction, WebGPU spike): **postponed past 1.3.0 (decided 2026-10-13).** Not started, no plan.
 - **E**: **done 2026-10-16**, `plans/track-e-collision-and-movement.md` (determinism tests, the msec split and the movement
   variables fixed, a model source per realm, entity hulls in their own class, `ClientCollision` without a stand-in server).
