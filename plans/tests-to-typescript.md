@@ -1,7 +1,7 @@
 # Track G, type-checked tests: the engine's `.mjs` tests become TypeScript
 
 Track G of `plans/engine-architecture-modernization.md`, the "type-checked tests" bullet. Status: **plan drafted 2026-10-17,
-forks settled the same day (see "Decisions"). Phase 0 is done and committed (`3537396`); Phase 1 (`test/physics/`) is done and committed (`5d9ff36`); Phase 2 (`test/server/`, `test/shared/`, `test/eslint/`) is done and committed (`5d07eb7`); Phase 3 (`test/common/`) is done and committed (`72b98c0`); Phase 4 (`test/client/`, `test/renderer/`) is done and committed (`8e256a7`); Phase 5 (close-out) is done (2026-10-17). **The plan is complete; the game repos' tests are the follow-up.**
+forks settled the same day (see "Decisions"). Phase 0 is done and committed (`3537396`); Phase 1 (`test/physics/`) is done and committed (`5d9ff36`); Phase 2 (`test/server/`, `test/shared/`, `test/eslint/`) is done and committed (`5d07eb7`); Phase 3 (`test/common/`) is done and committed (`72b98c0`); Phase 4 (`test/client/`, `test/renderer/`) is done and committed (`8e256a7`); Phase 5 (close-out) is done (2026-10-17). **The plan is complete; the game repos' tests followed in `plans/game-tests-to-typescript.md` (done 2026-10-21).**
 Written for the maintainers. Counts are from a read of the tree on that date (branch `engine-architecture-modernization`).
 
 ## Context
@@ -316,5 +316,4 @@ Settled while doing the work:
 
 Still open:
 
-- **The game repos' tests (56 files).** They need a commit inside each repo (`submodule-aware-commit`), and `tsconfig.json`
-  excludes `source/game/**/test/**` today. Proposed: `plans/game-tests-to-typescript.md`, after 1.3.0.
+- ~~**The game repos' tests (56 files).**~~ **Done 2026-10-21**, see `plans/game-tests-to-typescript.md`: all of `id1` and `hellwave` are `.test.ts` and type-checked.

@@ -1427,7 +1427,7 @@ State on 2026-10-11 (the release in the next section waits for these, or for an 
 - **F**: **postponed past 1.3.0 (decided 2026-10-13).** Only the first step (the shared `AssetSource`) exists. Content-hash
   addressing and the rest have no plan.
 - **G**: **type-checked tests: done 2026-10-17**, `plans/tests-to-typescript.md` (all of the engine's tests under `test/` are `.test.ts`
-  and type-checked, none is left as `.mjs`; the game repos' tests follow after the release). **The rest is postponed past 1.3.0
+  and type-checked, none is left as `.mjs`; the games' tests followed on 2026-10-21, `plans/game-tests-to-typescript.md`). **The rest is postponed past 1.3.0
   (decided 2026-10-13), including deterministic replay (decision 14), which stays in scope for later.** State: `plans/server-replay.md`
   does not exist; the `console.profile` calls are still in `ClientHost`.
 
