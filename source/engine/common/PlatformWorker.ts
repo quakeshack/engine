@@ -1,11 +1,4 @@
-import { eventBus, getCommonRegistry } from '../registry.ts';
 import { BaseWorker, type WorkerMessageListener } from './Sys.ts';
-
-let { Host } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Host } = getCommonRegistry());
-});
 
 const isNode = typeof process !== 'undefined' && process.versions?.node !== undefined;
 
@@ -18,14 +11,14 @@ export interface WorkerMessageEnvelope {
 type NodeLikeWorker = {
   on(event: 'message', listener: (data: unknown) => void): void;
   on(event: 'error', listener: (error: Error) => void): void;
-  postMessage(message: unknown): void;
+  postMessage(message: unknown, transfer?: Transferable[]): void;
   terminate(): Promise<number>;
 };
 
 type BrowserLikeWorker = {
   addEventListener(event: 'message', listener: (event: MessageEvent<unknown>) => void): void;
   addEventListener(event: 'error', listener: (event: ErrorEvent) => void): void;
-  postMessage(message: unknown): void;
+  postMessage(message: unknown, transfer?: Transferable[]): void;
   terminate(): void;
 };
 
@@ -48,6 +41,9 @@ export type WorkerFactoryRegistry = Record<string, WorkerFactory>;
  * worker scripts that transitively import this module).
  */
 export default class PlatformWorker extends BaseWorker {
+  /** What happens when a worker fails: the realm decides, usually it shows the crash. Set by its composition root. */
+  static onCrash: ((error: Error | ErrorEvent) => void) | null = null;
+
   #worker: PlatformWorkerHandle | null = null;
 
   constructor(name: string, worker: PlatformWorkerHandle) {
@@ -70,7 +66,7 @@ export default class PlatformWorker extends BaseWorker {
 
         void this.shutdown();
 
-        Host.HandleCrash(error);
+        PlatformWorker.onCrash?.(error);
       });
     } else {
       (worker as BrowserLikeWorker).addEventListener('error', (error) => {
@@ -80,7 +76,7 @@ export default class PlatformWorker extends BaseWorker {
 
         void this.shutdown();
 
-        Host.HandleCrash(error);
+        PlatformWorker.onCrash?.(error);
       });
     }
   }
@@ -103,8 +99,8 @@ export default class PlatformWorker extends BaseWorker {
     }
   }
 
-  postMessage(message: unknown) {
-    this.#worker?.postMessage(message);
+  postMessage(message: unknown, transfer: Transferable[] = []) {
+    this.#worker?.postMessage(message, transfer);
   }
 
   async shutdown() {

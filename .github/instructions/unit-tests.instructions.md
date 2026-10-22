@@ -1,94 +1,13 @@
 ## Unit Tests
 
-### Runner and File Layout
+Fixture factories, the mock helpers and how to patch a singleton are in the `writing-engine-tests` skill (`.claude/skills/writing-engine-tests/SKILL.md`). Load it before writing a test.
 
-- **Test runner**: Node.js built-in (`node:test`). No third-party frameworks.
-- **Primary engine glob**: `node --test test/**/*.test.mjs` (see `package.json` scripts).
-- **Repo-local game globs**: `node --test source/game/**/test/*.test.mjs source/game/**/test/**/*.test.mjs`.
-- **Folder ownership**: Keep engine-owned tests under `test/`. Keep game/mod-owned tests in repo-local folders under `source/game/<repo>/test/`.
-- **Repo-local organization**: Within game repos, prefer mirroring the source layout with folders such as `client/`, `entity/`, `helper/`, `monster/`, `props/`, and `core/` when that keeps related tests easier to find.
-- **Category globs**: Keep engine tests grouped by top-level area such as `test/common/`, `test/physics/`, and `test/renderer/`.
-- **Nested test directories**: `npm test`'s glob patterns only reach as many directory levels as `package.json` spells out explicitly (dash has no recursive `**`) — see the `.claude/skills/test-glob-coverage/SKILL.md` skill and verify coverage whenever a new subdirectory level is added under `test/`.
-- **File naming**: `<subsystem>.test.mjs`. One file per production class/module.
-- **Shared helpers**: `test/physics/fixtures.mjs` (no `.test.` — never auto-run).
-- **All files are ESM** (`.mjs`). Use `import`/`export` exclusively.
-- **Tests are not type-checked.** `npm run typecheck` does not cover them (`test/` and `source/game/**/test/` are outside `tsconfig.json`), so a test that calls a `.ts` method with a stale signature, or mocks an outdated shape, keeps passing when the code changes. After changing a signature or a game/engine contract member, search the tests for it by hand. This once hid a wrong override signature in a game mod behind a green test.
-
-### Test Structure
-
-- **Always use `describe()` blocks** to group tests by method or logical concern.
-- Nest `describe()` when a method has multiple distinct scenarios (e.g., `describe('pushMove', () => { ... })`).
-- Use plain `test()` inside each `describe`. One assertion focus per test.
-- **Test names should describe the observable behavior**, not the implementation detail.
-  - Good: `'clears NaNs and clamps to maxvelocity'`
-  - Bad: `'calls checkVelocity correctly'`
-
-### Fixture Conventions
-
-Import shared factories from `test/physics/fixtures.mjs`:
-
-- `createMockEntity({ origin, mins, maxs, velocity, ... })` — returns a `MockEntity`.
-- `createMockEdict(entity)` — wraps a `MockEntity` in a `MockEdict` with sensible defaults.
-- `defaultMockRegistry(sv = {})` — provides silent `Con` and `Host.frametime: 0.1`. Pass SV overrides only.
-- `withMockRegistry(mockedRegistry, callback)` — temporarily installs a mock registry and fires `registry.frozen`.
-- `withMockServerPhysics(callback)` — sets up a complete pusher/rider scenario for `pushMove` tests.
-- `assertNear(actual, expected, epsilon)` — floating-point equality within tolerance.
-- Geometry helpers: `createAxisPlane`, `createBoxBrushModel`, `createBrushWorldModel`, `createRoomHullFromBounds`, `createLegacyWorldModel`, `createPmoveBoxEntity`.
-
-### Mock Registry Pattern
-
-Never access registry singletons directly in tests. Instead:
-
-```javascript
-withMockRegistry(defaultMockRegistry({
-  collision: { move() { ... } },
-  server: { ... },
-}), () => {
-  // registry.SV is now the mocked SV object
-});
-```
-
-When a test needs to capture output (e.g., `Con.Print`), spread the default and override `Con`:
-
-```javascript
-withMockRegistry({
-  ...defaultMockRegistry(sv),
-  Con: { Print(msg) { prints.push(msg); }, DPrint() {} },
-}, () => { ... });
-```
-
-### JSDoc in Tests
-
-- **Define typedefs** for mock shapes (`MockEntity`, `MockEdict`, `MockRegistryConfig`) in `fixtures.mjs`.
-- **Never use `@returns {object}`** — always use a specific typedef.
-- Annotate factory parameters with `@param` when the shape is non-obvious.
-
-### Writing New Tests
-
-1. **One file per production module**: `ServerPhysics` → `test/physics/server-physics.test.mjs`, `Mod` → `test/common/model-cache.test.mjs`.
-2. **Game/mod tests live with their repo**: `source/game/id1/test/entity/items.test.mjs`, `source/game/id1/test/monster/ogre.test.mjs`, `source/game/hellwave/test/hellwave-game-api.test.mjs`.
-3. **Regression tests go in the relevant subsystem file**, not a catch-all file.
-4. **Document magic numbers** with a comment explaining the derivation. Example:
-  ```javascript
-  // checkStuck tries: 1 (current pos) + 1 (oldorigin) + 18 z × 3 x × 3 y = 164
-  assert.equal(testCallCount, 164);
-  ```
-5. **Prefer precise assertions** (`assert.deepEqual`, `assert.equal`) over loose checks.
-6. **Use `assertNear`** for any floating-point comparison.
-7. **Avoid `Math.random` in production paths** — if production uses it, save and restore in tests:
-  ```javascript
-  const originalRandom = Math.random;
-  Math.random = () => 0.0;
-  try { ... } finally { Math.random = originalRandom; }
-  ```
-
-### Running Tests
-
-```bash
-npm test               # all tests
-npm run test:game      # repo-local game/mod tests
-npm run test:common    # common engine tests
-npm run test:physics       # all physics tests
-npm run test:renderer      # renderer tests
-node --test test/physics/server-physics.test.mjs  # single file
-```
+- **Runner**: Node's built-in `node:test` with `node:assert/strict`, loaded through `tsx`. No third-party framework. All files are ESM.
+- **Where tests live**: engine tests under `test/`, grouped by area (`test/common/`, `test/physics/`, `test/renderer/`, ...). A game's tests live in its own repo under `source/game/<repo>/test/`, mirroring the source layout (`client/`, `entity/`, `monster/`, ...).
+- **Naming**: `<subsystem>.test.ts` for the engine and for the games' tests. One file per production class or module.
+- **Globs**: npm runs the test globs through `dash`, where `**` reaches one directory level. `test/common/test-globs.test.ts` fails when a `test*` script skips a test file, so a deeper directory does not go unnoticed.
+- **Structure**: group tests with `describe()` (nest it when a method has several scenarios), plain `test()` inside, one assertion focus per test. Name the observable behavior (`'clears NaNs and clamps to maxvelocity'`), not the implementation (`'calls checkVelocity correctly'`).
+- **Every test is type-checked, the games' as well.** `npm run typecheck` covers `test/**/*.test.ts`, `test/support/**` and the games' `source/game/<mod>/test/`, so a changed signature fails the build. A game's tests use the engine's `test/support/` as their shared kit (`entityMocks.ts` for entities, `cvarStub.ts`, `entityStates.ts`, `serialization.ts`) and their game's own fixtures (id1's `test/client/fixtures.ts` mocks the client engine API).
+- **Type the mock, not the call.** Use the typed factories in `test/support/` (`fixtures.ts` and its neighbors). No `any`, no `@ts-ignore`.
+- **Floating point** is compared with `assertNear` from `test/support/assertions.ts` (default tolerance 1e-6). Use `assert.deepEqual`/`assert.equal` over loose checks.
+- Run a single file with `node --import tsx --test <file>`; `npm test` runs everything.

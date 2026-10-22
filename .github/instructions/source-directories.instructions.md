@@ -1,21 +1,8 @@
-
-
 ## Source Directories
 
-- Source code is located in the `source/` directory.
-- The engine is organized in `source/engine/` and is divided into subdirectories based on functionality:
-  - `source/engine/common/` - Shared code between client and server.
-  - `source/engine/client/` - Client-specific code, such as rendering, input, and audio.
-  - `source/engine/server/` - Server-specific code.
-  - `source/engine/network/` - Networking code such as protocols and message handling.
-- The game is organized in `source/game/` and follows a slightly different structure:
-  - `source/game/id1/` - the original Quake game logic. A separate git submodule (`game.git`); changes there need their own commit inside the submodule (see the `submodule-aware-commit` skill).
-  - `source/game/hellwave/` - the Hellwave game mod. A plain directory in this repo, not a submodule.
-  - `source/game/baseq2/` - (future) Quake II game logic.
-  - Game code must never directly import files from the engine; it should only use the public API exposed by the engine.
-  - The contract between the engine and a game module lives in `source/shared/GameInterfaces.ts` (`GameModuleInterface`, `ServerGameInterface`, `ClientGameInterface`, ...); see `docs/game-module-contract.md`. A game's API classes declare `implements` on the instance interfaces and its `main.ts` asserts `satisfies GameModuleInterface`, so `npm run typecheck` reports drift between the two sides.
-- There is code which is shared between the engine and game, located in `source/shared/`.
-  - The idea is to keep engine-agnostic code here, such as math utilities, data structures, and algorithms.
-  - Data structures and types implemented or declared in the engine, can be re-exported here.
-- Keep the same boundary in documentation and agent instructions/skills. Engine-level docs (`docs/`), `.github/instructions/`, and `.claude/skills/` should describe game-facing engine APIs and mechanisms in game-agnostic terms. A reference to a concrete game (`id1`, `hellwave`) there is an illustrative example, not a permanent engine fact, and should be labeled as such — game-specific behavior, event lists, or walkthroughs belong with that game once it has its own docs/instructions to hold them.
-  - `source/game/id1/` has its own `CLAUDE.md` and `.github/instructions/` (e.g. its entity/TypeScript conventions doc, previously misplaced at the engine repo root as a now-obsolete `.mjs`-to-`.ts` porting guide) — a nested `CLAUDE.md` like this loads automatically for agent sessions working under that path, without needing an `@import` from the top-level `CLAUDE.md`. `source/game/hellwave/` doesn't have one yet; add one there the same way once it accumulates enough of its own agent-facing conventions to be worth a dedicated home.
+- `source/engine/` is split by realm: `common/` (shared by client and server), `client/` (rendering, input, audio), `server/`, `network/` (protocols and message handling).
+- `source/shared/` holds engine-agnostic code used by the engine and the games: math utilities, data structures, algorithms, and types declared in the engine that games need (re-exported).
+- `source/game/<mod>/` holds the game modules (`id1`, `hellwave` today; `baseq2` is planned). `id1` is a git submodule and `hellwave` is a separate embedded repo; both are committed from inside (`submodule-aware-commit`).
+- **Game code never imports engine files.** It uses only the public API the engine hands it (`ServerEngineAPI`/`ClientEngineAPI`).
+- The contract between the engine and a game lives in `source/shared/GameInterfaces.ts` (`GameModuleInterface`, `ServerGameInterface`, `ClientGameInterface`, ...); see `docs/game-module-contract.md`. A game's API classes declare `implements` on the instance interfaces and its `main.ts` asserts `satisfies GameModuleInterface`, so `npm run typecheck` reports drift between the two sides.
+- **Engine-level docs, instructions and skills stay game-agnostic** (`docs/`, `.github/instructions/`, `.claude/skills/`). A reference to a concrete game is an illustrative example and is labeled as one; game-specific behavior, event lists and walkthroughs belong with that game. `source/game/id1/` has its own `CLAUDE.md` and `.github/instructions/`, which load automatically for sessions working under that path; `hellwave` gets one the same way once it has enough agent-facing conventions of its own.

@@ -1,5 +1,7 @@
 import type { BaseClientEdictHandler } from './ClientEdict.ts';
-import type { ClientEngineAPI as ClientEngineApiValue, CommonEngineAPI as CommonEngineApiValue, ServerEngineAPI as ServerEngineApiValue } from '../engine/common/GameAPIs.ts';
+import type { ClientEngineAPI as ClientEngineApiValue } from '../engine/client/ClientEngineAPI.ts';
+import type { CommonEngineAPI as CommonEngineApiValue } from '../engine/common/CommonEngineAPI.ts';
+import type { ServerEngineAPI as ServerEngineApiValue } from '../engine/server/ServerEngineAPI.ts';
 import type { ClientEdict as ClientEdictValue } from '../engine/client/ClientEntities.ts';
 import type { ServerEdict as ServerEdictValue } from '../engine/server/Edict.ts';
 import type { BitmapFont as BitmapFontValue } from '../engine/client/BitmapFont.ts';
@@ -19,13 +21,14 @@ import type { StartGameInterface } from '../engine/client/ClientLifecycle.ts';
 import type { DiscoveredSession as DiscoveredSessionValue, SessionDiscoveryStatus as SessionDiscoveryStatusValue } from '../engine/client/menu/SessionDiscovery.ts';
 
 export type { StartGameInterface } from '../engine/client/ClientLifecycle.ts';
+export type { ClientGameEventMap, ServerGameEventMap, TypedEventBus } from '../engine/common/EventBus.ts';
 
 export type DiscoveredSession = DiscoveredSessionValue;
 export type SessionDiscoveryStatus = SessionDiscoveryStatusValue;
 
-export type ClientEngineAPI = Readonly<typeof ClientEngineApiValue>;
-export type ServerEngineAPI = Readonly<typeof ServerEngineApiValue>;
-export type CommonEngineAPI = Readonly<typeof CommonEngineApiValue>;
+export type ClientEngineAPI = Readonly<ClientEngineApiValue>;
+export type ServerEngineAPI = Readonly<ServerEngineApiValue>;
+export type CommonEngineAPI = Readonly<CommonEngineApiValue>;
 export type ClientEdict = Readonly<ClientEdictValue>;
 export type ServerEdict = Readonly<ServerEdictValue>;
 
@@ -125,6 +128,59 @@ export interface HostAlertEvent {
   readonly severity: HostAlertSeverity;
 }
 
+/**
+ * What a first-person view is calculated from, for a client game that calculates its own (`calcView`). The vectors
+ * are the engine's and valid for the call only; read them, and copy what is kept.
+ */
+export interface ViewInput {
+  /** Where the player is. */
+  readonly origin: Vector;
+
+  /** The angles of the player entity, which are not the view's: they face where the model faces. */
+  readonly angles: Vector;
+
+  /** How fast the player moves. */
+  readonly velocity: Vector;
+
+  /** Where the player looks, from the input and the prediction. Prediction reads it, so a game does not write it back. */
+  readonly viewangles: Vector;
+
+  /** The kick the server gave the view, which is added to the angles last. */
+  readonly punchangle: Vector;
+
+  /** Height of the eye above the origin. */
+  readonly viewheight: number;
+
+  /** Whether the player stands on something. */
+  readonly onground: boolean;
+
+  /** Client time in seconds. */
+  readonly time: number;
+
+  /** Seconds since the last frame. */
+  readonly frametime: number;
+
+  /** The `viewsize` variable. */
+  readonly viewsize: number;
+}
+
+/**
+ * Where a first-person view puts the eye and the weapon. A `calcView` writes every member, in place.
+ */
+export interface ViewResult {
+  /** The eye. */
+  readonly vieworg: Vector;
+
+  /** Where the eye looks, with the punch angle already in it. */
+  readonly viewangles: Vector;
+
+  /** Where the weapon model is. */
+  readonly weaponOrigin: Vector;
+
+  /** The angles of the weapon model. */
+  readonly weaponAngles: Vector;
+}
+
 export type PostProcessColorGradeDescriptor = {
   readonly saturation?: number;
   readonly contrast?: number;
@@ -139,11 +195,97 @@ export type PostProcessBlurDescriptor = {
   readonly radius?: number;
 };
 
+/**
+ * A tint over the whole view. Entries of this effect that follow each other are mixed into one tint, in the
+ * order they are applied, as Quake mixes its color shifts: each is laid over the result of the ones before.
+ */
+export type PostProcessColorShiftDescriptor = {
+  /** Red, green and blue, each 0 to 1. Black when left out. */
+  readonly color?: ArrayLike<number>;
+
+  /** How much the color covers the view, 0 to 1. Nothing when left out. */
+  readonly alpha?: number;
+};
+
+/**
+ * Where in the frame an entry is applied. `scene` is before the renderer's own effects (bloom, warp), so they see
+ * the result; `final` is after them, over everything and under the HUD. Each effect has a default.
+ */
+export type PostProcessStage = 'scene' | 'final';
+
+/**
+ * The shape of a pulse over time, in seconds: it fades in from nothing, holds, fades out and is gone. Parts that
+ * are left out are zero.
+ */
+export interface PostProcessTiming {
+  readonly fadeIn?: number;
+  readonly hold?: number;
+  readonly fadeOut?: number;
+}
+
+/**
+ * Whether a pulse sits below or above the entries of the stack it shares a channel with.
+ */
+export type PostProcessPlacement = 'below' | 'above';
+
+/**
+ * What every entry of the stack and every pulse carries besides its effect and settings.
+ */
+export interface PostProcessEntryOptions {
+  /**
+   * Names the entry. A new stack keeps the entries it shares a key with (an effect id without a key matches the
+   * n-th entry of that id) and fades them from their old settings to the new ones. For a pulse, a pulse that is
+   * already running under the same key restarts instead of a second one stacking up.
+   */
+  readonly key?: string;
+
+  /**
+   * Where in the frame the entry is applied, `scene` unless the effect says otherwise.
+   */
+  readonly stage?: PostProcessStage;
+}
+
 export type PostProcessEffectDescriptor =
-  | { readonly id: 'color-grade'; readonly settings: PostProcessColorGradeDescriptor }
-  | { readonly id: 'blur'; readonly settings: PostProcessBlurDescriptor };
+  | ({ readonly id: 'color-grade'; readonly settings: PostProcessColorGradeDescriptor } & PostProcessEntryOptions)
+  | ({ readonly id: 'blur'; readonly settings: PostProcessBlurDescriptor } & PostProcessEntryOptions)
+  | ({ readonly id: 'color-shift'; readonly settings: PostProcessColorShiftDescriptor } & PostProcessEntryOptions);
 
 export type PostProcessStack = readonly PostProcessEffectDescriptor[];
+
+/**
+ * An entry that lives for a while and then removes itself, see `PostProcess.pulse`.
+ */
+export type PostProcessPulseDescriptor = PostProcessEffectDescriptor & {
+  readonly timing: PostProcessTiming;
+  readonly placement?: PostProcessPlacement;
+};
+
+/**
+ * What `PostProcess.setStack` can be asked besides the stack.
+ */
+export interface PostProcessStackOptions {
+  /**
+   * The channel the stack belongs to. Channels are composed in the order they were first used and replaced and
+   * cleared on their own, so two parts of a game do not have to know about each other. `'default'` when left out.
+   */
+  readonly channel?: string;
+
+  /**
+   * Seconds to cross-fade from the channel's previous stack to this one: new entries fade in from nothing, entries
+   * that are gone fade out, entries that stay move to their new settings. Instant when left out.
+   */
+  readonly fade?: number;
+}
+
+/**
+ * What `PostProcess.pulse` can be asked besides the entry.
+ */
+export interface PostProcessPulseOptions {
+  /**
+   * The channel whose entries the pulse is composed with. `'default'` when left out.
+   */
+  readonly channel?: string;
+}
 
 /**
  * Everything the engine calls, reads, or writes on a running client-side game instance.
@@ -179,6 +321,10 @@ export interface ClientGameInterface {
    * Called when the client disconnects from the server, right before the engine drops its
    * reference to this instance. Not called on a changelevel: the engine replaces the instance with
    * a new one.
+   *
+   * The order on a disconnect is: `shutdown()`, then `client.disconnected` is published, then the
+   * map's `eventBus` listeners are released. A game that unsubscribes in `shutdown()` therefore
+   * does not hear `client.disconnected`; one that leaves its listeners to the engine does.
    */
   shutdown(): void;
 
@@ -192,6 +338,12 @@ export interface ClientGameInterface {
    * Called every frame the HUD is drawn. Skipped while the `nohud` cvar is set.
    */
   draw(): void;
+
+  /**
+   * Called every frame the HUD is drawn, right after `draw()`, and also while the `nohud` cvar is set. For what the
+   * player has to see whatever the HUD shows, such as the pause sign. Leave it out when there is none.
+   */
+  drawOverlay?(): void;
 
   /**
    * Called every frame while the client is connecting or changing level, right after the engine
@@ -220,6 +372,25 @@ export interface ClientGameInterface {
    * rendered.
    */
   updateRefDef(refdef: RefDef): void;
+
+  /**
+   * How many pixels at the bottom of the screen the game's HUD keeps for itself at a view size, so that the
+   * 3D view is drawn above them (a status bar). Asked whenever the view rectangle is calculated, and not during
+   * an intermission, which uses the whole screen. Leave it out to get the whole height of the screen.
+   * @param viewsize The value of the `viewsize` variable, 30 to 120.
+   * @returns Pixels, 0 or more.
+   */
+  hudReservedHeight?(viewsize: number): number;
+
+  /**
+   * Calculates the first-person view of a frame, in place of the engine's (bob, roll into a strafe, damage kick,
+   * idle sway, smoothing of steps). The engine does the pitch drift before, and after it: the model and frame of
+   * the weapon, `updateRefDef`, and the chase camera. `ClientEngineAPI.View.calculateDefault` is the engine's own
+   * calculation, for a game that wants it and adjusts the result. Leave it out to get the engine's.
+   * @param input What the view is calculated from.
+   * @param result Where the eye and the weapon go. Write every member.
+   */
+  calcView?(input: ViewInput, result: ViewResult): void;
 }
 
 /**
@@ -280,26 +451,6 @@ export interface ServerInfoField {
   label: string;
   type: 'string' | 'number' | 'boolean' | 'maplist' | 'enum';
   enumValues?: Record<string, string | number>;
-}
-
-/**
- * Describes one map a game offers. Game-side helper shape: games return it from their own static
- * helpers, the engine does not call them.
- */
-export interface MapDetails {
-  name: string;
-  label: string;
-  maxplayers: number;
-  pictures: string[];
-}
-
-/**
- * Describes one entry of a game's "start a server" menu. Game-side helper shape: games return it
- * from their own static helpers, the engine does not call them.
- */
-export interface StartServerListEntry {
-  label: string;
-  callback: (engineAPI: CommonEngineAPI) => void;
 }
 
 export type SerializedPrimitive = string | number | boolean | null;

@@ -1,5 +1,5 @@
 import GL from '../../client/GL.ts';
-import { eventBus } from '../../registry.ts';
+import { eventBus } from '../EventBus.ts';
 import Vector from '../../../shared/Vector.ts';
 import type { ModelType } from '../Mod.ts';
 import { modelFlags } from '../../../shared/Defs.ts';
@@ -183,6 +183,16 @@ export class BaseModel {
 
   /** Shared alias-model command buffer, when applicable. */
   cmds: WebGLBuffer | null = null;
+
+  /**
+   * False when the model was loaded without the per-vertex data collision code traces against, which
+   * a realm without a renderer may do for models nobody traces. `mins`/`maxs` are valid either way.
+   * Only alias models can be loaded that way; every other type always has what it has.
+   * @returns True when collision code can trace against this model's own geometry.
+   */
+  get hasCollisionGeometry(): boolean {
+    return true;
+  }
 
   constructor(name: string) {
     this.name = name;

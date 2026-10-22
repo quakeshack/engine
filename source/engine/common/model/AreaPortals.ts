@@ -1,6 +1,5 @@
-import type { Node } from './BSP.ts';
 
-import { eventBus } from '../../registry.ts';
+import { eventBus } from '../EventBus.ts';
 
 export interface PortalDefinition {
   readonly area0: number;
@@ -162,14 +161,6 @@ export class AreaPortals {
     const flood0 = this.#floodNum[area0];
     const flood1 = this.#floodNum[area1];
     return flood0 > 0 && flood1 > 0 && flood0 === flood1;
-  }
-
-  /**
-   * Convenience wrapper that checks connectivity by leaf area ids.
-   * @returns True when the two leaf areas are mutually reachable.
-   */
-  leafsConnected(leaf0: Node, leaf1: Node): boolean {
-    return this.areasConnected(leaf0.area, leaf1.area);
   }
 
   /**

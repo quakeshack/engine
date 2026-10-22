@@ -1,13 +1,10 @@
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import Q from '../../shared/Q.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
-
-let { COM, Con, S } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con, S } = getClientRegistry());
-});
+import { eventBus } from '../common/EventBus.ts';
+import Con from '../common/Console.ts';
+import S from './Sound.ts';
+import { com } from './PageServices.ts';
 
 export default class CDAudio {
   static readonly #eventListeners: Array<() => void> = [];
@@ -45,7 +42,7 @@ export default class CDAudio {
 
     CDAudio.Stop();
     CDAudio.playTrack = track;
-    CDAudio.cd = new Audio(COM.GetNetpath(`music/${track}.opus`));
+    CDAudio.cd = new Audio(com.GetNetpath(`music/${track}.opus`));
     CDAudio.cd.loop = looping;
     CDAudio.cd.volume = CDAudio.cdvolume;
     CDAudio.#playCurrentTrack();
@@ -148,7 +145,7 @@ export default class CDAudio {
 
   static Init(): void {
     Cmd.AddCommand('cd', CDAudio.CD_f.bind(CDAudio));
-    if (COM.CheckParm('-nocdaudio') || COM.CheckParm('-nosound')) {
+    if (com.CheckParm('-nocdaudio') || com.CheckParm('-nosound')) {
       return;
     }
 

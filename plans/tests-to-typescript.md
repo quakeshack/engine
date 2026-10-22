@@ -1,0 +1,319 @@
+# Track G, type-checked tests: the engine's `.mjs` tests become TypeScript
+
+Track G of `plans/engine-architecture-modernization.md`, the "type-checked tests" bullet. Status: **plan drafted 2026-10-17,
+forks settled the same day (see "Decisions"). Phase 0 is done and committed (`3537396`); Phase 1 (`test/physics/`) is done and committed (`5d9ff36`); Phase 2 (`test/server/`, `test/shared/`, `test/eslint/`) is done and committed (`5d07eb7`); Phase 3 (`test/common/`) is done and committed (`72b98c0`); Phase 4 (`test/client/`, `test/renderer/`) is done and committed (`8e256a7`); Phase 5 (close-out) is done (2026-10-17). **The plan is complete; the game repos' tests followed in `plans/game-tests-to-typescript.md` (done 2026-10-21).**
+Written for the maintainers. Counts are from a read of the tree on that date (branch `engine-architecture-modernization`).
+
+## Context
+
+`npm run typecheck` covers `test/**/*.test.ts` and `test/support/**`, and nothing else under `test/`. A `.mjs` test is run by
+`tsx` and never checked, so a test that calls a `.ts` method with a stale signature, or mocks an outdated shape, keeps passing
+when the code changes. `unit-tests.instructions.md` records this as a hazard, and it once hid a wrong override signature in a
+game mod behind a green test. The 2026-10-13 scope cut moved this track past 1.3.0; on 2026-10-17 the developer reversed that
+for the engine's tests: **1.3.0 waits for them**.
+
+Where it stands:
+
+| Area | `.mjs` tests | `.ts` tests | `.mjs` lines |
+| :-- | --: | --: | --: |
+| `test/physics/` | 17 | 2 | 12 504 |
+| `test/common/` | 51 | 14 | 8 218 |
+| `test/client/` | 30 | 17 | 9 705 |
+| `test/server/` | 10 | 3 | 1 818 |
+| `test/renderer/` | 8 | 36 | (not counted) |
+| `test/shared/` | 1 | 2 | 77 |
+| `test/eslint/` | 1 | 0 | 69 |
+| **Engine total** | **118** | **74** | |
+| `source/game/id1/test/` | 40 | 0 | |
+| `source/game/hellwave/test/` | 16 | 0 | |
+
+All `.mjs` tests together are about 46 000 lines. Four non-test `.mjs` helpers sit under `test/`:
+`physics/fixtures.mjs` (606 lines, imported by 38 test files), `physics/map-pmove-harness.mjs`, `physics/debug-test-clip-4.mjs`
+(not imported by anything, apparently a one-off script) and `server/fixtures/cvar-realm.mjs`. No `.test.ts` imports any of them
+today, which is also why the typed tests carry their own helpers in `test/support/` (20 files).
+
+The 74 `.ts` tests contain 102 `as unknown as` casts in 40 files. That is the cost of mocking engine shapes by hand, and the
+sweep will add more unless the mocks get typed factories. Keeping that number from growing is part of the work.
+
+## Goals
+
+- Every test under `test/` is `.test.ts` and is type-checked by `npm run typecheck`, so a changed signature fails the build
+  instead of passing silently (the Cloudflare build and the Docker `test` stage both run the typecheck).
+- Shared fixtures are typed modules in `test/support/` with real interfaces for the mocks they build.
+- No test loses coverage or gets weaker: same cases, same assertions, same fixtures.
+- `npm test`, `npm run typecheck` and `npx eslint` stay green at the end of every phase.
+
+## Non-goals
+
+- Changing what a test checks. A conversion is not the time to rewrite a test. A test that turns out to assert the wrong thing
+  is flagged and fixed in its own commit, not folded into the rename.
+- The game repos' tests (`source/game/id1/test/`, `source/game/hellwave/test/`). They live in repos of their own, sit outside
+  `tsconfig.json`, and do not gate 1.3.0. They get a follow-up plan (see Open questions).
+- Frameworks. The runner stays `node:test`; `tsx` stays the loader.
+- Source changes. If a test only type-checks after a change to production code, that change is made for a reason and gets its
+  own commit; a test is never "fixed" by loosening a production type.
+
+## Design
+
+**Conversion rules**, applied to every file:
+
+1. `git mv foo.test.mjs foo.test.ts` first, in a commit of its own or at least a separate step, so history follows the file.
+2. JSDoc types become TypeScript (`typescript-port.instructions.md`): `/** @type {X} */` casts become annotations or `as`,
+   `@typedef` mock shapes become `interface`s, redundant `@param {Type}` is dropped and the description kept.
+3. Imports spell the `.ts` extension, as the rest of the tree does.
+4. A mock is built by a typed factory (`createMockEntity`, `defaultMockEngine`, the helpers in `test/support/`), not by an
+   inline object cast with `as unknown as`. When a factory is missing, it is added to `test/support/` and used by the next
+   file too. An `as unknown as` that stays has an adjacent comment saying why a typed mock was not possible.
+5. No `any`, no `@ts-ignore`, no `@ts-expect-error` to get a file through. A real type error is either a real bug in the test
+   (fix it, say so in the commit) or a real bug in the code (report it, do not hide it).
+6. Comments, `describe` structure and test names are kept. Files end with an empty line.
+7. A test that only runs under `.mjs` semantics (top-level `await`, CJS interop) is listed in Open questions as it turns up.
+
+**Typecheck configuration.** `tsconfig.json` includes `test/**/*.test.ts` and `test/support/**/*.ts` only. Each phase widens
+nothing; the include already covers every converted file. The last phase removes the comment about `.mjs` tests and, because
+`allowJs`/`checkJs` are on, checks that no `.mjs` is left under `test/`.
+
+**Globs.** `package.json` spells every test glob twice (`*.test.mjs` and `*.test.ts`). They stay until the last `.mjs` test is
+gone, then the `.mjs` half is removed from all of them (`test`, `test:engine`, `test:common`, `test:physics`, `test:renderer`)
+and `eslint.config.mjs` stops naming `.mjs` test paths. The `test-glob-coverage` skill applies to any new directory level: no
+new nesting is planned, `test/server/fixtures/` already exists.
+
+**Dockerfile.** The `test` stage does `COPY test ./test`, so moved files need no change. A new top-level file would; none is planned.
+
+## Phasing
+
+Each phase ends with `npm test` (count unchanged, apart from tests added on purpose), `npm run typecheck` at zero errors and
+`npx eslint` clean on the touched files, then stops for a go-ahead. The test count before and after a phase is recorded here.
+Baseline on 2026-10-17: **2602 tests pass, typecheck clean.**
+
+### Phase 0: helpers and the conversion kit
+
+- Convert `physics/fixtures.mjs` to `test/support/physicsFixtures.ts` with real interfaces for `MockEntity`, `MockEdict`,
+  `MockEngineConfig` (today `@typedef`s) and typed return values. The 38 importing `.mjs` tests are updated to the new path in
+  the same step; they are still `.mjs`, which is fine, `tsx` resolves it.
+- Convert `map-pmove-harness.mjs` and `server/fixtures/cvar-realm.mjs` the same way. Decide about `debug-test-clip-4.mjs`:
+  delete it if nothing uses it (confirm with the developer, it is not a test).
+- Look through the 102 existing `as unknown as` casts for the repeated shapes and give those a typed factory in `test/support/`,
+  so the sweep has something to use instead of adding casts.
+- Done when: no `.mjs` that is not a `.test.mjs` is left under `test/`, and the first file of Phase 1 can be converted with only
+  rule-following.
+
+#### Phase 0: what shipped (2026-10-17)
+
+`npm test` 2602 pass (the baseline), `npm run typecheck` 0 errors, the touched `.ts` files are ESLint clean.
+
+- **`test/support/fixtures.ts`** is `test/physics/fixtures.mjs`, typed. The name differs from the plan's `physicsFixtures.ts`
+  because the file was never only physics: it holds the engine mocks (`withMockEngine`, `defaultMockEngine`), the geometry and
+  entity factories, and the server, host, network and channel stand-ins. The `@typedef`s are interfaces now (`MockEntity`,
+  `MockEdict`, `MockEngineConfig`, `MockServer`, `MockClient`, and an options interface per factory). The 45 `.mjs` tests that
+  import it were pointed at the new path; they stay `.mjs` until their area's phase. The mock shapes keep an index signature
+  (`MockServer`, `MockClient`) because tests add whatever members their scenario needs; what the checker now catches is the
+  signatures of the real classes the tests call, which is the point of the track.
+- **First thing the checker found:** the fixtures built `new BrushModel()` and set `name` afterwards, but the constructor takes
+  the name. It worked at run time and was wrong for the type. Fixed in the fixtures; `collision-regressions.test.mjs` and
+  `server-collision.test.mjs` have the same call in eleven places (8 and 3) and will be corrected when they are converted (Phase 1).
+- **`test/support/serverCvarRealm.ts`** (was `test/server/fixtures/cvar-realm.mjs`): the worker script of
+  `server-cvar-realms.test.mjs`, typed; the worker loads it as `.ts` under `tsx` with no change to how the test starts it.
+- **`test/support/mapPmoveHarness.ts`** (was `test/physics/map-pmove-harness.mjs`): not a test fixture but a command line tool for
+  looking at player movement on a map. Typed, with its usage in a header comment, and it now fails with a clear error on an
+  entity lump that ends inside an entity instead of a `TypeError`. Run once against a real map: loads and parses.
+- **`test/support/cvarStub.ts`**: `createCvarStub(value)`, one documented cast for the 19 `{ value } as unknown as Cvar` sites; the
+  plain ones (8 sites in 4 renderer tests) use it. The remaining repeated casts are `WebGL` (15), `ClientGameInterface` (12),
+  `GLTexture` (7) and `GLRenderTexture` (6); they are renderer and client shapes inside tests that are already typed, and are
+  looked at in Phase 4 together with the client tests.
+- `unit-tests.instructions.md` names the new locations.
+- `test/physics/debug-test-clip-4.mjs` is deleted (the developer's call: a one-off script nothing imported). No `.mjs` that is not a `.test.mjs` is left under `test/`.
+- **Found on the way:** `npx eslint test` cannot lint `.mjs` tests (the project service stops at 8 default-project files and the
+  loose `.mjs` are not in `tsconfig.json`), so it fails the same way before and after this phase. Lint is run on the `.ts` files
+  that are touched; that gap closes with the conversion itself.
+
+### Phase 1: `test/physics/` (17 files, the largest)
+
+The area with the most lines and the most hand-built geometry; doing it first means the fixtures get shaped by their heaviest user.
+
+#### Phase 1: what shipped (2026-10-17)
+
+All 17 `.mjs` tests in `test/physics/` are `.test.ts`, type-checked and ESLint clean. `npm test` 2602 pass (the baseline),
+`npm run typecheck` 0 errors. The deliberate-break check passed: adding a required parameter to `ServerMovement.checkBottom`
+made `npm run typecheck` fail in `server-movement.test.ts` and `collision-regressions.test.ts` (four call sites), and
+`.mjs` would have kept passing; reverted. Starting point was 1298 type errors.
+
+What the checker found that the `.mjs` hid, all fixed in the tests (no production code changed):
+
+- **`server-clientdata-sparse` mocked the `Server` class instead of a server.** It set `Server.server` as a static on the class
+  and installed the class as the mock; it passed because `mockedSV()` forwards everything. It now builds a real `Server` with
+  `createTestServer()`.
+- **`new BrushModel()` without the name** in 11 more places (see Phase 0); `ServerClient.cmd` and `.pendingCmds` are `readonly` and
+  tests reassigned them (now mutated in place); `entity.use(null)` where the signature takes an entity; `edict.num = n` on a
+  `readonly` field (the factory takes the number now).
+- **Mocks that were not what the API says:** `queryAABB` mocks returned arrays where the signature is an iterator (`.values()`),
+  `collision.move` mocks returned partial plain objects (now `CollisionTrace`), `_traceBrushModel` mocks returned that shape too
+  but the method returns the player-movement `Trace` (a different class, now `createPmoveTrace`), a `clients` array held `null`s
+  though slots are never null, and a trace passed to `wallFriction` had no `dist`.
+- **Missing declarations:** untyped `[]` recorders (152 sites), callbacks without parameter types, `@param {T}` JSDoc on a few
+  hundred helper parameters.
+
+Shared pieces added or changed:
+
+- `test/support/fixtures.ts`: `MockServer` is `DeepPartial<Server>` plus an index signature, so mock methods get the real
+  parameter types and a stale return shape fails; `MockEdict` is a `ServerEdict` (one documented cast in `createMockEdict`, which
+  takes the edict number); `MockEntity` takes its optional members from the engine's `BaseEntity` interface; new
+  `createPmoveTrace`, `mockedServer()` (replaces reading `engineMocks.SV.` untyped), `RecordedMove`, `BrushModelWithBrushes`.
+- `test/support/entityMocks.ts`: inert edicts and engine/game APIs for tests that build a game's entities (`func_plat`,
+  `func_door`, `func_train`, `func_rotating`), which each had a 60-line copy of them. Game entities are imported by class now,
+  not looked up in `entityClasses`.
+- `collision-regressions.test.ts` carried its own copy of nine fixtures (about 330 lines, left over from before they moved);
+  it uses the shared ones now. `pmove.test.ts`'s local `createTrace` moved to the shared `createPmoveTrace`.
+- `brushtrace.test.ts` swaps static methods with `t.mock.method` (the repo's convention since `7ee3236`) instead of assigning
+  and restoring them.
+
+Left as it is, on purpose:
+
+- `pmove.test.ts` and `mapPmoveHarness.ts` still have a copy each of the map entity parsing; worth one shared module, not done
+  here because the two differ in what they return.
+- `Math.random` is still saved and replaced by hand in a few tests; `t.mock.method(Math, 'random')` would do.
+- Casts that remain are `as unknown as X` with a comment, for stand-ins of whole subsystems (hulls, octrees, clients, world
+  models, the pmove mover). 34 in the physics tests.
+
+### Phase 2: `test/server/`, `test/shared/`, `test/eslint/` (12 files)
+
+Small. `test/eslint/control-statement-blocks.test.mjs` loads `eslint.rules.mjs`, which is plain JS; it needs a declaration or a
+typed import, decide when it turns up.
+
+#### Phase 2: what shipped (2026-10-17)
+
+The 12 remaining `.mjs` tests of `test/server/`, `test/shared/` and `test/eslint/` are `.test.ts`: 114 tests, `npm test` 2602 pass
+(the baseline), `npm run typecheck` 0 errors, ESLint clean. `test/eslint/control-statement-blocks.test.ts` needed no declaration for
+`eslint.rules.mjs`: `allowJs` types the import, and the test type-checked as it was. Starting point was 158 errors.
+
+What the checker found:
+
+- **A required dependency the tests never passed:** `WorkerServerController` takes `onSessionRequest`, and both tests that build one
+  (`server-cvar-realms`, `server-worker-control-plane`) left it out. It never fired there, so nothing failed.
+- **Messages and requests are typed unions now:** the runtime tests find what the runtime sent with `firstOfKind`/`allOfKind`
+  instead of reading `.state` or `.commands` off an untyped message; a stand-in `savegame.capture` returned `ok: boolean` where the
+  result is a discriminated union.
+- **Node's `MessageChannel` and the DOM's differ in types only** (`Transferable`, `MessagePort`); each test that bridges them has one
+  cast with a comment saying so.
+- Async stand-ins with no `await` became `Promise.resolve`/`Promise.reject`, which also removed seven lint warnings the `.mjs`
+  files never showed; `await withMockEngine(..., () => {...})` around synchronous work lost its `await`.
+
+No shared helper changed in this phase.
+
+### Phase 3: `test/common/` (51 files)
+
+Split in two commits' worth of review (network and cvar/command tests, then models and savegames) because of the file count.
+
+#### Phase 3: what shipped (2026-10-17)
+
+All 51 `.mjs` tests of `test/common/` are `.test.ts`. `npm test` 2602 pass (the baseline), `npm run typecheck` 0 errors, ESLint clean
+on `test/common` and `test/support`. Starting point was 675 type errors. 38 `.mjs` tests are left, all in `test/client/` (30) and
+`test/renderer/` (8).
+
+What the checker found:
+
+- **Fakes that no longer matched the class they fake:** the `BaseDriver` fake in `driver-registry.test` was built without the network
+  layer the base class takes; `host-alert.test` declared the recorded `disconnected` as a boolean and then called it.
+- **Promises nobody awaited:** `host-identity.test` ran `runConsoleCommand` (typed `void | Promise<void>`) inside a callback typed
+  `() => void`, so a command that went asynchronous would have passed anyway. The helper is `async` now and the tests await.
+- **Typed events:** `workers.test` published a made-up payload through the typed `publish`; it uses `publishUntyped`, the transport call.
+- **Mocks of shapes that grew:** `ServerHost`/`ServerClient`/`Server` stand-ins, `UserStore` stand-ins that lacked members, and
+  the build config (`com.test`, `com-storage.test`) was a half-filled object where `BuildConfig` has five fields.
+- **Static singletons swapped by hand:** `user-store.test` and `asset-source.test` replaced `console.warn` and restored it; they use
+  `mock.method` now. `network-drivers.test` swapped six browser globals one by one in two places and shares one `installGlobals`.
+
+Shared pieces: `MockEngineConfig.SV` is optional (a client with its server in a worker has none), `MockConsole` lists the `Print*`
+members it may have instead of an index signature, `MockClient.cls` has `state`.
+
+Lint warnings the `.mjs` files never showed were fixed rather than silenced, except two kinds that are the test's purpose:
+`require-atomic-updates` where a test puts a swapped global back in `finally` after an `await` (a documented `eslint-disable`
+comment, file-wide in `savegame.test.ts` which does it a dozen times, and `unbound-method` there for reading a static to restore it).
+
+### Phase 4: `test/client/` (30 files) and `test/renderer/` (8 files)
+
+Needs the most mocking of DOM and GL shapes. `test/support/renderer.ts`, `clientState.ts` and `menu.ts` exist already.
+Per the unit-test conventions the UI-facing tests stay unit tests; a browser pass is not needed for a type-only change, but
+the conversion must not touch what a test checks.
+
+#### Phase 4: what shipped (2026-10-17)
+
+All 37 remaining `.mjs` tests (29 in `test/client/`, 8 in `test/renderer/`; the 38th, `renderer/sky.test.mjs`, was merged, see
+below) are `.test.ts`. No `.mjs` is left under `test/`. `npm test` 2602 pass (the baseline), `npm run typecheck` 0 errors, and
+`npx eslint test` is clean for the first time (it could not lint the `.mjs` files at all). Starting point was 1028 type errors.
+
+What the checker, or the lint that now sees these files, found:
+
+- **A test that never restored what it patched:** `client-entity-physics.test` made `useClientStateOf` and `useHostOf` patches and
+  discarded the functions that undo them, so every later test in the file ran with them still applied. They are called now.
+- **Stale stand-ins:** the `layout` objects in `menu-page.test` had `draw` only, while `MenuLayout` requires `hitTest`.
+- **Two tests with one name:** `renderer/sky.test.mjs` (the bloom scale) sat next to `renderer/sky.test.ts` (shutdown). The
+  `.mjs` cases moved into the `.ts` file instead of being renamed over it.
+- **A class nobody used:** `model-renderer-registry.test` declared `TestModelChild` and never used it. It looks like the start of a
+  test that a renderer is found for a subclass of a registered model class; `ModelRendererRegistry.getRendererForModel`
+  documents "falls back to an instanceof match" and does an exact lookup only. **Fixed afterwards: the JSDoc now says what the code does, and a test pins it.** The unused class is gone.
+- **Real `Cvar` and `Menu` shapes:** cvar stand-ins use `createCvarStub`, pages pushed onto the menu stack by hand go through one
+  documented cast (`asMenuPage`).
+
+Shared pieces added: `test/support/globals.ts` (`installGlobals`, one place to install and restore the browser globals that
+`network-drivers`, `in`, `menu` and `session-discovery` each did by hand), `createBoundsModel` and `createGameModuleStub` in
+`fixtures.ts`, and `useClientStateOf`, `useHostOf`, `useMenuOf` and `useRendererOf` take what `engineMocks.X` reads back
+(`unknown`) instead of needing a cast at every call. `createRenderedWorld` takes its members unchecked, like the stand-ins they
+are. Two more conversion tools were used and not kept: one for `/** @type */` casts, one for untyped arrays.
+
+Lint exceptions, each with a reason in the file: `unbound-method` in `shadow-map.test` and `client-host.test` (a test swaps a
+static and puts it back), `require-atomic-updates` in `save-slots.test`.
+
+### Phase 5: close-out
+
+- Remove the `.mjs` half of every glob in `package.json` and the `.mjs` test paths from `eslint.config.mjs`.
+- Update `unit-tests.instructions.md` (the "Only `.test.ts` tests are type-checked" paragraph and the "`.mjs` until their module's
+  turn" sentence), `docs/` where it names `.mjs` tests, and `CLAUDE.md`'s typecheck note.
+- Tick this bullet in `plans/engine-architecture-modernization.md` (Track G state, the 1.3.0 release section), and record what
+  shipped here.
+- Then the 1.3.0 bump from the release section, as its own commit.
+
+#### Phase 5: what shipped (2026-10-17)
+
+- `package.json`: the `test`, `test:engine`, `test:common`, `test:physics` and `test:renderer` globs name `*.test.ts` only; the game
+  globs (`source/game/**/test/**/*.test.mjs`) stay. `test` still runs 2602 tests, the area scripts 536, 388 and 448.
+  The `test-glob-coverage` check (engine `.ts` plus game `.mjs` against what is on disk) shows no gap.
+- `eslint.config.mjs`: the default-project entries for `.mjs` files under `test/` are gone, there are none.
+- `unit-tests.instructions.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, `docs/game-module-contract.md` and the skills
+  `test-glob-coverage` and `dockerfile-fixture-sync` say that the engine's tests are TypeScript and type-checked and a game's are
+  `.mjs` and not. `unit-tests.instructions.md` also says how to write a mock (typed factory, one commented cast for a whole
+  subsystem, no `any`, no `@ts-ignore`). Stale file names in `docs/` follow the renames.
+- Nothing in the `Dockerfile` needed to change: the `test` stage copies `test/` whole and runs the typecheck, which now covers it.
+
+## Testing
+
+- The test suite is the thing being converted, so the check is that nothing changed: the pass count equals the baseline after
+  every phase, and a spot check of three files per phase compares `git diff -M` for assertion lines that moved or vanished.
+- A deliberate break: after Phase 1, change a signature a physics test calls and confirm `npm run typecheck` fails, then revert.
+  That is the proof the conversion bought what it was for.
+- `npm run typecheck` runtime is recorded before and after Phase 4; a large jump is a reason to look at the `test/` include.
+
+## Decisions
+
+- **1.3.0 waits for the engine's tests (2026-10-17).** The 2026-10-13 scope cut is reversed for this item only; Track F, D4 and
+  the replay recorder stay postponed.
+- **Engine first (2026-10-17).** Game repo tests follow later.
+- **By area, helpers first (2026-10-17).** The order of the phases above.
+
+## Open questions
+
+Settled while doing the work:
+
+- **`t.mock.method` for the static facades:** it holds without casts (`brushtrace`, `user-store`, `asset-source`, `sky`, ...). Where a test
+  swaps a static by hand and puts it back, a documented `eslint-disable` stays (see the Phase 3 and 4 notes).
+- **How many stale mocks the typecheck turns up:** a few hundred in all, 11 stale `BrushModel()` calls, two required dependencies
+  nobody passed, one test that never undid its patches, one that mocked a class instead of an object. The phases needed no splitting.
+- **`ModelRendererRegistry.getRendererForModel`** documented an `instanceof` fallback it does not have: fixed after the
+  migration by correcting the JSDoc (the lookup is exact, as every caller relies on) and a test that pins it.
+- **Folding the per-file `withMockXRegistry` helpers into one:** done after the migration. `withEngineMocks` and
+  `installEngineMocks` (`test/support/withEngineMocks.ts`) replace about 40 hand-written save-and-restore blocks in 33 test
+  files; `menu.test.ts` also has its own `withMenuEnvironment` for the stack and pages. The `use...Of` calls that remain are
+  `before`/`after` hooks.
+
+Still open:
+
+- ~~**The game repos' tests (56 files).**~~ **Done 2026-10-21**, see `plans/game-tests-to-typescript.md`: all of `id1` and `hellwave` are `.test.ts` and type-checked.

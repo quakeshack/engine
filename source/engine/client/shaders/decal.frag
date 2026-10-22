@@ -10,8 +10,7 @@ uniform sampler2D tTexture;
 
 in vec2 vTexCoord;
 in vec3 vColor;
-in float vFog;
-uniform vec3 uFogColor;
+#include "fog-fragment.glsl"
 
 void main(void) {
   vec4 texColor = texture(tTexture, vTexCoord);

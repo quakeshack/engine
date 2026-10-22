@@ -1,5 +1,5 @@
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
-import { eventBus } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 
 class FullscreenCommand extends ConsoleCommand {
   override async run(): Promise<void> {
@@ -13,7 +13,7 @@ export default class VID {
   static mainwindow: HTMLCanvasElement;
   static pixelRatio = 1;
 
-  static Resize(): void {
+  static Resize(this: void): void {
     const root = document.documentElement;
     const width = root.clientWidth <= 320 ? 320 : root.clientWidth;
     const height = root.clientHeight <= 200 ? 200 : root.clientHeight;
@@ -70,15 +70,11 @@ export default class VID {
     window.addEventListener('resize', VID.Resize);
 
     Cmd.AddCommand('fullscreen', FullscreenCommand);
-
-    eventBus.publish('vid.ready');
   }
 
   static Shutdown(): void {
     VID.mainwindow.style.display = 'none';
 
     window.removeEventListener('resize', VID.Resize);
-
-    eventBus.publish('vid.shutdown');
   }
 }

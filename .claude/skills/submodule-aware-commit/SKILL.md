@@ -1,14 +1,15 @@
 ---
 name: submodule-aware-commit
-description: Use whenever staging or committing any change under source/game/id1/ in this repo. source/game/id1 is a real git submodule (its own repo, branch, and commit history) — a top-level `git add -A && git commit` in the outer engine repo does NOT pick up id1's internal file changes, only (at most) a pointer bump. Committing id1 work needs a separate commit inside the submodule. source/game/hellwave, by contrast, is a plain untracked directory in the outer repo, not a submodule — this skill does not apply there.
+description: Use when staging or committing anything under source/game/id1/ (a real submodule: commit inside it first, then bump the pointer) or source/game/hellwave (its own repo, untracked by the outer repo: never git add it from there).
 ---
 
 # Submodule-aware commit
 
 `.gitmodules` declares `source/game/id1` as a real submodule (`url = ../game.git`), with its
 own working tree, branch, and commit history — checked out at a matching branch name to the
-superproject in normal workflows. `source/game/hellwave` is a plain untracked directory at
-the top level, not a submodule; nothing here applies to it.
+superproject in normal workflows. `source/game/hellwave` is its own repo (`hellwave-game`) too, but
+not a registered submodule and untracked by the outer repo: there is no pointer to bump, so commit
+inside it and leave the outer repo alone.
 
 The outer repo's `git status` only shows the submodule as a single summary line —
 ` <sha> source/game/id1 (heads/<branch>)` from `git submodule status`, or `modified:

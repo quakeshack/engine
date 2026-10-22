@@ -1,19 +1,12 @@
 /* global Buffer */
 
-import { promises as fsPromises, existsSync, writeFileSync, constants } from 'fs';
+import { promises as fsPromises, existsSync, constants } from 'fs';
 
 import Q from '../../shared/Q.ts';
 import { CRC16CCITT as CRC } from '../common/CRC.ts';
 import COM, { type PackFileEntry, type SearchPath } from '../common/Com.ts';
 
 import { CorruptedResourceError } from '../common/Errors.ts';
-import { eventBus, getCommonRegistry } from '../registry.ts';
-
-let { Con, Sys } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con, Sys } = getCommonRegistry());
-});
 
 export default class NodeCOM extends COM {
 
@@ -21,7 +14,7 @@ export default class NodeCOM extends COM {
    * Loads a file, searching through registered search paths and packs.
    * @returns The file contents, or null when the file cannot be found.
    */
-  static override async LoadFile(filename: string): Promise<ArrayBuffer | null> {
+  override async LoadFile(filename: string): Promise<ArrayBuffer | null> {
     filename = filename.toLowerCase();
 
     // Loop over search paths in reverse
@@ -55,7 +48,7 @@ export default class NodeCOM extends COM {
             const buffer = Buffer.alloc(file.filelen);
             await fd.read(buffer, 0, file.filelen, file.filepos);
 
-            Sys.Print(`PackFile: ${packPath} : ${filename}\n`);
+            this.sys.Print(`PackFile: ${packPath} : ${filename}\n`);
             return new Uint8Array(buffer).buffer;
           } catch (_error) {
             // If we can't open or read from the PAK, just continue searching
@@ -76,7 +69,7 @@ export default class NodeCOM extends COM {
 
         // If we got here, the file exists—read and return its contents
         const buffer = await fsPromises.readFile(directPath);
-        Sys.Print(`FindFile: ${netpath}\n`);
+        this.sys.Print(`FindFile: ${netpath}\n`);
         return new Uint8Array(buffer).buffer;
       } catch (_error) {
         // Not accessible or doesn't exist—keep searching
@@ -84,18 +77,23 @@ export default class NodeCOM extends COM {
     }
 
     // If we exhaust all search paths and files, the file was not found
-    Sys.Print(`FindFile: can't find ${filename}\n`);
+    this.sys.Print(`FindFile: can't find ${filename}\n`);
     return null;
   }
 
-  static override Shutdown(): void {
+  /** The dedicated server reads and writes the file system directly. */
+  override async InitStorage(): Promise<void> {
+    // nothing to set up
+  }
+
+  override Shutdown(): void {
   }
 
   /**
    * Loads and parses a pack file.
    * @returns The parsed pack entries, or null when the pack file does not exist.
    */
-  static async LoadPackFile(packfile: string): Promise<PackFileEntry[] | null> {
+  async LoadPackFile(packfile: string): Promise<PackFileEntry[] | null> {
     if (!existsSync(`data/${packfile}`)) { // CR: wanna see something ugly? check out the async version of existsSync…
       return null;
     }
@@ -144,7 +142,7 @@ export default class NodeCOM extends COM {
         }
       }
 
-      Con.Print(`Added packfile ${packfile} (${numpackfiles} files)\n`);
+      this.con.Print(`Added packfile ${packfile} (${numpackfiles} files)\n`);
 
       return pack;
     } finally {
@@ -152,35 +150,35 @@ export default class NodeCOM extends COM {
     }
   }
 
-  static override async WriteFile(filename: string, data: ArrayLike<number>, _len: number): Promise<boolean> { // FIXME: len is actually required, needs to be async
+  override async WriteFile(filename: string, data: ArrayLike<number>, _len: number): Promise<boolean> { // FIXME: len is actually required, needs to be async
     const filepath = `data/${this.searchpaths[this.searchpaths.length - 1].filename}/${filename.toLowerCase()}`;
 
     try {
       await fsPromises.writeFile(filepath, Uint8Array.from(data));
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      Sys.Print(`COM.WriteFile: failed on ${filename}, ${message}\n`);
+      this.sys.Print(`COM.WriteFile: failed on ${filename}, ${message}\n`);
       return false;
     }
-    Sys.Print(`COM.WriteFile: ${filename}\n`);
+    this.sys.Print(`COM.WriteFile: ${filename}\n`);
     return true;
   }
 
-  static override WriteTextFile(filename: string, data: string): boolean {
+  override async WriteTextFile(filename: string, data: string): Promise<boolean> {
     const filepath = `data/${this.searchpaths[this.searchpaths.length - 1].filename}/${filename.toLowerCase()}`;
 
     try {
-      writeFileSync(filepath, data);
+      await fsPromises.writeFile(filepath, data);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      Sys.Print(`COM.WriteTextFile: failed on ${filename}, ${message}\n`);
+      this.sys.Print(`COM.WriteTextFile: failed on ${filename}, ${message}\n`);
       return false;
     }
-    Sys.Print(`COM.WriteTextFile: ${filename}\n`);
+    this.sys.Print(`COM.WriteTextFile: ${filename}\n`);
     return true;
   }
 
-  static override async AddGameDirectory(dir: string): Promise<void> {
+  override async AddGameDirectory(dir: string): Promise<void> {
     const search: SearchPath = { filename: dir, pack: [] };
     for (let i = 0; ; i++) {
       const pak = await this.LoadPackFile(`${dir !== '' ? dir + '/' : ''}pak${i}.pak`);
@@ -192,11 +190,11 @@ export default class NodeCOM extends COM {
     this.searchpaths[this.searchpaths.length] = search;
   }
 
-  static override Path_f(): void {
-    Con.Print('Current search path:\n');
-    for (let i = NodeCOM.searchpaths.length - 1; i >= 0; i--) {
-      const s = NodeCOM.searchpaths[i];
-      Con.Print(`  ${s.filename}/ (virtual Quake filesystem)\n`);
+  override Path_f(): void {
+    this.con.Print('Current search path:\n');
+    for (let i = this.searchpaths.length - 1; i >= 0; i--) {
+      const s = this.searchpaths[i];
+      this.con.Print(`  ${s.filename}/ (virtual Quake filesystem)\n`);
     }
   }
 }

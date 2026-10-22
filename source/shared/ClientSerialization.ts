@@ -35,7 +35,7 @@ export type ClientSerializableValue =
  *
  * Unlike `BaseEntity`'s `Serializer<T>`, this has no per-instance state and no decorator-driven
  * field collection -- handlers hand-write their `serialize()`/`deserialize()` overrides (see
- * `R.SerializeParticles()`'s equally manual style), and only need converting the resulting plain
+ * `Particles.SerializeParticles()`'s equally manual style), and only need converting the resulting plain
  * object to and from the wire format.
  */
 export default class ClientSerialization {

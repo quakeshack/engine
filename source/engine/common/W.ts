@@ -1,12 +1,15 @@
-import { eventBus, getCommonRegistry } from '../registry.ts';
+import { eventBus } from './EventBus.ts';
 import { CorruptedResourceError, MissingResourceError, NotImplementedError } from './Errors.ts';
 import Q from '../../shared/Q.ts';
 
-let { COM } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM } = getCommonRegistry());
-});
+/** Where WAD files, lumps and the palette are read from. */
+export interface WadFiles {
+  /**
+   * Reads a binary file from the game's search path.
+   * @returns The file, `null` when it does not exist.
+   */
+  LoadFile(filename: string): Promise<ArrayBuffer | null>;
+}
 
 export interface WadLumpRecord {
   readonly data: ArrayBuffer;
@@ -82,10 +85,28 @@ export default class W {
   static _handlers: WadHandlerConstructor[] = [];
 
   /** Current palette in 32 bit words. */
+  /** Where files are read from. The file system of the realm sets it before anything is loaded. */
+  static files: WadFiles | null = null;
+
   static d_8to24table = new Uint32Array(256);
 
   /** Current palette in 256 8 bit tuples for RGB. */
   static d_8to24table_u8 = new Uint8Array(768);
+
+  /**
+   * Translate a palette index into an RGB color vector.
+   * @returns The RGB color, each component in [0, 1).
+   */
+  static IndexToRGB(index: number): [number, number, number] {
+    console.assert(typeof index === 'number', 'index must be a number');
+    console.assert(index >= 0 && index < 256, 'index must be in range [0, 255]');
+
+    return [
+      W.d_8to24table_u8[index * 3] / 256,
+      W.d_8to24table_u8[index * 3 + 1] / 256,
+      W.d_8to24table_u8[index * 3 + 2] / 256,
+    ];
+  }
 
   /** Fill color index. */
   static filledColor: number | null = null;
@@ -95,7 +116,7 @@ export default class W {
    * @returns the loaded WAD file
    */
   static async LoadFile(filename: string): Promise<WadFileInterface> {
-    const base = await COM.LoadFile(filename);
+    const base = await W.files!.LoadFile(filename);
 
     if (!base) {
       throw new MissingResourceError(filename);
@@ -119,14 +140,17 @@ export default class W {
    * A palette is a 256 color palette, each color is 3 bytes (RGB). 768 bytes in total.
    */
   static async LoadPalette(filename: string) {
-    const palette = await COM.LoadFile(filename);
+    const palette = await W.files!.LoadFile(filename);
 
     if (palette === null) {
       throw new MissingResourceError(filename);
     }
 
+    // The palette is loaded once at startup, a second load of the same file would store the same table.
+    /* eslint-disable require-atomic-updates */
     W.d_8to24table_u8 = new Uint8Array(palette);
     W.filledColor = null;
+    /* eslint-enable require-atomic-updates */
 
     for (let i = 0, src = 0; i < 256; i++) {
       const pal = W.d_8to24table_u8;
@@ -146,7 +170,7 @@ export default class W {
    * @returns the loaded lump texture
    */
   static async LoadLump(filename: string) { // TODO: this should take a type parameter to specify the type of the lump
-    const buf = await COM.LoadFile(filename);
+    const buf = await W.files!.LoadFile(filename);
 
     if (buf === null) {
       throw new MissingResourceError(filename);

@@ -103,7 +103,7 @@ export class ClientAnimationSequence<S extends string> {
   /**
    * Flat, JSON-safe snapshot for `BaseClientEdictHandler.serialize()` to fold in, with `enteredAt`
    * relative to `currentTime` -- the same relative-time-on-save, absolute-time-on-restore trick
-   * `R.SerializeParticles()` already uses for `die`. Re-anchor on load via
+   * `Particles.SerializeParticles()` already uses for `die`. Re-anchor on load via
    * `setState(data.state, newCurrentTime + data.enteredAt)`.
    * @returns The current state and how long ago it was entered, relative to `currentTime`.
    */

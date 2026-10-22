@@ -21,7 +21,7 @@ frame for always-on, non-modal UI (see [Non-modal panels](#non-modal-panels-hud-
 | `MenuViewport` | `source/engine/client/menu/MenuViewport.ts` | A page's virtual drawing-space size and scaling strategy (see below). |
 | `MenuStack` | `source/engine/client/menu/MenuStack.ts` | Named page registry, a navigation stack (push/pop/replace/clear), and the root-page concept (see below). |
 | `M` | `source/engine/client/Menu.ts` | Owns the single `menuStack` instance and the pixel-drawing primitives (`M.Print`, `M.DrawPic`, `M.DrawTextBox`, `M.DrawSlider`, ...) that widgets call into. Builds **no pages** — it's pure machinery. |
-| `ClientEngineAPI.Menu` | `source/engine/common/GameAPIs.ts` | The only surface game code should use — wraps `M`/`M.menuStack` and re-exports the widget/layout classes plus the drawing primitives. |
+| `ClientEngineAPI.Menu` | `source/engine/client/ClientEngineAPI.ts` | The only surface game code should use — wraps `M`/`M.menuStack` and re-exports the widget/layout classes plus the drawing primitives. |
 | `Id1Menu` | `source/game/id1/client/Menu.ts` | Builds and registers every built-in id1 page (`main`, `singleplayer`, `load`, `save`, `multiplayer`, `launch_server`, `options`, `keys`, `help`, `quit`, `alert`) via `ClientEngineAPI.Menu`, and declares `'main'` as the root. hellwave inherits this wholesale via `super.Init()` and only overrides what it wants to change. |
 
 ### MenuItem
@@ -132,9 +132,10 @@ A page owns `items`, a `layout`, optional `title`/`titlePic`/`logoPic`, and life
 - `customGetBackButtonAnchor` — repositions the page-agnostic Back/Close button (e.g. centered
   under a dialog's message box) instead of the default bottom-left corner.
 - `pausesGame` — whether showing this page freezes single-player world simulation the way the
-  classic pause menu does; `true` by default. `Host.ServerFrame()` gates `SV.physics.physics()`
-  (monster think, physics, round timers) behind `M.AllowsSimulation()` for listen servers below
-  multiplayer capacity (`SV.svs.maxclients < 2`), which in turn defers to the current page's
+  classic pause menu does; `true` by default. `ServerHost.ServerFrame()` runs `SV.physics.physics()`
+  (monster think, physics, round timers) only while the simulation gate is open. `ClientHost.Frame()`
+  sets the gate from `M.AllowsSimulation()` every frame, through `ServerController.setSimulationAllowed()`,
+  and `M.AllowsSimulation()` defers to the current page's
   `pausesGame`. Set `false` for a page meant to sit over a world that must keep running
   regardless of one player having a menu open — e.g. an in-game buy menu in a coop mod, where the
   mod is never really "single-player" even when only one player happens to be connected right
@@ -199,7 +200,7 @@ coordinates rather than element listeners:
   (`source/engine/client/Key.ts`) opens the root page (`M.Menu_Main_f()`) on a `K.MOUSE1` press
   while the console is up with no game running (disconnected or still connecting) — a
   mouse-only escape hatch for whenever a player is stuck on the console without a keyboard,
-  mirroring what Escape already does there (`Con.ToggleConsole_f()`). A click is a no-op while
+  mirroring what Escape already does there (`ConsoleOverlay.ToggleConsole_f()`). A click is a no-op while
   the console is up during an active connection, same as today — only Escape returns to gameplay
   from there. This has to live in `Key.Event()` (evaluated at mousedown time) rather than on the
   browser's later `click` event (which is where `IN.onclick()` handles the pointer-lock request):
@@ -262,8 +263,8 @@ directly (useful for pages a mod keeps a private reference to and never register
   code as `ClientEngineAPI.Menu.LoadTranslatablePic`.
 - `M.StartSingleplayerGame()` / `M.StartMultiplayerGame(mapname)` — route to
   `ClientLifecycle.startGame` (the active mod's `StartGameInterface`, or the engine default).
-  Live on `M` rather than being called directly from `GameAPIs.ts` to avoid a circular import
-  (`ClientLifecycle.ts` already imports `GameAPIs.ts`); exposed as
+  Live on `M` rather than being called directly from `ClientEngineAPI.ts` to avoid a circular import
+  (`ClientLifecycle.ts` already imports `ClientEngineAPI.ts`); exposed as
   `ClientEngineAPI.Menu.StartSingleplayerGame`/`StartMultiplayerGame`.
 - `M.SetOverlayNotice`/`ClearOverlayNotice`/`DrawOverlayNotice` — a generic notice banner,
   suppressed while the (game-owned, but name-known) `'alert'`/`'quit'` pages are showing.
@@ -288,7 +289,7 @@ calls — nothing currently does this by default.
 
 Game code (`source/game/id1`, `source/game/hellwave`, future mods) must never import
 `source/engine/client/menu/*` directly. Everything needed is exposed on
-`ClientEngineAPI.Menu` (`source/engine/common/GameAPIs.ts`):
+`ClientEngineAPI.Menu` (`source/engine/client/ClientEngineAPI.ts`):
 
 ```typescript
 static readonly Menu = {
@@ -496,7 +497,7 @@ in-game-navigable scoreboard while still moving), or a genuinely *modal* in-game
 that isn't the pause menu but still needs to steal input focus, e.g. a hypothetical inventory
 screen). That needs deliberate input-focus arbitration on top of `KeyDestination` and hasn't been
 designed for arbitrary panels yet — though the drop-down console (see `docs/console.md`) is now a
-working precedent for exactly that shape of problem: `Con.isOpen` is an independent overlay flag
+working precedent for exactly that shape of problem: `ConsoleOverlay.isOpen` is an independent overlay flag
 that takes `Key.Event()` dispatch priority over whichever `KeyDestination` is active underneath,
 rather than being folded into the destination enum itself. A generalized version of that pattern
 is the natural next extension if a mod ever needs a modal in-game panel; `MenuStack` isn't a
@@ -514,47 +515,47 @@ Fired on the shared `eventBus` by `MenuStack`; documented alongside all other en
 | `menu.opened` | page name, or `null` if unregistered | A page became current (`push`). |
 | `menu.closed` | page name, or `null` if unregistered | A page stopped being current (`pop`, replaced, or the stack was cleared). |
 
-Two more, published by `Host.ts` rather than `MenuStack` — the engine reports these as plain
+Two more, published by `Host.ts`/`ClientHost.ts` rather than `MenuStack` — the engine reports these as plain
 events instead of calling into the menu system directly, so it has no dependency on whether (or
 how) a game module chooses to present them (see [`events.md`](events.md#host) for full details):
 
 | Event | Arguments | When |
 | - | - | - |
-| `host.alert` | `HostAlertEvent` (`title`, `message`, `severity`) | `Host.EndGame`/`Host.Error` reporting a fault or an expected end-of-game condition. id1 subscribes and opens its `'alert'` page. |
+| `host.alert` | `HostAlertEvent` (`title`, `message`, `severity`) | `ClientHost.EndGame`/`Host.Error` reporting a fault or an expected end-of-game condition. id1 subscribes and opens its `'alert'` page. |
 | `host.quit-requested` | - | The `quit` command wants confirmation. id1 subscribes and opens its `'quit'` page. |
 
 ## Testing
 
-- `test/client/menu-stack.test.mjs` — `MenuStack` register/push/pop/replace/popTo/clear, plus
+- `test/client/menu-stack.test.ts` — `MenuStack` register/push/pop/replace/popTo/clear, plus
   `isShowing`/root-page (`setRootPage`/`pushRoot`/`isShowingRoot`).
-- `test/client/menu-viewport.test.mjs` — `MenuViewport`'s `resolve`/`toScreen`/`fromScreen`/
+- `test/client/menu-viewport.test.ts` — `MenuViewport`'s `resolve`/`toScreen`/`fromScreen`/
   `anchor` math for both `fixed` and `contain` (with and without `integerScale`) fits.
-- `test/client/menu-item.test.mjs` — widget behaviors (cvar round-trip, focus-skipping, input
+- `test/client/menu-item.test.ts` — widget behaviors (cvar round-trip, focus-skipping, input
   handling per widget type).
-- `test/client/menu-page.test.mjs` — `MenuPage`/`DialogPage`/`ListPage` navigation and dialog
+- `test/client/menu-page.test.ts` — `MenuPage`/`DialogPage`/`ListPage` navigation and dialog
   backdrop drawing, `VerticalLayout`'s `valueX` right-justification behavior, and the
   `customDraw`/`customHandleInput`/`customGetBackButtonAnchor` composition hooks.
-- `test/client/menu.test.mjs` — `M`'s remaining machinery: mouse/back-button mechanics, root-page
+- `test/client/menu.test.ts` — `M`'s remaining machinery: mouse/back-button mechanics, root-page
   aware `CloseMenu`/`PopMenu`, involuntary-disconnect reopen.
-- `test/client/session-discovery.test.mjs`, `test/client/save-slots.test.mjs` — the
+- `test/client/session-discovery.test.ts`, `test/client/save-slots.test.ts` — the
   `SessionDiscovery`/`SaveSlots` services `ClientEngineAPI.Multiplayer`/`ClientEngineAPI.SaveSlots`
   wrap.
-- `test/common/client-engine-api-menu.test.mjs`,
-  `test/common/client-engine-api-multiplayer.test.mjs`,
-  `test/common/client-engine-api-save-slots.test.mjs`,
-  `test/common/client-engine-api-connection-state.test.mjs` — `ClientEngineAPI.Menu`/
+- `test/common/client-engine-api-menu.test.ts`,
+  `test/common/client-engine-api-multiplayer.test.ts`,
+  `test/common/client-engine-api-save-slots.test.ts`,
+  `test/common/client-engine-api-connection-state.test.ts` — `ClientEngineAPI.Menu`/
   `.Multiplayer`/`.SaveSlots`/`.CL.connected`/`.SV.active` register/open/add-item round-trips,
-  using the same mock-registry pattern as other client API tests.
-- `test/common/host-alert.test.mjs` — `Host.EndGame`/`Host.Error` publish `host.alert` with the
+  using the same `engineMocks` pattern as other client API tests.
+- `test/common/host-alert.test.ts` — `ClientHost.EndGame`/`Host.Error` publish `host.alert` with the
   right severity, and `Con.PrintError`/`PrintSuccess` still fire even with nothing subscribed.
-- `source/game/id1/test/client/menu.test.mjs` — `Id1Menu.Init()`: every built-in page registers
+- `source/game/id1/test/client/menu.test.ts` — `Id1Menu.Init()`: every built-in page registers
   and the root is `'main'`; each page's actual behavior (main menu navigation, new-game/load/save
   flows, options toggles, the quit Y/N dialog, the help page-turner, the multiplayer setup
   name/color/join flow, the launch-server session list, and the `host.alert`/`host.quit-requested`
   subscriptions).
 
-All of the above follow the project's standard mock-registry pattern
-(`registry.X = {...}; eventBus.publish('registry.frozen');`) for engine-level tests, and the
+All of the above follow the project's standard mock pattern
+(`engineMocks.X = {...}`, see `test/support/engineMocks.ts`) for engine-level tests, and the
 `createMockClientEngine()` fixture (`source/game/id1/test/client/fixtures.ts`) for game-level
 ones — see [Unit Tests](../.github/instructions/unit-tests.instructions.md) for the general
 convention.

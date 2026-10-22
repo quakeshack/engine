@@ -1,6 +1,6 @@
 ---
 name: browser-ui-verification
-description: Use before reporting any client/UI/frontend change as done — rendering, menu system, HUD, input handling, or anything touching source/engine/client or a game's client-side code. Verifying "in a real browser" here isn't obvious to do — there's no chromium-cli and no playwright/puppeteer project dependency, so it needs a specific local workaround. Treat this as the trigger to actually run that workaround before claiming a UI change works, instead of stopping at unit tests or a visual read of the diff.
+description: Use before reporting any client/UI change as done (rendering, menus, HUD, input; anything under source/engine/client or a game's client code). There is no chromium-cli or Playwright dependency, so a specific local recipe is needed; unit tests alone do not count.
 ---
 
 # Browser UI verification
@@ -22,8 +22,12 @@ trigger to actually use it instead of settling for "the unit tests pass" on a UI
    dedicated server on a spare port (never kill an already-running one), launch Chromium
    with the software-GL args, and drive the actual page (clicks via the virtual-space
    coordinate formula, console commands via real keyboard input, gated menu pages via
-   `window.registry`).
-3. **If neither is available:** this is an environment gap, not a license to silently
+   `window.engine`).
+3. **For a change that must not alter what is drawn** (a renderer refactor, a shader move), use the capture
+   scripts in `scripts/renderer-capture/` instead of writing a one-off: `capture.mjs` renders nine fixed views of
+   a build, `compare.mjs` compares two builds against the noise between captures of one build (recipe and
+   limits: `docs/browser-verification.md` §8, "The capture scripts").
+4. **If neither is available:** this is an environment gap, not a license to silently
    skip verification. Say so explicitly in your final report — "UI change not verified in
    a live browser: Chromium/Playwright unavailable in this sandbox" — rather than implying
    the change was checked when only unit tests or a code read actually happened.

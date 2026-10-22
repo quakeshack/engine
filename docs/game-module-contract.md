@@ -8,7 +8,7 @@ Game modules never import engine files. Everything they need from the engine arr
 
 | Types | Direction | What it is |
 | :--- | :--- | :--- |
-| `ServerEngineAPI`, `ClientEngineAPI` | game → engine | Objects the engine passes to a game's constructor and `Init`. Everything a game may use from the engine hangs off them. Derived from the real classes in `source/engine/common/GameAPIs.ts`. |
+| `ServerEngineAPI`, `ClientEngineAPI` | game → engine | Objects the engine passes to a game's constructor and `Init`. Everything a game may use from the engine hangs off them. `ServerEngineAPI` is an instance that belongs to one server (`source/engine/server/ServerEngineAPI.ts`), so a server running in a worker hands the game the instance of its own realm; always use the one you were given and do not keep it in a module-level variable shared with the client side. `ClientEngineAPI` is an instance too (`source/engine/client/ClientEngineAPI.ts`, built on `CommonEngineAPI` in `source/engine/common/CommonEngineAPI.ts`): the page has exactly one, the composition root creates it and the client hands it to the game's `Init` and constructor. The types are derived from the real classes. |
 | `ServerGameInterface`, `ClientGameInterface` | engine → game | What the engine calls, reads and writes on a running game instance. |
 | `ServerGameConstructor`, `ClientGameConstructor` | engine → game | The class itself: the constructor plus the static hooks (`Init`, ...). |
 | `GameModuleInterface` | engine → game | The whole module: `identification` plus both constructors. This is what `main.ts` exports. |
@@ -48,7 +48,7 @@ export class ClientGameAPI implements ClientGameInterface { /* ... */ }
 - `implements` reports instance-side drift on the class member. The `satisfies` line covers what `implements` cannot: the constructor signature, the static hooks and the identification.
 - A game that extends another game's API class inherits the `implements` but still asserts `satisfies` in its own `main.ts`, because its statics and constructor can differ.
 - `npm run typecheck` runs these checks. It gates the Cloudflare build (`npm run build:wrangler`) and the Docker `test` stage, because Vite and esbuild strip types without checking them.
-- Unit tests are `.mjs` files and are not type-checked. A test double that mirrors an outdated signature keeps passing, so grep the tests when you change a member.
+- A game's unit tests (`source/game/<mod>/test/`) are `.test.ts` files and are checked by the same command, so a test double that mirrors an outdated signature fails the typecheck. Their typed stand-ins (an edict, an engine API, a game API) are in the engine's `test/support/`.
 
 ## Identification and capabilities
 
@@ -60,7 +60,7 @@ export class ClientGameAPI implements ClientGameInterface { /* ... */ }
 
 ### Loading, once per process
 
-1. `Host.Init` calls `GameModule.Init()`. It picks the game directory (`-game <dir>`, `?game=<dir>` in the browser, or the build-time default), loads its `main.ts`, and checks the runtime shape: identification, supported capabilities, both classes present.
+1. `ClientHost.Boot` (the page) or `DedicatedHost.Init` (a dedicated server) calls `GameModule.Init()`. It picks the game directory (`-game <dir>`, `?game=<dir>` in the browser, or the build-time default), loads its `main.ts`, and checks the runtime shape: identification, supported capabilities, both classes present.
 2. `ServerGameAPI.Init(ServerEngineAPI)` runs. It is static, and the place to register cvars.
 3. On a client, `ClientGameAPI.Init(ClientEngineAPI)` runs next (for example to register menu pages), followed by `ClientGameAPI.GetStartGameInterface(ClientEngineAPI)`. Return `null` to keep the engine's default way of starting a game.
 
@@ -104,7 +104,7 @@ Every `serverdata` message starts this sequence, on connect and after every `cha
 2. `new ClientGameAPI(ClientEngineAPI)` creates a new instance. The previous one is replaced without `shutdown()`.
 3. The client loads the map's models and sounds, then calls `init()`, followed by `loadGame(data)` when a savegame is being restored.
 4. While connected, the engine writes the server's `clientdata` updates into `clientdata` and forwards client events to `handleClientEvent(code, ...args)`.
-5. Every frame: `startFrame()`; after the view is calculated, `updateRefDef(refdef)`; `draw()` for the HUD; `drawLoading()` while connecting or changing level. The engine reads `viewmodel` to draw the first-person weapon.
+5. Every frame: `startFrame()`; the view is calculated (by the game's `calcView(input, result)` when it has one, by the engine otherwise), then `updateRefDef(refdef)`; `draw()` for the HUD (not with `nohud`), then the optional `drawOverlay()` (also with `nohud`, for what must stay visible such as a pause sign); `drawLoading()` while connecting or changing level. The engine reads `viewmodel` to draw the first-person weapon.
 6. `GetClientEdictHandler(classname)` is asked when a client entity is assigned a classname. That covers both entities mirrored from the server and client-only ones a game spawns itself with `ClientEngineAPI.SpawnClientEntity(classname, { persistent })`: a client-only classname has no server entity class, so the game resolves it from its own table (for example a registry of handler classes keyed by classname). A persistent client-only entity is captured by savegames, including its model name and whatever its handler's `serialize()` returns. See [Client Entities](client-entities.md).
 7. When the client disconnects, `shutdown()` runs.
 
@@ -118,6 +118,20 @@ Every `serverdata` message starts this sequence, on connect and after every `cha
 | `ServerGameInterface.serverflags` | game | engine | Game-defined bits that survive a changelevel (for example Quake's episode runes). Passed to `init`. |
 | `ClientGameInterface.clientdata` | engine writes its contents | game | Must be non-null before the first server update arrives. |
 | `ClientGameInterface.viewmodel` | game | engine | A `null` model draws nothing. |
+| `ClientGameInterface.calcView(input, result)` | game | engine | Optional. Calculates the first-person view in place of the engine's: the eye and the weapon go into `result`. `ClientEngineAPI.View.calculateDefault(input, result)` is the engine's own, for a game that adjusts it. The engine does the pitch drift before, and the weapon's model and frame, `updateRefDef` and the chase camera after. |
+| `ClientGameInterface.hudReservedHeight(viewsize)` | game | engine | Optional. Pixels at the bottom of the screen that the HUD keeps, so the 3D view is drawn above them. Without it the view has the whole height. |
+
+## Player movement
+
+Server and client run the same movement code (`Pmove`) on the same commands and have to get the same result, so a game tunes it in
+two places and the engine carries both to the client:
+
+- **Behavior switches:** `SetPmoveConfiguration(config)` on the server API and on the client API (prediction needs it too), with a
+  `PmoveConfiguration` (QuakeWorld-style, the default) or a `PmoveQuake2Configuration`, both in `source/shared/Pmove.ts`.
+- **Tuning values:** the `sv_*` cvars `sv_gravity`, `sv_stopspeed`, `sv_maxspeed`, `sv_spectatormaxspeed`, `sv_accelerate`,
+  `sv_airaccelerate`, `sv_wateraccelerate`, `sv_friction`, `sv_waterfriction` and `edgefriction`. Changing one takes effect on the server
+  and, through the usual cvar sync, in the prediction of every connected client. A game sets them with `SetCvar`; a Quake 2 game
+  applies `PmoveQuake2MoveVars` (same file) for the values of `qcommon/pmove.c`.
 
 ## What is not part of the contract
 
@@ -130,10 +144,11 @@ Every `serverdata` message starts this sequence, on connect and after every `cha
 - A changelevel replaces the game instance on both sides without calling `shutdown`. Do not rely on `shutdown` for per-map cleanup.
 - `isCrashShutdown` is never `true` today: no engine path raises it.
 - `ClientDisconnect` is skipped for clients whose connection failed, so a game cannot rely on it to clean up after every departing player.
+- **The server keeps only the bounds of a model it precaches**, which is all `setModel` reads. An alias model's triangles and poses (about 70 times larger in memory than in the file) are only kept when the game says so: `ServerEngineAPI.PrecacheModel(name, { meshCollision: true })`. Every entity that is solid as `SOLID_MESH` needs its model precached that way, from `_precache` or from `setModel` while loading (set `solid` first). Without it the entity is traced as its bounding box and the server prints a warning once per model. Precaching a model again with the option reloads it with its geometry, so the order of calls does not matter. Brush and mesh (`.obj`) models are not affected.
 
 ## Changing the contract
 
 1. Add, change or remove the member in `GameInterfaces.ts`, with a JSDoc that says who calls or writes it and when. Check that statement against the call sites: the compiler cannot verify lifecycle claims.
 2. Run `npm run typecheck`. It lists every game that needs updating.
 3. Update this page if the call order or the ownership changed.
-4. Search the tests (`.mjs`) for the member: they are not type-checked.
+4. The game's tests (`source/game/<mod>/test/`) are type-checked too, so step 2 lists a test double that mirrors an outdated signature.

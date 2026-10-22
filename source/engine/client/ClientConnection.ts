@@ -5,23 +5,25 @@ import Cmd from '../common/Cmd.ts';
 import ClientInput from './ClientInput.ts';
 import type ClientDemos from './ClientDemos.ts';
 import { clientRuntimeState, clientStaticState, type ClientRuntimeState, type ClientStaticState } from './ClientState.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import { HostError } from '../common/Errors.ts';
 import { QSocket } from '../network/NetworkDrivers.ts';
 import { parseServerMessage as parseServerCommandMessage } from './ClientServerCommandHandlers.ts';
 import { ModelScope } from '../common/Mod.ts';
+import ConsoleOverlay from './ConsoleOverlay.ts';
+import Con from '../common/Console.ts';
+import Mod from '../common/Mod.ts';
+import Host from '../common/Host.ts';
+import IN from './IN.ts';
+import S from './Sound.ts';
+import ScreenFrame from './screen/ScreenFrame.ts';
+import { net } from './PageServices.ts';
 
 export type IdentityCvars = {
   name: Cvar | null;
   color: Cvar | null;
   rcon_password: Cvar | null;
 };
-
-let { Con, Host, IN, Mod, NET, SCR, S, SV } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con, Host, IN, Mod, NET, SCR, S, SV } = getClientRegistry());
-});
 
 export default class ClientConnection {
   cls: ClientStaticState;
@@ -61,7 +63,7 @@ export default class ClientConnection {
     }
 
     Con.DPrint(`${percentage.toFixed(0).padStart(3, ' ')}% ${message}\n`);
-    SCR.con_current = 0;
+    ConsoleOverlay.Reset();
 
     const normalized = Math.round(percentage);
 
@@ -85,13 +87,13 @@ export default class ClientConnection {
     let result = 0;
 
     while (true) {
-      result = NET.GetMessage(netcon);
+      result = net.GetMessage(netcon);
 
       if (result !== 1 && result !== 2) {
         return result;
       }
 
-      if (NET.message.cursize === 1 && new Uint8Array(NET.message.data, 0, 1)[0] === Protocol.svc.nop) {
+      if (net.message.cursize === 1 && new Uint8Array(net.message.data, 0, 1)[0] === Protocol.svc.nop) {
         Con.DPrint('<-- server to client keepalive\n');
       } else {
         break;
@@ -136,12 +138,12 @@ export default class ClientConnection {
       throw new HostError('CL.SendCmd: no active connection');
     }
 
-    if (!NET.CanSendMessage(netcon)) {
+    if (!net.CanSendMessage(netcon)) {
       Con.DPrint('CL.SendCmd: can\'t send\n');
       return;
     }
 
-    if (NET.SendMessage(netcon, this.cls.message) === -1) {
+    if (net.SendMessage(netcon, this.cls.message) === -1) {
       throw new HostError('CL.SendCmd: lost server connection');
     }
 
@@ -192,23 +194,26 @@ export default class ClientConnection {
       this.cls.message.clear();
       this.cls.message.writeByte(Protocol.clc.disconnect);
       if (this.cls.netcon !== null) {
-        NET.SendUnreliableMessage(this.cls.netcon, this.cls.message);
+        net.SendUnreliableMessage(this.cls.netcon, this.cls.message);
       }
       this.cls.message.clear();
       if (this.cls.netcon !== null) {
-        NET.Close(this.cls.netcon);
+        net.Close(this.cls.netcon);
       }
       this.cls.state = Def.clientConnectionState.disconnected;
-      if (SV.server.active) {
-        Host.ShutdownServer();
+      if (clientStaticState.serverController.state.active) {
+        clientStaticState.serverController.stop();
       }
     }
+
+    // Published before the state is cleared: clearing drops the listeners a game made on its per-map bus, and the game
+    // needs to hear that the client is gone (it takes its post-process tints off, for one).
+    eventBus.publish('client.disconnected');
 
     this.clearState();
     this.cls.signon = 0;
     this.cls.changelevel = false;
     this.resetCheatCvars();
-    eventBus.publish('client.disconnected');
   }
 
   checkConnectingState(): void {
@@ -251,12 +256,13 @@ export default class ClientConnection {
 
     eventBus.publish('client.connecting', host);
 
-    const sock = NET.Connect(host);
+    const sock = net.Connect(host);
 
     if (sock === null) {
       throw new HostError('CL.Connect: connect failed\n');
     }
 
+    this.cls.state = Def.clientConnectionState.connecting;
     this.cls.netcon = sock;
   }
 
@@ -294,9 +300,9 @@ export default class ClientConnection {
         break;
       case 4:
         this.setConnectingStep(null, null);
-        SCR.EndLoadingPlaque();
-        Con.forcedup = true;
-        SCR.con_current = 0;
+        ScreenFrame.EndLoadingPlaque();
+        ConsoleOverlay.forcedup = true;
+        ConsoleOverlay.Reset();
         this.cls.changelevel = false;
         S.LoadPendingFiles();
         break;

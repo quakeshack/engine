@@ -2,22 +2,19 @@ import { content } from '../../../../shared/Defs.ts';
 import Q from '../../../../shared/Q.ts';
 import Vector from '../../../../shared/Vector.ts';
 import { CRC16CCITT } from '../../CRC.ts';
-import { eventBus, getCommonRegistry, registry } from '../../../registry.ts';
+import { CorruptedResourceError } from '../../Errors.ts';
 import { Face, Plane } from '../BaseModel.ts';
-import { Brush, BrushModel, BrushSide, Node, type BrushRange } from '../BSP.ts';
+import { Brush, BrushModel, BrushSide, type BrushRange } from '../BSP.ts';
+import { LeafTable, NodeTable } from '../BspTree.ts';
+import { PlaneTable } from '../../collision/Hull.ts';
 import type { PortalDefinition } from '../AreaPortals.ts';
+import COM from '../../Com.ts';
 import { QSMatLoader } from '../QSMatLoader.ts';
 import { BSPXLoader } from '../BSPXLoader.ts';
 import { WalTextureLoader } from '../WalTextureLoader.ts';
 import { ModelLoader } from '../ModelLoader.ts';
 import { GLTexture } from '../../../client/GL.ts';
-import { MaterialFlags, QuakeMaterial } from '../../../client/renderer/Materials.ts';
-
-let { COM, Con } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con } = getCommonRegistry());
-});
+import { MaterialFlags, QuakeMaterial } from '../../../client/renderer/models/Materials.ts';
 
 interface LumpViews {
   [index: number]: DataView;
@@ -134,7 +131,7 @@ export class BSP38Loader extends ModelLoader {
     this.#loadPlanes(lumpViews[BSP38Lump.PLANES], loadmodel);
     this.#loadTexinfo(lumpViews[BSP38Lump.TEXINFO], loadmodel);
     await this.#loadWalTextures(loadmodel); // must run before QSMatLoader, whose base-diffuse fallback checks for a decoded texture
-    await QSMatLoader.load(loadmodel);
+    await QSMatLoader.load(loadmodel, this.context);
     this.#loadFaces(lumpViews[BSP38Lump.FACES], loadmodel);
     this.#loadMarksurfaces(lumpViews[BSP38Lump.LEAFFACES], loadmodel);
     this.#loadLighting(lumpViews[BSP38Lump.LIGHTING], loadmodel);
@@ -145,7 +142,7 @@ export class BSP38Loader extends ModelLoader {
     this.#computeBrushBounds(loadmodel);
     this.#loadNodes(lumpViews[BSP38Lump.NODES], loadmodel);
     this.#loadVisibility(lumpViews[BSP38Lump.VISIBILITY], loadmodel);
-    BSPXLoader.load(loadmodel, buffer, bspxoffset); // must run before submodels, which propagate the deluxemap
+    BSPXLoader.load(loadmodel, buffer, bspxoffset, this.context.con, this.context.loadRenderData); // must run before submodels, which propagate the deluxemap
     this.#loadSubmodels(lumpViews[BSP38Lump.MODELS], loadmodel); // must run after nodes/brushes/leafbrushes are loaded
     this.#loadAreas(lumpViews[BSP38Lump.AREAS], lumpViews[BSP38Lump.AREAPORTALS], loadmodel);
     this.#parseExplicitPortalKeys(loadmodel); // explicit "portal" key overrides, mirrors BSP29Loader's escape hatch
@@ -271,12 +268,20 @@ export class BSP38Loader extends ModelLoader {
       const plane = new Plane(normal, dist);
       plane.type = planesLump.getInt32(offset + 16, true);
 
-      if (normal[0] < 0) { plane.signbits |= 1; }
-      if (normal[1] < 0) { plane.signbits |= 2; }
-      if (normal[2] < 0) { plane.signbits |= 4; }
+      if (normal[0] < 0) {
+        plane.signbits |= 1;
+      }
+      if (normal[1] < 0) {
+        plane.signbits |= 2;
+      }
+      if (normal[2] < 0) {
+        plane.signbits |= 4;
+      }
 
       loadmodel.planes[index] = plane;
     }
+
+    loadmodel.planeTable = PlaneTable.fromPlanes(loadmodel.planes);
   }
 
   /**
@@ -373,7 +378,7 @@ export class BSP38Loader extends ModelLoader {
    * request per texture, almost all guaranteed to fail.
    */
   async #loadWalTextures(loadmodel: BrushModel): Promise<void> {
-    if (registry.isDedicatedServer || loadmodel.worldspawnInfo._qs_wal !== '1') {
+    if (!this.context.loadRenderData || loadmodel.worldspawnInfo._qs_wal !== '1') {
       return;
     }
 
@@ -383,7 +388,7 @@ export class BSP38Loader extends ModelLoader {
       }
 
       const filename = `textures/${material.name}.wal`;
-      const data = await COM.LoadFile(filename);
+      const data = await this.context.files.LoadFile(filename);
 
       if (data === null) {
         return;
@@ -392,7 +397,7 @@ export class BSP38Loader extends ModelLoader {
       const decoded = WalTextureLoader.decode(data, material.name);
 
       if (decoded === null) {
-        Con.PrintWarning(`BSP38Loader: corrupt .wal texture ${filename}\n`);
+        this.context.con.PrintWarning(`BSP38Loader: corrupt .wal texture ${filename}\n`);
         return;
       }
 
@@ -555,38 +560,26 @@ export class BSP38Loader extends ModelLoader {
    * Load BSP38 leafs.
    */
   #loadLeafs(leafsLump: DataView, loadmodel: BrushModel): void {
-    loadmodel.leafs.length = 0;
-
     const stride = 28;
     const length = leafsLump.byteLength / stride;
+    const leafs = new LeafTable(length);
+    loadmodel.leafTable = leafs;
 
     for (let index = 0; index < length; index++) {
       const offset = index * stride;
 
-      const leaf = Object.assign(new Node(loadmodel), {
-        num: index,
-        contents: this.#translateQ2Contents(leafsLump.getInt32(offset + 0, true)),
-        cluster: leafsLump.getInt16(offset + 4, true),
-        area: leafsLump.getInt16(offset + 6, true),
-        mins: new Vector(
-          leafsLump.getInt16(offset + 8, true),
-          leafsLump.getInt16(offset + 10, true),
-          leafsLump.getInt16(offset + 12, true),
-        ),
-        maxs: new Vector(
-          leafsLump.getInt16(offset + 14, true),
-          leafsLump.getInt16(offset + 16, true),
-          leafsLump.getInt16(offset + 18, true),
-        ),
-        firstmarksurface: leafsLump.getUint16(offset + 20, true),
-        nummarksurfaces: leafsLump.getUint16(offset + 22, true),
-        firstleafbrush: leafsLump.getUint16(offset + 24, true),
-        numleafbrushes: leafsLump.getUint16(offset + 26, true),
-      });
+      leafs.contents[index] = this.#translateQ2Contents(leafsLump.getInt32(offset + 0, true));
+      leafs.clusters[index] = leafsLump.getInt16(offset + 4, true);
+      leafs.areas[index] = leafsLump.getInt16(offset + 6, true);
 
-      leaf.baseMins = leaf.mins!.copy();
-      leaf.baseMaxs = leaf.maxs!.copy();
-      loadmodel.leafs[index] = leaf;
+      for (let k = 0; k < 6; k++) {
+        leafs.bounds[index * 6 + k] = leafsLump.getInt16(offset + 8 + k * 2, true);
+      }
+
+      leafs.firstMarkSurfaces[index] = leafsLump.getUint16(offset + 20, true);
+      leafs.numMarkSurfaces[index] = leafsLump.getUint16(offset + 22, true);
+      leafs.firstLeafBrushes[index] = leafsLump.getUint16(offset + 24, true);
+      leafs.numLeafBrushes[index] = leafsLump.getUint16(offset + 26, true);
     }
   }
 
@@ -680,20 +673,6 @@ export class BSP38Loader extends ModelLoader {
   }
 
   /**
-   * Recursively set parent references for BSP tree nodes.
-   */
-  #setParent(node: Node, parent: Node | null): void {
-    node.parent = parent;
-
-    if (node.contents < content.CONTENT_NONE) {
-      return;
-    }
-
-    this.#setParent(node.children[0] as Node, node);
-    this.#setParent(node.children[1] as Node, node);
-  }
-
-  /**
    * Load BSP38 tree nodes and link them to their plane and child leaf/node references.
    * Q2 node children are 32-bit indices (unlike BSP29's 16-bit ones), since Q2 maps
    * can exceed the ~32k node limit that constrained Quake 1.
@@ -701,48 +680,38 @@ export class BSP38Loader extends ModelLoader {
   #loadNodes(nodesLump: DataView, loadmodel: BrushModel): void {
     const stride = 28;
     const count = nodesLump.byteLength / stride;
-    loadmodel.nodes.length = 0;
+    const nodes = new NodeTable(count);
+    const leafs = loadmodel.leafTable;
+    loadmodel.nodeTable = nodes;
 
     for (let index = 0; index < count; index++) {
       const offset = index * stride;
 
-      const node = Object.assign(new Node(loadmodel), {
-        num: index,
-        planenum: nodesLump.getInt32(offset + 0, true),
-        children: [nodesLump.getInt32(offset + 4, true), nodesLump.getInt32(offset + 8, true)],
-        mins: new Vector(
-          nodesLump.getInt16(offset + 12, true),
-          nodesLump.getInt16(offset + 14, true),
-          nodesLump.getInt16(offset + 16, true),
-        ),
-        maxs: new Vector(
-          nodesLump.getInt16(offset + 18, true),
-          nodesLump.getInt16(offset + 20, true),
-          nodesLump.getInt16(offset + 22, true),
-        ),
-        firstface: nodesLump.getUint16(offset + 24, true),
-        numfaces: nodesLump.getUint16(offset + 26, true),
-      });
+      nodes.planeNums[index] = nodesLump.getInt32(offset + 0, true);
+      nodes.children[index * 2] = nodesLump.getInt32(offset + 4, true);
+      nodes.children[index * 2 + 1] = nodesLump.getInt32(offset + 8, true);
 
-      node.baseMins = node.mins!.copy();
-      node.baseMaxs = node.maxs!.copy();
-      loadmodel.nodes[index] = node;
+      for (let k = 0; k < 6; k++) {
+        nodes.bounds[index * 6 + k] = nodesLump.getInt16(offset + 12 + k * 2, true);
+      }
+
+      nodes.firstFaces[index] = nodesLump.getUint16(offset + 24, true);
+      nodes.numFaces[index] = nodesLump.getUint16(offset + 26, true);
+
+      if (nodes.planeNums[index] < 0 || nodes.planeNums[index] >= loadmodel.planes.length) {
+        throw new CorruptedResourceError(loadmodel.name, `BSP38Loader: node ${index} refers to a plane that does not exist`);
+      }
+
+      for (let side = 0; side < 2; side++) {
+        const child = nodes.children[index * 2 + side];
+
+        if (child >= 0 ? child >= count : ~child >= leafs.count) {
+          throw new CorruptedResourceError(loadmodel.name, `BSP38Loader: node ${index} refers to a child that does not exist`);
+        }
+      }
     }
 
-    for (let index = 0; index < count; index++) {
-      const node = loadmodel.nodes[index];
-      node.plane = loadmodel.planes[node.planenum];
-
-      const child0Idx = node.children[0] as number;
-      const child1Idx = node.children[1] as number;
-
-      node.children[0] = child0Idx >= 0 ? loadmodel.nodes[child0Idx] : loadmodel.leafs[-1 - child0Idx];
-      node.children[1] = child1Idx >= 0 ? loadmodel.nodes[child1Idx] : loadmodel.leafs[-1 - child1Idx];
-    }
-
-    if (loadmodel.nodes.length > 0) {
-      this.#setParent(loadmodel.nodes[0], null);
-    }
+    nodes.linkParents(leafs);
   }
 
   /**
@@ -789,23 +758,26 @@ export class BSP38Loader extends ModelLoader {
    * @returns The submodel's brush range, or an empty range when none is found.
    */
   #computeSubmodelBrushRange(loadmodel: BrushModel, headnode: number): BrushRange {
-    const rootNode = loadmodel.nodes[headnode];
+    const nodes = loadmodel.nodeTable;
+    const leafs = loadmodel.leafTable;
 
-    if (rootNode === undefined || loadmodel.leafbrushes === null) {
+    if (headnode < 0 || headnode >= nodes.count || loadmodel.leafbrushes === null) {
       return { firstBrush: 0, numBrushes: 0 };
     }
 
     let minBrush = Infinity;
     let maxBrush = -Infinity;
     const brushIndices = new Set<number>();
-    const stack: Node[] = [rootNode];
+    const stack: number[] = [headnode];
 
     while (stack.length > 0) {
-      const node = stack.pop()!;
+      const reference = stack.pop()!;
 
-      if (node.contents < content.CONTENT_NONE) {
-        for (let i = 0; i < node.numleafbrushes; i++) {
-          const brushIndex = loadmodel.leafbrushes[node.firstleafbrush + i];
+      if (reference < 0) {
+        const leaf = ~reference;
+
+        for (let i = 0; i < leafs.numLeafBrushes[leaf]; i++) {
+          const brushIndex = loadmodel.leafbrushes[leafs.firstLeafBrushes[leaf] + i];
           brushIndices.add(brushIndex);
           minBrush = Math.min(minBrush, brushIndex);
           maxBrush = Math.max(maxBrush, brushIndex);
@@ -813,7 +785,7 @@ export class BSP38Loader extends ModelLoader {
         continue;
       }
 
-      stack.push(node.children[0] as Node, node.children[1] as Node);
+      stack.push(nodes.children[reference * 2], nodes.children[reference * 2 + 1]);
     }
 
     if (brushIndices.size === 0) {
@@ -876,8 +848,8 @@ export class BSP38Loader extends ModelLoader {
       out.vertexes = loadmodel.vertexes;
       out.edges = loadmodel.edges;
       out.surfedges = loadmodel.surfedges;
-      out.nodes = loadmodel.nodes;
-      out.leafs = loadmodel.leafs;
+      out.nodeTable = loadmodel.nodeTable;
+      out.leafTable = loadmodel.leafTable;
       out.texinfo = loadmodel.texinfo;
       out.textures = loadmodel.textures;
       out.marksurfaces = loadmodel.marksurfaces;
@@ -954,7 +926,7 @@ export class BSP38Loader extends ModelLoader {
     loadmodel.portalDefs = portalDefs;
     loadmodel.areaPortals.init(numAreas, portalDefs);
 
-    Con.DPrint(`BSP38Loader: loaded ${numAreas} areas with ${portalDefs.length} portal connections\n`);
+    this.context.con.DPrint(`BSP38Loader: loaded ${numAreas} areas with ${portalDefs.length} portal connections\n`);
   }
 
   /**
@@ -984,24 +956,26 @@ export class BSP38Loader extends ModelLoader {
    * comparison) — the same technique `ServerArea.findTouchedLeafs` uses for
    * entity-leaf linking.
    */
-  #collectTouchedAreas(node: Node, mins: Vector, maxs: Vector, areas: Set<number>): void {
-    if (node.contents === content.CONTENT_SOLID) {
+  #collectTouchedAreas(loadmodel: BrushModel, reference: number, mins: Vector, maxs: Vector, areas: Set<number>): void {
+    if (reference < 0) {
+      const leaf = ~reference;
+
+      if (loadmodel.leafTable.contents[leaf] !== content.CONTENT_SOLID) {
+        areas.add(loadmodel.leafTable.areas[leaf]);
+      }
+
       return;
     }
 
-    if (node.contents < content.CONTENT_NONE) {
-      areas.add(node.area);
-      return;
-    }
-
-    const sides = Vector.boxOnPlaneSide(mins, maxs, node.plane!);
+    const nodes = loadmodel.nodeTable;
+    const sides = Vector.boxOnPlaneSide(mins, maxs, loadmodel.planes[nodes.planeNums[reference]]);
 
     if ((sides & 1) !== 0) {
-      this.#collectTouchedAreas(node.children[0] as Node, mins, maxs, areas);
+      this.#collectTouchedAreas(loadmodel, nodes.children[reference * 2], mins, maxs, areas);
     }
 
     if ((sides & 2) !== 0) {
-      this.#collectTouchedAreas(node.children[1] as Node, mins, maxs, areas);
+      this.#collectTouchedAreas(loadmodel, nodes.children[reference * 2 + 1], mins, maxs, areas);
     }
   }
 
@@ -1018,11 +992,10 @@ export class BSP38Loader extends ModelLoader {
    * synthesized.
    */
   #computeModelPortalMap(loadmodel: BrushModel): void {
-    if (loadmodel.nodes.length === 0 || loadmodel.portalDefs.length === 0) {
+    if (loadmodel.nodeTable.count === 0 || loadmodel.portalDefs.length === 0) {
       return;
     }
 
-    const root = loadmodel.nodes[0];
     let derived = 0;
 
     for (let index = 0; index < loadmodel.submodels.length; index++) {
@@ -1036,7 +1009,7 @@ export class BSP38Loader extends ModelLoader {
       console.assert(submodel.mins !== null && submodel.maxs !== null, 'BSP38Loader: submodel bounds required for portal derivation');
 
       const areas = new Set<number>();
-      this.#collectTouchedAreas(root, submodel.mins!, submodel.maxs!, areas);
+      this.#collectTouchedAreas(loadmodel, 0, submodel.mins!, submodel.maxs!, areas);
       areas.delete(0); // area 0 = outside/unassigned, never a real portal side
 
       if (areas.size !== 2) {
@@ -1056,7 +1029,7 @@ export class BSP38Loader extends ModelLoader {
     }
 
     if (derived > 0) {
-      Con.DPrint(`BSP38Loader: auto-derived ${derived} model-to-portal mapping(s) from area data\n`);
+      this.context.con.DPrint(`BSP38Loader: auto-derived ${derived} model-to-portal mapping(s) from area data\n`);
     }
   }
 

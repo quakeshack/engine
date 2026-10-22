@@ -1,31 +1,6 @@
-
 ## Architecture
 
-This code is based on WinQuake, although it has been adapted for modern web technologies and added many new features. Some are backported from Quake 2, some of them are original to this project.
+The code started as WinQuake, adapted to the web with many added features (some backported from Quake 2, some original). The goal is to replace almost all of the original with new implementations; the architecture is inspired by id tech 3, GoldSrc and Source, not copied from them.
 
-### Client-Server-Master Architecture
-
-The architecture consists of a client, server, and master server. The client and server can run in the same process (listen server) or in separate processes (dedicated server). The master server keeps track of public game servers and allows clients to find them.
-
-### Client
-
-The client is responsible for rendering, input handling, audio, and user interface. It communicates with the server to receive game state updates and send player actions. The client code is executed in Chrome or Firefox using WebGL for rendering and Web Audio API for audio.
-
-### Server
-
-The server manages the game state, processes player actions, and enforces game rules. It communicates with clients to send game state updates and receive player actions. The server code can run in node.js and uses WebSockets for network communication. The server code can also be run in the browser for listen servers and allows players to join via WebRTC peer-to-peer connections.
-
-### Single player
-
-In single player mode, both the client and server run in the same process. The client sends player actions directly to the server, and the server updates the game state and sends it back to the client using the loopback driver implementation.
-
-### Data structures
-
-#### Maps (bsp files)
-
-Make sure to always traverse the BSP tree when doing collision detection, visibility checks, and other spatial queries. This is crucial for not just performance and correctness, but also for maintaining the integrity of the game world. No AABB minmax checks, no ray-box intersection tests, no distance checks. Always traverse the BSP tree and use the plane equations to determine which nodes to visit.
-
-## Origins
-
-The code is originally based on WinQuake almost verbatim, however the goal of this project is to replace almost all of the original code with new implementations. The architecture is still inspired by id tech 3, GoldSrc engine and the Source engine. However, the code is not a direct port of those, but rather a new implementation that takes advantage of modern web technologies and design patterns.
-
+- A **client** (browser: WebGL, Web Audio), a **server** (Node.js dedicated, or in the browser as a listen server that players join over WebRTC) and a **master server** (public server list, signaling) talk over WebSockets, WebRTC or, in single player, the loopback driver in one process.
+- **Maps (BSP)**: always traverse the BSP tree and use the plane equations for collision detection, visibility checks and other spatial queries. No AABB min/max checks, no ray-box tests, no distance checks.

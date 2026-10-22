@@ -1,10 +1,4 @@
-import { eventBus, getClientRegistry } from '../../registry.ts';
-
-let { COM } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM } = getClientRegistry());
-});
+import { com } from '../PageServices.ts';
 
 interface SaveGameData {
   comment?: string;
@@ -20,12 +14,44 @@ export interface SaveSlotInfo {
 
 /**
  * Save-slot metadata/deletion, kept behind this API so callers (the built-in save/load
- * pages, and eventually mod-authored ones) never need to know the `localStorage` key format
- * `Host.ts`'s save/load commands actually use.
+ * pages, and eventually mod-authored ones) never need to know where `Host.ts`'s save/load
+ * commands actually keep the files.
+ *
+ * The files live in the user store, which is asynchronous, while menus ask for the list while
+ * they draw. So the list is answered from a snapshot of the slots' metadata that `refresh()`
+ * takes at startup and after every save; a slot written by something else is not seen until then.
  */
 export default class SaveSlots {
-  static #storageKey(index: number): string {
-    return `Quake.${COM.gamedir![0].filename}/s${index}.json`;
+  /** How many slots are looked up when the snapshot is taken, an upper bound for what a game asks for. */
+  static readonly MAX_SLOTS = 32;
+
+  static #snapshot = new Map<number, SaveGameData>();
+
+  static #path(index: number): string {
+    return `${com.GetGamedir()}/s${index}.json`;
+  }
+
+  /**
+   * Reads the metadata of all slots from the user store into the snapshot `list()` answers from.
+   */
+  static async refresh(): Promise<void> {
+    const snapshot = new Map<number, SaveGameData>();
+
+    for (let index = 0; index < SaveSlots.MAX_SLOTS; index++) {
+      const raw = await com.userStore?.read(SaveSlots.#path(index)) ?? null;
+
+      if (raw === null) {
+        continue;
+      }
+
+      try {
+        snapshot.set(index, JSON.parse(new TextDecoder('iso-8859-1').decode(raw)) as SaveGameData);
+      } catch {
+        // A save that cannot be read shows up as an empty slot, loading it reports the damage.
+      }
+    }
+
+    SaveSlots.#snapshot = snapshot;
   }
 
   /**
@@ -36,14 +62,13 @@ export default class SaveSlots {
     const slots: SaveSlotInfo[] = [];
 
     for (let index = 0; index < maxSlots; index++) {
-      const raw = localStorage.getItem(SaveSlots.#storageKey(index));
+      const gamestate = SaveSlots.#snapshot.get(index);
 
-      if (raw === null) {
+      if (gamestate === undefined) {
         slots.push({ index, label: 'Empty slot', mapname: null, hasData: false });
         continue;
       }
 
-      const gamestate = JSON.parse(raw) as SaveGameData;
       slots.push({
         index,
         label: gamestate.comment || gamestate.mapname || '',
@@ -56,9 +81,10 @@ export default class SaveSlots {
   }
 
   /**
-   * Delete a save slot's data.
+   * Delete a save slot's data. The slot is empty right away, the file follows asynchronously.
    */
   static delete(index: number): void {
-    localStorage.removeItem(SaveSlots.#storageKey(index));
+    SaveSlots.#snapshot.delete(index);
+    void com.userStore?.remove(SaveSlots.#path(index));
   }
 }

@@ -1,22 +1,22 @@
 import { K } from '../../shared/Keys.ts';
 import Q from '../../shared/Q.ts';
-import { eventBus, getClientRegistry, registry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import Tools from './Tools.ts';
 import IN from './IN.ts';
 import { KeyDestination } from './Key.ts';
 import VID from './VID.ts';
 import WorkerManager from '../common/WorkerManager.ts';
 import workerFactories from '../common/WorkerFactories.ts';
+import ConsoleOverlay from './ConsoleOverlay.ts';
+import M from './Menu.ts';
+import Host from '../common/Host.ts';
+import ClientHost from './ClientHost.ts';
+import Key from './Key.ts';
+import { com } from './PageServices.ts';
 
 interface LegacyWheelEvent extends Event {
   readonly wheelDeltaY: number;
 }
-
-let { COM, Con, Host, Key, M } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con, Host, Key, M } = getClientRegistry());
-});
 
 eventBus.subscribe('host.crash', (error: unknown) => {
   console.error(error);
@@ -27,7 +27,7 @@ eventBus.subscribe('host.crash', (error: unknown) => {
   }
 
   // abort all pending IO operations
-  COM.Shutdown();
+  com.Shutdown();
 });
 
 /**
@@ -163,7 +163,7 @@ function handleKeyDown(event: KeyboardEvent): void {
   // Ctrl/Cmd+V: paste into the active text input instead of typing a literal 'v'. The console
   // can be open on top of gameplay (Key.destination still reading `game`), so it needs its own
   // check here rather than relying solely on the destination.
-  if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV' && (Con.isOpen || Key.destination !== KeyDestination.game)) {
+  if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV' && (ConsoleOverlay.isOpen || Key.destination !== KeyDestination.game)) {
     event.preventDefault();
     void pasteFromClipboard();
     return;
@@ -303,8 +303,6 @@ export default class Sys {
   static #isRunning = false;
 
   static async Init(): Promise<void> {
-    (window as Window & { registry?: typeof registry }).registry = registry;
-
     const location = document.location;
     const argv = [location.hostname];
     if (location.search.length > 1) {
@@ -327,7 +325,7 @@ export default class Sys {
       }
     }
 
-    COM.InitArgv(argv);
+    com.InitArgv(argv);
 
     const consoleElement = getRequiredElement('console');
 
@@ -353,7 +351,7 @@ export default class Sys {
 
     Sys.Print('Host.Init: Initializing game…\n');
 
-    await Host.Init();
+    await ClientHost.Boot();
 
     registerWindowListeners();
 
@@ -365,7 +363,7 @@ export default class Sys {
     while (Sys.#isRunning) {
       const startTime = Date.now();
 
-      await Host.Frame();
+      await ClientHost.RunFrame();
 
       const refreshRate = Host.refreshrate;
       // uncapped framerate
@@ -385,19 +383,17 @@ export default class Sys {
     unregisterWindowListeners();
 
     Tools.Shutdown();
-    Host.Shutdown();
+    ClientHost.Shutdown();
 
     document.body.style.cursor = 'auto';
 
-    if (COM.registered?.value !== 0) {
+    if (com.registered?.value !== 0) {
       // document.getElementById('end2').style.display = 'inline';
       // parent.unloadContainer();
     } else {
       // document.getElementById('end1').style.display = 'inline';
       // parent.unloadContainer();
     }
-
-    delete (window as Window & { registry?: typeof registry }).registry;
 
     Sys.Print('Sys.Quit: finished, thank you for playing!\n');
   }

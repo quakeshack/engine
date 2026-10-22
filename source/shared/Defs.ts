@@ -235,8 +235,6 @@ export enum clientStat {
  * Feature flags for the game code (both server and client).
  */
 export enum gameCapabilities {
-  /** the client game code takes care of rendering crosshairs, in other words: V is not required to draw one! */
-  CAP_HUD_INCLUDES_CROSSHAIR = 'CAP_HUD_INCLUDES_CROSSHAIR',
   /** adds additional units to the bounding box during entity linking (e.g. for items additional 28 units in total per x/y axis) */
   CAP_ENTITY_BBOX_ADJUSTMENTS_DURING_LINK = 'CAP_ENTITY_BBOX_ADJUSTMENTS_DURING_LINK',
 }

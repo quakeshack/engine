@@ -22,7 +22,7 @@
       "@/*": ["./source/*"]
     }
   },
-  "exclude": ["node_modules", "dist", "source/game/**/test/**"],
+  "exclude": ["node_modules", "dist"],
   "include": [
     "./source/engine/**/*.mjs",
     "./source/engine/**/*.cjs",
@@ -48,11 +48,9 @@
     "./source/cloudflare/**/*.mts",
     "./source/cloudflare/**/*.cts",
     "./source/cloudflare/**/*.d.ts",
-    // "./test/**/*.mjs",
-    // "./test/**/*.cjs",
-    // "./test/**/*.ts",
-    // "./test/**/*.mts",
-    // "./test/**/*.cts",
+    // Every test is TypeScript and checked: the engine's under test/, the games' under source/game/<mod>/test/ (included above).
+    "./test/**/*.test.ts",
+    "./test/support/**/*.ts",
     "./*.mjs",
     "./*.cjs",
     "./*.ts",

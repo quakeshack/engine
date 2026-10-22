@@ -107,6 +107,7 @@ export const svc = Object.freeze({
   loadsound: 102,
   chatmsg: 103,
   obituary: 104,
+  /** Reserved, nothing sends or reads it: the movement variables travel as `cvar` like every other server cvar. */
   pmovevars: 105,
   cvar: 106,
   changelevel: 107,

@@ -7,6 +7,7 @@ import jsdoc from 'eslint-plugin-jsdoc';
 import stylistic from '@stylistic/eslint-plugin';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
+import controlStatementBlocks from './eslint.rules.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const typeAwareParserOptions = {
@@ -14,7 +15,13 @@ const typeAwareParserOptions = {
   sourceType: 'module',
   // Game modules vendored under source/game are responsible for shipping a
   // local tsconfig.json when they want typed linting for their own tests.
-  projectService: true,
+  projectService: {
+    allowDefaultProject: [
+      'scripts/*/*.mjs',
+      'scripts/*.mts',
+    ],
+    maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINT: 64,
+  },
   tsconfigRootDir: __dirname,
 };
 
@@ -40,6 +47,7 @@ const commonRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
   'no-unmodified-loop-condition': 'error',
   'no-unreachable-loop': 'warn',
   'curly': 'error',
+  'quakeshack/block-on-own-lines': 'error',
   'consistent-return': 'error',
   'consistent-this': ['error', 'that'],
   'func-name-matching': 'error',
@@ -139,6 +147,7 @@ export default defineConfig([
       '@stylistic': stylisticPlugin,
       '@typescript-eslint': typeScriptEslintPlugin,
       jsdoc: jsdocPlugin,
+      quakeshack: controlStatementBlocks,
     },
     rules: commonRules,
   },
@@ -153,6 +162,7 @@ export default defineConfig([
       '@stylistic': stylisticPlugin,
       '@typescript-eslint': typeScriptEslintPlugin,
       jsdoc: jsdocPlugin,
+      quakeshack: controlStatementBlocks,
     },
     rules: {
       ...commonRules,
@@ -198,6 +208,33 @@ export default defineConfig([
     rules: {
       'jsdoc/require-param-type': 'off',
       'jsdoc/require-returns-type': 'off',
+    },
+  },
+  {
+    // The server runtime must not know the client runtime. `test/common/engine-boundaries.test.ts`
+    // enforces the same boundary in `npm test`.
+    files: ['source/engine/server/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        patterns: [
+          { group: ['**/client/**'], message: 'The server runtime must not import client code.' },
+        ],
+      }],
+    },
+  },
+  {
+    // The client runtime reaches the local server through `CL.serverController`, never through `SV`.
+    files: ['source/engine/client/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        patterns: [
+          { group: ['**/server/Server.ts'], message: 'The client runtime must not import SV, use CL.serverController.' },
+        ],
+      }],
+      'no-restricted-syntax': ['error', {
+        selector: 'ObjectPattern > Property[key.name="SV"]',
+        message: 'The client runtime must not reach the server through SV, use CL.serverController.',
+      }],
     },
   },
   {

@@ -1,6 +1,6 @@
 ---
 name: plan-first-workflow
-description: Use when starting a substantial change to this codebase — an architecture change, a cross-cutting refactor, a new subsystem, or anything that moves ownership between engine and game code or reshapes a public API. Not for bug fixes or single-file edits. The maintainers want a written plan in plans/<topic>.md before any code, genuine design forks put to the developer instead of assumed, implementation in the plan's phases with a pause at each boundary, and UI-facing work verified in a real browser rather than only by unit tests.
+description: Use when starting a substantial change: an architecture change, cross-cutting refactor, new subsystem, or anything that moves ownership between engine and game or reshapes a public API. Not for bug fixes or single-file edits. Plan in plans/<topic>.md first, ask on real forks, work in phases.
 ---
 
 # Plan-first, phased, browser-verified workflow

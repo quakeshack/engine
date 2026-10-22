@@ -3,7 +3,7 @@ import type { SFX } from './Sound.ts';
 import { K } from '../../shared/Keys.ts';
 import Cmd from '../common/Cmd.ts';
 import { clientConnectionState } from '../common/Def.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import type { BitmapFont } from './BitmapFont.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import { GLTexture } from './GL.ts';
@@ -13,12 +13,11 @@ import { MenuStack } from './menu/MenuStack.ts';
 import { MenuViewport, type ResolvedMenuViewport } from './menu/MenuViewport.ts';
 import VID from './VID.ts';
 import { MissingResourceError } from '../common/Errors.ts';
-
-let { CL, COM, Draw, Key, S } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Draw, Key, S } = getClientRegistry());
-});
+import { clientStaticState } from './ClientState.ts';
+import Draw from './Draw.ts';
+import Key from './Key.ts';
+import S from './Sound.ts';
+import { com } from './PageServices.ts';
 
 // An involuntary disconnect (server shutdown, kick, timeout) can happen with no menu open at
 // all -- e.g. mid-gameplay. There's nothing to show without a game running, so bring the main
@@ -34,7 +33,7 @@ eventBus.subscribe('client.disconnected', () => {
 // click. Fired once, right after the active game module has registered its pages -- see
 // `ClientLifecycle.initGame()`.
 eventBus.subscribe('client.game-initialized', () => {
-  if (CL.cls.state === clientConnectionState.disconnected && M.menuStack.isEmpty()) {
+  if (clientStaticState.state === clientConnectionState.disconnected && M.menuStack.isEmpty()) {
     M.Menu_Main_f();
   }
 });
@@ -57,7 +56,7 @@ eventBus.subscribe('client.connecting', () => {
 export type MenuPic = GLTexture & { translate?: GLTexture | null };
 
 export default class M {
-  static menuStack = new MenuStack();
+  static menuStack = new MenuStack(() => { M.entersound = true; });
 
   // The page whose viewport should resolve M's drawing primitives right now -- normally null,
   // meaning "use the top of the stack" (see #activeViewport()). Set for the duration of a
@@ -375,7 +374,7 @@ export default class M {
       return false;
     }
 
-    return M.menuStack.depth() > 1 || CL.cls.state === clientConnectionState.connected;
+    return M.menuStack.depth() > 1 || clientStaticState.state === clientConnectionState.connected;
   }
 
   static #isOverBackButton(mx: number, my: number): boolean {
@@ -402,7 +401,7 @@ export default class M {
   }
 
   static CloseMenu(): void {
-    if (CL.cls.state !== clientConnectionState.connected) {
+    if (clientStaticState.state !== clientConnectionState.connected) {
       // There's no game to return to while disconnected -- collapse back to the root page
       // instead of leaving nothing on screen to look at or interact with.
       if (!M.menuStack.isShowingRoot()) {
@@ -418,7 +417,7 @@ export default class M {
   static PopMenu(): void {
     M.menuStack.pop();
     if (M.menuStack.isEmpty()) {
-      if (CL.cls.state !== clientConnectionState.connected) {
+      if (clientStaticState.state !== clientConnectionState.connected) {
         M.menuStack.pushRoot();
         return;
       }
@@ -428,7 +427,7 @@ export default class M {
 
   /**
    * Whether single-player world simulation (monster think, physics, round timers, ...) should
-   * keep running right now, consulted by `Host.ServerFrame()` for listen servers below
+   * keep running right now, consulted by `ClientHost.Frame()`, which hands it to the local server, for listen servers below
    * multiplayer capacity. `true` during gameplay; while a menu is open, defers to the current
    * page's `pausesGame` flag (`true` by default, matching classic pause-on-menu behavior) so a
    * page can opt out for a world that must keep running regardless of whether one player has a
@@ -460,15 +459,15 @@ export default class M {
     Key.destination = KeyDestination.game;
     // Restore the demo-loop cursor paused (set to -1 in Menu_Main_f) when the menu was opened
     // over a playing demo, so ClientDemos can naturally advance to the next one when it ends.
-    CL.cls.demonum = M.#saveDemonum;
+    clientStaticState.demonum = M.#saveDemonum;
   }
 
   /**
    * Start a new singleplayer game via the active mod's `StartGameInterface`, or the engine's
    * own default (`map start`) if the mod didn't provide one. Exposed to game code via
    * `ClientEngineAPI.Menu.StartSingleplayerGame` -- routed through `M` rather than importing
-   * `ClientLifecycle` directly into `GameAPIs.ts`, which would create a circular import
-   * (`ClientLifecycle.ts` already imports `GameAPIs.ts`).
+   * `ClientLifecycle` directly into `ClientEngineAPI.ts`, which would create a circular import
+   * (`ClientLifecycle.ts` already imports `ClientEngineAPI.ts`).
    */
   static StartSingleplayerGame(): void {
     ClientLifecycle.startGame!.startSingleplayerGame();
@@ -494,7 +493,7 @@ export default class M {
   static async LoadTranslatablePic(lumpName: string): Promise<MenuPic> {
     const pic: MenuPic = Draw.LoadPicFromLumpDeferred(lumpName);
 
-    const lmpfile = await COM.LoadFile(`gfx/${lumpName}.lmp`);
+    const lmpfile = await com.LoadFile(`gfx/${lumpName}.lmp`);
     if (lmpfile === null) {
       throw new MissingResourceError(`gfx/${lumpName}.lmp`);
     }
@@ -545,13 +544,13 @@ export default class M {
    * the console up) in addition to the internal call sites below.
    */
   static Menu_Main_f(this: void): void {
-    if (CL.cls.connecting !== null) {
+    if (clientStaticState.connecting !== null) {
       return;
     }
 
     if (Key.destination !== KeyDestination.menu) {
-      M.#saveDemonum = CL.cls.demonum;
-      CL.cls.demonum = -1;
+      M.#saveDemonum = clientStaticState.demonum;
+      clientStaticState.demonum = -1;
     }
     Key.destination = KeyDestination.menu;
     M.menuStack.clear();

@@ -1,16 +1,14 @@
-import type { Node as BSPNode } from '../common/model/BSP.ts';
 
 import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import Q from '../../shared/Q.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
-
-let { CL, COM, Con, Host } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Con, Host } = getClientRegistry());
-});
+import { eventBus } from '../common/EventBus.ts';
+import Con from '../common/Console.ts';
+import { clientRuntimeState } from './ClientState.ts';
+import clientCvars from './ClientCvars.ts';
+import Host from '../common/Host.ts';
+import { com } from './PageServices.ts';
 
 const MAX_DYNAMIC_CHANNELS = 64;
 
@@ -178,7 +176,7 @@ class Channel {
    */
   spatialize(): void {
     // Local sound: full volume, center pan
-    if (this.entnum === CL.state.viewentity) {
+    if (this.entnum === clientRuntimeState.viewentity) {
       this.pan = 0;
       this.channel_vol = this.master_vol;
       this.updateVol();
@@ -186,9 +184,9 @@ class Channel {
     }
 
     // Area portal occlusion
-    if (CL.areaportals.value > 0 && CL.state.worldmodel && Sound._listenerLeaf) {
-      const leaf = CL.state.worldmodel.getLeafForPoint(this.origin);
-      if (!CL.state.worldmodel.areaPortals.leafsConnected(Sound._listenerLeaf, leaf)) {
+    if (clientCvars.areaportals.value > 0 && clientRuntimeState.worldmodel && Sound._listenerLeaf !== null) {
+      const leaf = clientRuntimeState.worldmodel.getLeafIndexForPoint(this.origin);
+      if (!clientRuntimeState.worldmodel.leafsConnected(Sound._listenerLeaf, leaf)) {
         this.channel_vol = 0;
         this.updateVol();
         return;
@@ -234,7 +232,7 @@ export default class Sound {
   // Listener state
   static _listenerOrigin = new Vector();
   static _listenerRight = new Vector();
-  static _listenerLeaf: BSPNode | null = null;
+  static _listenerLeaf: number | null = null;
 
   static _started = false;
   static _context: AudioContext | null = null;
@@ -259,7 +257,7 @@ export default class Sound {
     Cmd.AddCommand('stopsound', Sound.StopAllSounds.bind(Sound));
     Cmd.AddCommand('soundlist', Sound.SoundList_f.bind(Sound));
 
-    Sound._nosound = new Cvar('nosound', COM.CheckParm('-nosound') ? '1' : '0', Cvar.FLAG.READONLY);
+    Sound._nosound = new Cvar('nosound', com.CheckParm('-nosound') ? '1' : '0', Cvar.FLAG.READONLY);
     Sound.volume = new Cvar('volume', '0.7', Cvar.FLAG.ARCHIVE);
     Sound._precache = new Cvar('s_precache', '1', Cvar.FLAG.NONE, '0 = only load sounds when played, 1 = load all sounds at level start');
     Sound.bgmvolume = new Cvar('bgmvolume', '1', Cvar.FLAG.ARCHIVE);
@@ -417,7 +415,7 @@ export default class Sound {
 
     sfx.state = SFX.STATE.LOADING;
 
-    const data = await COM.LoadFile(`sound/${sfx.name}`);
+    const data = await com.LoadFile(`sound/${sfx.name}`);
     if (!data || !Sound._started) {
       // eslint-disable-next-line require-atomic-updates
       sfx.state = SFX.STATE.FAILED;
@@ -612,7 +610,7 @@ export default class Sound {
    * @param {SFX} sfx sound to play
    */
   static LocalSound(sfx: SFX | null): void {
-    Sound.StartSound(CL.state.viewentity, -1, sfx, Vector.origin, 1.0, 1.0);
+    Sound.StartSound(clientRuntimeState.viewentity, -1, sfx, Vector.origin, 1.0, 1.0);
   }
 
   // ─── Console commands ───────────────────────────────────────────────────────
@@ -624,9 +622,9 @@ export default class Sound {
     }
 
     for (const sample of samples) {
-      const sfx = Sound.PrecacheSound(COM.DefaultExtension(sample, '.wav'));
+      const sfx = Sound.PrecacheSound(com.DefaultExtension(sample, '.wav'));
       if (sfx) {
-        Sound.StartSound(CL.state.viewentity, 0, sfx, Sound._listenerOrigin, 1.0, 1.0);
+        Sound.StartSound(clientRuntimeState.viewentity, 0, sfx, Sound._listenerOrigin, 1.0, 1.0);
       }
     }
   }
@@ -638,9 +636,9 @@ export default class Sound {
     }
 
     for (let i = 0; i < args.length; i += 2) {
-      const sfx = Sound.PrecacheSound(COM.DefaultExtension(args[i], '.wav'));
+      const sfx = Sound.PrecacheSound(com.DefaultExtension(args[i], '.wav'));
       if (sfx) {
-        Sound.StartSound(CL.state.viewentity, 0, sfx, Sound._listenerOrigin, Q.atof(args[i + 1] || '0'), 1.0);
+        Sound.StartSound(clientRuntimeState.viewentity, 0, sfx, Sound._listenerOrigin, Q.atof(args[i + 1] || '0'), 1.0);
       }
     }
   }
@@ -686,8 +684,8 @@ export default class Sound {
     Sound._listenerRight[1] = right[1];
     Sound._listenerRight[2] = right[2];
 
-    Sound._listenerLeaf = CL.state.worldmodel
-      ? CL.state.worldmodel.getLeafForPoint(origin)
+    Sound._listenerLeaf = clientRuntimeState.worldmodel
+      ? clientRuntimeState.worldmodel.getLeafIndexForPoint(origin)
       : null;
 
     if (Sound.volume.value < 0) {
@@ -723,18 +721,18 @@ export default class Sound {
    * @returns True when the position is potentially audible, or PHS data is unavailable.
    */
   static IsPositionAudible(origin: Vector): boolean {
-    const worldmodel = CL.state.worldmodel;
+    const worldmodel = clientRuntimeState.worldmodel;
 
-    if (!worldmodel || !Sound._listenerLeaf || worldmodel.phsdata === null) {
+    if (!worldmodel || Sound._listenerLeaf === null || worldmodel.phsdata === null) {
       return true;
     }
 
-    return worldmodel.getFatPhsByPoint(origin).isRevealed(Sound._listenerLeaf.num);
+    return worldmodel.getFatPhsByPoint(origin).isRevealed(Sound._listenerLeaf);
   }
 
   /** @protected */
   static _updateAmbientSounds(): void {
-    if (!CL.state.worldmodel || !Sound._listenerLeaf || Sound._ambientLevel.value === 0) {
+    if (!clientRuntimeState.worldmodel || Sound._listenerLeaf === null || Sound._ambientLevel.value === 0) {
       for (const ch of Sound._ambientChannels) {
         ch.channel_vol = 0;
         ch.updateVol();
@@ -744,7 +742,7 @@ export default class Sound {
 
     for (let i = 0; i < Sound._ambientChannels.length; i++) {
       const ch = Sound._ambientChannels[i];
-      let vol = (Sound._ambientLevel.value * Sound._listenerLeaf.ambient_level[i]) / 255;
+      let vol = (Sound._ambientLevel.value * clientRuntimeState.worldmodel.leafTable.ambient[Sound._listenerLeaf * 4 + i]) / 255;
       if (vol < 8 / 255) {
         vol = 0;
       }
@@ -842,7 +840,7 @@ export default class Sound {
     let victim: Channel | null = null;
     let lowestVol = Infinity;
     for (const ch of Sound._channels) {
-      if (ch.entnum === CL.state.viewentity) {
+      if (ch.entnum === clientRuntimeState.viewentity) {
         continue;
       }
       if (ch.channel_vol < lowestVol) {

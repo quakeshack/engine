@@ -6,7 +6,7 @@ export const productName = 'QuakeShack';
 /**
  * Version string.
  */
-export const productVersion = '1.2.2';
+export const productVersion = '1.3.0';
 
 /**
  * Default game directory.
@@ -117,20 +117,6 @@ export enum hit {
   laser_cannon = 8388608,
   wetsuit = 33554432,
   empathy_shields = 67108864,
-}
-
-/**
- * Bit shifts used by legacy contents flags.
- */
-export enum contentShift {
-  contents = 0,
-  damage = 1,
-  bonus = 2,
-  powerup = 3,
-  user1 = 4,
-  user2 = 5,
-  user3 = 6,
-  user4 = 7,
 }
 
 /**

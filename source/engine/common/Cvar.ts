@@ -1,4 +1,5 @@
-import { eventBus, getCommonRegistry, registry } from '../registry.ts';
+import { eventBus } from './EventBus.ts';
+import Con from './Console.ts';
 import Cmd from './Cmd.ts';
 import Q from '../../shared/Q.ts';
 import { cvarFlags } from '../../shared/Defs.ts';
@@ -6,17 +7,25 @@ import { cvarFlags } from '../../shared/Defs.ts';
 type CvarValue = number | string | boolean;
 type CvarFilter = (variable: Cvar) => boolean;
 
-let { Con, SV } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con, SV } = getCommonRegistry());
-});
+/** What a realm tells the variables about the server it talks to, which is what the cheat rule needs. */
+export interface CvarServerState {
+  /** Whether a server is running that this realm is part of or connected to. */
+  isServerActive(): boolean;
+  /** The value of `sv_cheats` as the server this realm is connected to reports it, `undefined` when this realm knows no other than its own. */
+  reportedCheats(): string | undefined;
+}
 
 /**
  * Console Variable.
  */
 export default class Cvar {
   static _vars: Record<string, Cvar> = {};
+
+  /**
+   * Tells the cheat rule about the server this realm talks to. Installed by the composition root of the
+   * realm: a client reads its server controller, a server reads itself. Without it nothing is treated as a cheat.
+   */
+  static serverState: CvarServerState | null = null;
 
   static FLAG = cvarFlags;
 
@@ -55,6 +64,8 @@ export default class Cvar {
     console.assert(!Cvar._vars[name], 'Cvar name must not be used already', name);
 
     Cvar._vars[name] = this;
+
+    eventBus.publish('cvar.registered', name);
   }
 
   get archive(): boolean {
@@ -188,22 +199,48 @@ export default class Cvar {
       return true;
     }
 
-    if (variable.flags & Cvar.FLAG.READONLY) {
-      Con.PrintWarning(`"${variable.name}" is read-only\n`);
-      return true;
-    }
+    switch (Cvar.GetChangeBlock(variable)) {
+      case 'readonly':
+        Con.PrintWarning(`"${variable.name}" is read-only\n`);
+        return true;
 
-    const clientSvCheats = registry.CL?.cls.serverInfo?.sv_cheats;
+      case 'cheat':
+        Con.Print('Cheats are not enabled on this server.\n');
+        return true;
 
-    if ((variable.flags & Cvar.FLAG.CHEAT) && SV.server.active && clientSvCheats !== '1') {
-      Con.Print('Cheats are not enabled on this server.\n');
-      return true;
+      default:
+        break;
     }
 
     // TODO: check if there’s a min/max value and clamp accordingly
 
     variable.set(value);
     return true;
+  }
+
+  /**
+   * Tells why a variable may not be changed right now.
+   * @returns `readonly` for a read-only variable, `cheat` for a cheat variable while a server without cheats runs, `null` when it may be changed.
+   */
+  static GetChangeBlock(variable: Cvar): 'readonly' | 'cheat' | null {
+    if (variable.flags & Cvar.FLAG.READONLY) {
+      return 'readonly';
+    }
+
+    if (!(variable.flags & Cvar.FLAG.CHEAT)) {
+      return null;
+    }
+
+    const serverState = Cvar.serverState;
+
+    if (serverState === null || !serverState.isServerActive()) {
+      return null;
+    }
+
+    // A client knows the cheats of the server it is connected to, a server knows its own.
+    const cheats = serverState.reportedCheats() ?? Cvar.FindVar('sv_cheats')?.string;
+
+    return cheats !== '1' ? 'cheat' : null;
   }
 
   static WriteVariables(): string {
@@ -221,18 +258,18 @@ export default class Cvar {
     }
   }
 
-  static Set_f(name?: string, value?: string): void {
+  static Set_f(this: void, name?: string, value?: string): void {
     if (name === undefined) {
       Con.Print('Usage: set <name> <value>\n');
       return;
     }
 
-    if (!Cvar.Command_f.call(this, name, value)) {
+    if (!Cvar.Command_f(name, value)) {
       Con.PrintWarning(`Unknown variable "${name}"\n`);
     }
   }
 
-  static Seta_f(name?: string, value?: string): void {
+  static Seta_f(this: void, name?: string, value?: string): void {
     if (name === undefined) {
       Con.Print('Usage: seta <name> <value>\n');
       return;
@@ -250,12 +287,12 @@ export default class Cvar {
       Con.DPrint(`"${name}" flagged as archive variable\n`);
     }
 
-    if (!Cvar.Command_f.call(this, name, value)) {
+    if (!Cvar.Command_f(name, value)) {
       Con.PrintWarning(`Unknown variable "${name}"\n`);
     }
   }
 
-  static Toggle_f(name?: string): void {
+  static Toggle_f(this: void, name?: string): void {
     if (name === undefined) {
       Con.Print('Usage: toggle <name>\n');
       return;
@@ -277,7 +314,7 @@ export default class Cvar {
     Con.Print(`"${name}" toggled to "${variable.string}"\n`);
   }
 
-  static Cvarlist_f(start?: string): void {
+  static Cvarlist_f(this: void, start?: string): void {
     const names = Cvar.GetVariableNames().sort();
 
     for (const name of names) {

@@ -1,10 +1,11 @@
 import Vector from '../../../../shared/Vector.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
 import { Face } from '../BaseModel.ts';
-import { BrushModel, Node } from '../BSP.ts';
-import { MaterialFlags } from '../../../client/renderer/Materials.ts';
+import type { BrushModel } from '../BSP.ts';
+import { LeafTable, NodeTable } from '../BspTree.ts';
+import { ClipTree, Hull } from '../../collision/Hull.ts';
+import { MaterialFlags } from '../../../client/renderer/models/Materials.ts';
 import { BSP29Loader } from './BSP29Loader.ts';
-import { content } from '../../../../shared/Defs.ts';
 
 /**
  * Loader for BSP2 format (.bsp).
@@ -138,53 +139,27 @@ export class BSP2Loader extends BSP29Loader {
     }
 
     const count = filelen / 44;
-    loadmodel.nodes.length = count;
+    const nodes = new NodeTable(count);
+    loadmodel.nodeTable = nodes;
 
     for (let i = 0; i < count; i++) {
-      loadmodel.nodes[i] = Object.assign(new Node(loadmodel), {
-        num: i,
-        planenum: view.getUint32(fileofs, true),
-        children: [view.getInt32(fileofs + 4, true), view.getInt32(fileofs + 8, true)],
-        mins: new Vector(view.getFloat32(fileofs + 12, true), view.getFloat32(fileofs + 16, true), view.getFloat32(fileofs + 20, true)),
-        maxs: new Vector(view.getFloat32(fileofs + 24, true), view.getFloat32(fileofs + 28, true), view.getFloat32(fileofs + 32, true)),
-        firstface: view.getUint32(fileofs + 36, true),
-        numfaces: view.getUint32(fileofs + 40, true),
-      });
-      loadmodel.nodes[i].baseMins = loadmodel.nodes[i].mins!.copy();
-      loadmodel.nodes[i].baseMaxs = loadmodel.nodes[i].maxs!.copy();
+      nodes.planeNums[i] = view.getUint32(fileofs, true);
+      nodes.children[i * 2] = view.getInt32(fileofs + 4, true);
+      nodes.children[i * 2 + 1] = view.getInt32(fileofs + 8, true);
+
+      for (let k = 0; k < 6; k++) {
+        nodes.bounds[i * 6 + k] = view.getFloat32(fileofs + 12 + k * 4, true);
+      }
+
+      nodes.firstFaces[i] = view.getUint32(fileofs + 36, true);
+      nodes.numFaces[i] = view.getUint32(fileofs + 40, true);
       fileofs += 44;
     }
 
-    for (let i = 0; i < count; i++) {
-      const node = loadmodel.nodes[i];
-      node.plane = loadmodel.planes[node.planenum];
-      const child0Idx = node.children[0] as number;
-      const child1Idx = node.children[1] as number;
-      node.children[0] = child0Idx >= 0 ? loadmodel.nodes[child0Idx] : loadmodel.leafs[-1 - child0Idx];
-      node.children[1] = child1Idx >= 0 ? loadmodel.nodes[child1Idx] : loadmodel.leafs[-1 - child1Idx];
-    }
-
-    /**
-     * Rebuild parent links after BSP2 child indices are resolved.
-     */
-    function setParent(node: Node, parent: Node | null): void {
-      node.parent = parent;
-
-      if (node.contents < content.CONTENT_NONE || !node.children[0] || !node.children[1]) {
-        return;
-      }
-
-      setParent(node.children[0] as Node, node);
-      setParent(node.children[1] as Node, node);
-    }
-
-    setParent(loadmodel.nodes[0], null);
+    this._linkTree(loadmodel);
     loadmodel.bspxoffset = Math.max(loadmodel.bspxoffset, fileofs);
   }
 
-  /**
-   * Load BSP leaf nodes from the BSP2 leafs lump.
-   */
   protected override _loadLeafs(loadmodel: BrushModel, buf: ArrayBuffer): void {
     const view = new DataView(buf);
     const lump = BSP2Loader.#lump;
@@ -196,27 +171,25 @@ export class BSP2Loader extends BSP29Loader {
     }
 
     const count = filelen / 44;
-    loadmodel.leafs.length = count;
+    const leafs = new LeafTable(count);
+    loadmodel.leafTable = leafs;
 
     for (let i = 0; i < count; i++) {
-      loadmodel.leafs[i] = Object.assign(new Node(loadmodel), {
-        num: i,
-        contents: view.getInt32(fileofs, true),
-        visofs: view.getInt32(fileofs + 4, true),
-        cluster: i > 0 ? i - 1 : -1,
-        mins: new Vector(view.getFloat32(fileofs + 8, true), view.getFloat32(fileofs + 12, true), view.getFloat32(fileofs + 16, true)),
-        maxs: new Vector(view.getFloat32(fileofs + 20, true), view.getFloat32(fileofs + 24, true), view.getFloat32(fileofs + 28, true)),
-        firstmarksurface: view.getUint32(fileofs + 32, true),
-        nummarksurfaces: view.getUint32(fileofs + 36, true),
-        ambient_level: [
-          view.getUint8(fileofs + 40),
-          view.getUint8(fileofs + 41),
-          view.getUint8(fileofs + 42),
-          view.getUint8(fileofs + 43),
-        ],
-      });
-      loadmodel.leafs[i].baseMins = loadmodel.leafs[i].mins!.copy();
-      loadmodel.leafs[i].baseMaxs = loadmodel.leafs[i].maxs!.copy();
+      leafs.contents[i] = view.getInt32(fileofs, true);
+      leafs.visofs[i] = view.getInt32(fileofs + 4, true);
+      leafs.clusters[i] = i > 0 ? i - 1 : -1;
+
+      for (let k = 0; k < 6; k++) {
+        leafs.bounds[i * 6 + k] = view.getFloat32(fileofs + 8 + k * 4, true);
+      }
+
+      leafs.firstMarkSurfaces[i] = view.getUint32(fileofs + 32, true);
+      leafs.numMarkSurfaces[i] = view.getUint32(fileofs + 36, true);
+
+      for (let k = 0; k < 4; k++) {
+        leafs.ambient[i * 4 + k] = view.getUint8(fileofs + 40 + k);
+      }
+
       fileofs += 44;
     }
 
@@ -261,30 +234,14 @@ export class BSP2Loader extends BSP29Loader {
     }
 
     const count = filelen / 12;
-    loadmodel.clipnodes.length = count;
+    const tree = new ClipTree(count);
+    loadmodel.clipTree = tree;
     loadmodel.hulls.length = 3;
-    loadmodel.hulls[1] = {
-      clipnodes: loadmodel.clipnodes,
-      firstclipnode: 0,
-      lastclipnode: count - 1,
-      planes: loadmodel.planes,
-      clip_mins: new Vector(-16.0, -16.0, -24.0),
-      clip_maxs: new Vector(16.0, 16.0, 32.0),
-    };
-    loadmodel.hulls[2] = {
-      clipnodes: loadmodel.clipnodes,
-      firstclipnode: 0,
-      lastclipnode: count - 1,
-      planes: loadmodel.planes,
-      clip_mins: new Vector(-32.0, -32.0, -24.0),
-      clip_maxs: new Vector(32.0, 32.0, 64.0),
-    };
+    loadmodel.hulls[1] = new Hull(loadmodel.planeTable, tree, new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 32.0), 0, count - 1);
+    loadmodel.hulls[2] = new Hull(loadmodel.planeTable, tree, new Vector(-32.0, -32.0, -24.0), new Vector(32.0, 32.0, 64.0), 0, count - 1);
 
     for (let i = 0; i < count; i++) {
-      loadmodel.clipnodes[i] = {
-        planenum: view.getInt32(fileofs, true),
-        children: [view.getInt32(fileofs + 4, true), view.getInt32(fileofs + 8, true)],
-      };
+      tree.set(i, view.getInt32(fileofs, true), view.getInt32(fileofs + 4, true), view.getInt32(fileofs + 8, true));
       fileofs += 12;
     }
 

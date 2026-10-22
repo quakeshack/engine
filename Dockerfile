@@ -38,6 +38,10 @@ COPY data/id1/pak0.pak ./data/id1/
 COPY data/id1/maps/test_*.bsp ./data/id1/maps/
 COPY data/id1/maps/test_*.nav ./data/id1/maps/
 COPY data/bsp38-tests ./data/bsp38-tests
+# test/common/event-map-docs.test.ts compares the typed event table with it
+COPY docs/events.md ./docs/events.md
+# test/eslint/control-statement-blocks.test.ts runs the local lint rule
+COPY eslint.rules.mjs ./eslint.rules.mjs
 
 # Vite/esbuild strip types without checking them, so tsc is the only thing that catches contract drift
 RUN npm run typecheck

@@ -2,9 +2,14 @@ import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.ts';
 import Q from '../../shared/Q.ts';
 import { SzBuffer } from '../network/MSG.ts';
-import Cmd, { type ConsoleCommand } from '../common/Cmd.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { HostError } from '../common/Errors.ts';
+import Con from '../common/Console.ts';
+import { clientRuntimeState, clientStaticState } from './ClientState.ts';
+import clientCvars from './ClientCvars.ts';
+import Host from '../common/Host.ts';
+import PitchDrift from './view/PitchDrift.ts';
+import { net } from './PageServices.ts';
 
 interface KButtonState {
   down: [number, number];
@@ -56,12 +61,6 @@ const kbuttonByName = Object.freeze({
 
 const KBUTTON_COUNT = Object.keys(kbuttonByName).length;
 
-let { CL, Con, Host, NET, V } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, Host, NET, V } = getClientRegistry());
-});
-
 /**
  * Resolves a console command suffix to a legacy button index.
  * @returns Button index or null when the name is unknown.
@@ -75,87 +74,93 @@ export const kbuttons: KButtonState[] = new Array(KBUTTON_COUNT);
 export default class ClientInput {
   static impulse = 0;
 
-  private static KeyDown_f(this: ConsoleCommand, cmd?: string): void {
-    const command = this.command;
-    if (command === null) {
-      return;
+  private static KeyDown_f = class KeyDownConsoleCommand extends ConsoleCommand {
+    override run(cmd?: string): void {
+      const command = this.command;
+      if (command === null) {
+        return;
+      }
+
+      const buttonIndex = getButtonIndex(command.substring(1));
+      if (buttonIndex === null) {
+        return;
+      }
+
+      const button = kbuttons[buttonIndex];
+
+      const key = cmd !== undefined ? Q.atoi(cmd) : -1;
+
+      if (key === button.down[0] || key === button.down[1]) {
+        return;
+      }
+
+      if (button.down[0] === 0) {
+        button.down[0] = key;
+      } else if (button.down[1] === 0) {
+        button.down[1] = key;
+      } else {
+        Con.DPrint('Three keys down for a button!\n');
+        return;
+      }
+
+      if ((button.state & 1) === 0) {
+        button.state |= 3;
+      }
     }
+  };
 
-    const buttonIndex = getButtonIndex(command.substring(1));
-    if (buttonIndex === null) {
-      return;
+  private static KeyUp_f = class KeyUpConsoleCommand extends ConsoleCommand {
+    override run(cmd?: string): void {
+      const command = this.command;
+      if (command === null) {
+        return;
+      }
+
+      const buttonIndex = getButtonIndex(command.substring(1));
+      if (buttonIndex === null) {
+        return;
+      }
+
+      const button = kbuttons[buttonIndex];
+
+      if (cmd === undefined) {
+        button.down[0] = 0;
+        button.down[1] = 0;
+        button.state = 4;
+        return;
+      }
+
+      const key = Q.atoi(cmd);
+
+      if (button.down[0] === key) {
+        button.down[0] = 0;
+      } else if (button.down[1] === key) {
+        button.down[1] = 0;
+      } else {
+        return;
+      }
+
+      if (button.down[0] !== 0 || button.down[1] !== 0) {
+        return;
+      }
+
+      if ((button.state & 1) !== 0) {
+        button.state = (button.state - 1) | 4;
+      }
     }
+  };
 
-    const button = kbuttons[buttonIndex];
+  private static MLookUp_f = class MLookUpConsoleCommand extends ClientInput.KeyUp_f {
+    override run(cmd?: string): void {
+      super.run(cmd);
 
-    const key = cmd !== undefined ? Q.atoi(cmd) : -1;
-
-    if (key === button.down[0] || key === button.down[1]) {
-      return;
+      if (((kbuttons[kbutton.mlook].state & 1) === 0) && (clientCvars.lookspring.value !== 0)) {
+        PitchDrift.Start();
+      }
     }
+  };
 
-    if (button.down[0] === 0) {
-      button.down[0] = key;
-    } else if (button.down[1] === 0) {
-      button.down[1] = key;
-    } else {
-      Con.DPrint('Three keys down for a button!\n');
-      return;
-    }
-
-    if ((button.state & 1) === 0) {
-      button.state |= 3;
-    }
-  }
-
-  private static KeyUp_f(this: ConsoleCommand, cmd?: string): void {
-    const command = this.command;
-    if (command === null) {
-      return;
-    }
-
-    const buttonIndex = getButtonIndex(command.substring(1));
-    if (buttonIndex === null) {
-      return;
-    }
-
-    const button = kbuttons[buttonIndex];
-
-    if (cmd === undefined) {
-      button.down[0] = 0;
-      button.down[1] = 0;
-      button.state = 4;
-      return;
-    }
-
-    const key = Q.atoi(cmd);
-
-    if (button.down[0] === key) {
-      button.down[0] = 0;
-    } else if (button.down[1] === key) {
-      button.down[1] = 0;
-    } else {
-      return;
-    }
-
-    if (button.down[0] !== 0 || button.down[1] !== 0) {
-      return;
-    }
-
-    if ((button.state & 1) !== 0) {
-      button.state = (button.state - 1) | 4;
-    }
-  }
-
-  private static MLookUp_f(this: ConsoleCommand, cmd?: string): void {
-    ClientInput.KeyUp_f.call(this, cmd);
-
-    if (((kbuttons[kbutton.mlook].state & 1) === 0) && (CL.lookspring.value !== 0)) {
-      V.StartPitchDrift();
-    }
-  }
-
-  private static Impulse_f(code?: string): void {
+  private static Impulse_f(this: void, code?: string): void {
     if (code === undefined) {
       Con.Print('Usage: impulse <code>\n');
       return;
@@ -183,25 +188,25 @@ export default class ClientInput {
   private static AdjustAngles(): void {
     let speed = Host.frametime;
     if ((kbuttons[kbutton.speed].state & 1) !== 0) {
-      speed *= CL.anglespeedkey.value;
+      speed *= clientCvars.anglespeedkey.value;
     }
 
-    const angles = CL.state.viewangles;
+    const angles = clientRuntimeState.viewangles;
 
     if ((kbuttons[kbutton.strafe].state & 1) === 0) {
-      angles[1] += speed * CL.yawspeed.value * (ClientInput.KeyState(kbutton.left) - ClientInput.KeyState(kbutton.right));
+      angles[1] += speed * clientCvars.yawspeed.value * (ClientInput.KeyState(kbutton.left) - ClientInput.KeyState(kbutton.right));
       angles[1] = Vector.anglemod(angles[1]);
     }
     if ((kbuttons[kbutton.klook].state & 1) !== 0) {
-      V.StopPitchDrift();
-      angles[0] += speed * CL.pitchspeed.value * (ClientInput.KeyState(kbutton.back) - ClientInput.KeyState(kbutton.forward));
+      PitchDrift.Stop();
+      angles[0] += speed * clientCvars.pitchspeed.value * (ClientInput.KeyState(kbutton.back) - ClientInput.KeyState(kbutton.forward));
     }
 
     const up = ClientInput.KeyState(kbutton.lookup);
     const down = ClientInput.KeyState(kbutton.lookdown);
     if ((up !== 0.0) || (down !== 0.0)) {
-      angles[0] += speed * CL.pitchspeed.value * (down - up);
-      V.StopPitchDrift();
+      angles[0] += speed * clientCvars.pitchspeed.value * (down - up);
+      PitchDrift.Stop();
     }
 
     if (angles[0] > 80.0) {
@@ -218,89 +223,89 @@ export default class ClientInput {
   }
 
   static BaseMove(): void {
-    if (CL.cls.signon !== 4) {
+    if (clientStaticState.signon !== 4) {
       return;
     }
 
     ClientInput.AdjustAngles();
 
-    const cmd = CL.state.cmd;
+    const cmd = clientRuntimeState.cmd;
 
-    cmd.sidemove = CL.sidespeed.value * (ClientInput.KeyState(kbutton.moveright) - ClientInput.KeyState(kbutton.moveleft));
+    cmd.sidemove = clientCvars.sidespeed.value * (ClientInput.KeyState(kbutton.moveright) - ClientInput.KeyState(kbutton.moveleft));
     if ((kbuttons[kbutton.strafe].state & 1) !== 0) {
-      cmd.sidemove += CL.sidespeed.value * (ClientInput.KeyState(kbutton.right) - ClientInput.KeyState(kbutton.left));
+      cmd.sidemove += clientCvars.sidespeed.value * (ClientInput.KeyState(kbutton.right) - ClientInput.KeyState(kbutton.left));
     }
 
-    cmd.upmove = CL.upspeed.value * (ClientInput.KeyState(kbutton.moveup) - ClientInput.KeyState(kbutton.movedown));
+    cmd.upmove = clientCvars.upspeed.value * (ClientInput.KeyState(kbutton.moveup) - ClientInput.KeyState(kbutton.movedown));
 
     if ((kbuttons[kbutton.jump].state & 3) !== 0 && cmd.upmove < 20) {
       cmd.upmove = 20;
     }
 
     if ((kbuttons[kbutton.klook].state & 1) === 0) {
-      cmd.forwardmove = CL.forwardspeed.value * ClientInput.KeyState(kbutton.forward) - CL.backspeed.value * ClientInput.KeyState(kbutton.back);
+      cmd.forwardmove = clientCvars.forwardspeed.value * ClientInput.KeyState(kbutton.forward) - clientCvars.backspeed.value * ClientInput.KeyState(kbutton.back);
     } else {
       cmd.forwardmove = 0.0;
     }
 
     if ((kbuttons[kbutton.speed].state & 1) !== 0) {
-      cmd.forwardmove *= CL.movespeedkey.value;
-      cmd.sidemove *= CL.movespeedkey.value;
-      cmd.upmove *= CL.movespeedkey.value;
+      cmd.forwardmove *= clientCvars.movespeedkey.value;
+      cmd.sidemove *= clientCvars.movespeedkey.value;
+      cmd.upmove *= clientCvars.movespeedkey.value;
     }
 
     cmd.impulse = ClientInput.impulse;
-    cmd.angles.set(CL.state.viewangles);
-    cmd.msec = CL.state.time;
+    cmd.angles.set(clientRuntimeState.viewangles);
+    cmd.msec = clientRuntimeState.time;
 
     ClientInput.impulse = 0;
   }
 
   static SendMove(): void {
-    CL.state.cmd.buttons = 0;
+    clientRuntimeState.cmd.buttons = 0;
 
     if ((kbuttons[kbutton.attack].state & 3) !== 0) {
-      CL.state.cmd.buttons |= Protocol.button.attack;
+      clientRuntimeState.cmd.buttons |= Protocol.button.attack;
     }
     kbuttons[kbutton.attack].state &= 5;
 
     if ((kbuttons[kbutton.jump].state & 3) !== 0) {
-      CL.state.cmd.buttons |= Protocol.button.jump;
+      clientRuntimeState.cmd.buttons |= Protocol.button.jump;
     }
     kbuttons[kbutton.jump].state &= 5;
 
     if ((kbuttons[kbutton.use].state & 3) !== 0) {
-      CL.state.cmd.buttons |= Protocol.button.use;
+      clientRuntimeState.cmd.buttons |= Protocol.button.use;
     }
     kbuttons[kbutton.use].state &= 5;
 
     // --- prediction: always buffer the current command ---
     const msec = Math.min(255, Math.max(1, Math.round(Host.frametime * 1000.0)));
-    CL.state.cmd.msec = msec;
-    CL.state.moveSequence = (CL.state.moveSequence + 1) & 0xFF;
-    const slot = CL.state.cmdBuffer[CL.state.moveSequence & Protocol.CMD_BUFFER_MASK];
-    slot.cmd.set(CL.state.cmd);
+    clientRuntimeState.cmd.msec = msec;
+    clientRuntimeState.moveSequence = (clientRuntimeState.moveSequence + 1) & 0xFF;
+    const slot = clientRuntimeState.cmdBuffer[clientRuntimeState.moveSequence & Protocol.CMD_BUFFER_MASK];
+    slot.cmd.set(clientRuntimeState.cmd);
     slot.msec = msec;
 
     const buf = new SzBuffer(20);
     buf.writeByte(Protocol.clc.move);
     buf.writeByte(msec);
-    buf.writeAngleVector(CL.state.cmd.angles);
-    buf.writeShort(CL.state.cmd.forwardmove);
-    buf.writeShort(CL.state.cmd.sidemove);
-    buf.writeShort(CL.state.cmd.upmove);
-    buf.writeByte(CL.state.cmd.buttons);
-    buf.writeByte(CL.state.cmd.impulse);
-    buf.writeByte(CL.state.moveSequence);
+    buf.writeAngleVector(clientRuntimeState.cmd.angles);
+    buf.writeShort(clientRuntimeState.cmd.forwardmove);
+    buf.writeShort(clientRuntimeState.cmd.sidemove);
+    buf.writeShort(clientRuntimeState.cmd.upmove);
+    buf.writeByte(clientRuntimeState.cmd.buttons);
+    buf.writeByte(clientRuntimeState.cmd.impulse);
+    buf.writeByte(clientRuntimeState.moveSequence);
 
-    if (CL.cls.demoplayback) {
+    if (clientStaticState.demoplayback) {
       return;
     }
-    if (++CL.state.movemessages <= 2) {
+    if (++clientRuntimeState.movemessages <= 2) {
       return;
     }
-    CL.state.lastcmd.set(CL.state.cmd);
-    if (NET.SendUnreliableMessage(CL.cls.netcon, buf) === -1) {
+    clientRuntimeState.lastcmd.set(clientRuntimeState.cmd);
+    if (net.SendUnreliableMessage(clientStaticState.netcon, buf) === -1) {
       Con.DPrint('CL.SendMove: lost server connection\n');
       throw new HostError('lost server connection');
     }

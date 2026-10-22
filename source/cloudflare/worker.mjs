@@ -5,13 +5,14 @@
  */
 
 /**
- * @typedef {{ ASSETS: { fetch(request: Request): Promise<Response> } }} WorkerEnv
+ * @typedef {{ ASSETS: { fetch: (request: Request) => Promise<Response> } }} WorkerEnv
  */
 
 export default {
   /**
    * @param {Request} request Incoming worker request.
    * @param {WorkerEnv} env Worker bindings.
+   * @returns {Promise<Response>} The asset, with the cross-origin isolation headers and the cache control of its path.
    */
   async fetch(request, env) {
     // Serve static assets via the ASSETS binding

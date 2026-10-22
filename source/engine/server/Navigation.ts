@@ -1,25 +1,25 @@
 // import sampleBSpline from '../../shared/BSpline.ts';
 import * as Def from '../../shared/Defs.ts';
+import type { EventPath } from '../../shared/EngineEvents.ts';
 import { Octree, type OctreeNode } from '../../shared/Octree.ts';
 import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
 // import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { CorruptedResourceError, MissingResourceError } from '../common/Errors.ts';
-import { ServerEngineAPI } from '../common/GameAPIs.ts';
 import type { BrushModel } from '../common/Mod.ts';
 import { MIN_STEP_NORMAL, STEPSIZE } from '../common/Pmove.ts';
 import type { Face } from '../common/model/BaseModel.ts';
 import type PlatformWorker from '../common/PlatformWorker.ts';
 import WorkerManager from '../common/WorkerManager.ts';
-import { eventBus, getClientRegistry, getCommonRegistry, registry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import type { BaseEntity, ServerEdict } from './Edict.ts';
 import type { CollisionTrace } from './physics/ServerCollisionSupport.ts';
+import type Server from './Server.ts';
+import type { ConsoleOutput } from '../common/Services.ts';
 
 type VectorTuple = [number, number, number];
 type PlanePoint = [number, number];
-type WorkerVectorLike = Vector | VectorTuple;
-type WorkerPath = WorkerVectorLike[] | null;
 type NeighborLink = [id: number, cost: number, temporaryCostAdjustment: number];
 type SerializedWaypoint = [origin: VectorTuple, availableHeight: number, nearLedge: boolean, isClipping: boolean, isFloating: boolean];
 type SerializedWalkableSurface = [stability: number, normal: VectorTuple, faceIndex: number, waypoints: SerializedWaypoint[]];
@@ -81,14 +81,6 @@ interface ServerEntity extends BaseEntity {
 function vectorToTuple(vector: Vector): VectorTuple {
   return [vector[0], vector[1], vector[2]];
 }
-
-let { COM, Con, SV } = getCommonRegistry();
-let { CL, R } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con, SV } = getCommonRegistry());
-  ({ CL, R } = getClientRegistry());
-});
 
 class Waypoint {
   origin: Vector = new Vector();
@@ -361,6 +353,17 @@ const NAV_BLOCKED_LONG_LINK_COST = 1024.0;
 // Maximum downward search distance per traversal step — large enough to cover typical Quake ledge drops.
 const NAV_TRAVERSAL_DROP_LIMIT = 256.0;
 
+/** What a `Navigation` depends on. */
+export interface NavigationServices {
+  readonly con: ConsoleOutput;
+  readonly files: {
+    LoadFile(filename: string): Promise<ArrayBuffer | null>;
+    WriteFile(filename: string, data: ArrayLike<number>, len: number): Promise<boolean>;
+  };
+  /** The server whose world is navigated, `null` inside the worker that only searches paths. */
+  readonly sv: Server | null;
+}
+
 export class Navigation {
   static nav_debug_waypoints: Cvar | null = null;
   static nav_debug_graph: Cvar | null = null;
@@ -405,11 +408,18 @@ export class Navigation {
   relinkEdictLinks: Record<number, Node> = {};
   relinkSkiplist: Set<number> = new Set();
 
+  readonly con: ConsoleOutput;
+  readonly files: NavigationServices['files'];
+  readonly #sv: Server | null;
+
   /**
    * Creates a navigation graph builder/runtime for a worldmodel.
    */
-  constructor(worldmodel: BrushModel | null) {
+  constructor(worldmodel: BrushModel | null, services: NavigationServices) {
     this.worldmodel = worldmodel;
+    this.con = services.con;
+    this.files = services.files;
+    this.#sv = services.sv;
     this.graph = {
       nodes: [],
       octree: null,
@@ -420,8 +430,19 @@ export class Navigation {
     };
   }
 
-  static Init(): void {
-    if (registry.isDedicatedServer) {
+  /**
+   * The server whose world is navigated. Only the navigation that serves a server has one, the
+   * worker that searches paths never does and must not ask for it.
+   * @returns The server this navigation serves.
+   */
+  get sv(): Server {
+    console.assert(this.#sv !== null, 'this navigation does not belong to a server');
+
+    return this.#sv!;
+  }
+
+  static Init(sv: Server, dedicated: boolean): void {
+    if (dedicated) {
       this.nav_build_process = new Cvar('nav_build_process', '0', Cvar.FLAG.NONE, 'if set to 1, it will force build the nav mesh and quit');
     }
 
@@ -432,17 +453,9 @@ export class Navigation {
 
     // worker thread -> main thread: mesh probably out of date
     eventBus.subscribe('nav.build', (): void => {
-      if (SV.server.navigation) {
-        SV.server.navigation.build();
+      if (sv.server.navigation) {
+        sv.server.navigation.build();
       }
-    });
-
-    eventBus.subscribe('nav.debug.emit-dot.temporarily', (position: WorkerVectorLike, color: number, ttl: number): void => {
-      this.#emitDotFrontend(new Vector(...position), color, ttl);
-    });
-
-    eventBus.subscribe('nav.debug.emit-dot.permanently', (position: WorkerVectorLike, color: number): void => {
-      this.#emitDotFrontend(new Vector(...position), color, Infinity);
     });
   }
 
@@ -456,7 +469,7 @@ export class Navigation {
   #shutdownWorker(): void {
     if (this.#worker) {
       this.#worker.shutdown().catch((err) => {
-        Con.PrintError(`Failed to shutdown the navigation worker: ${err}\n`);
+        this.con.PrintError(`Failed to shutdown the navigation worker: ${err}\n`);
       });
 
       this.#worker = null;
@@ -464,7 +477,7 @@ export class Navigation {
   }
 
   #subscribePathResponse(): void {
-    this.#pathResponseEventListener = eventBus.subscribe('nav.path.response', (id: string, path: WorkerPath): void => {
+    this.#pathResponseEventListener = eventBus.subscribe('nav.path.response', (id: string, path: EventPath): void => {
       const vecpath = path ? path.map((point) => new Vector(...point)) : null;
 
       if (vecpath && Navigation.nav_debug_path?.value) {
@@ -493,8 +506,12 @@ export class Navigation {
     });
   }
 
+  /**
+   * Schedules the debug dots to be emitted again. The navigation of the worker thread has no server, no debug variables
+   * (`Init` runs only on the server's thread) and nobody to show dots to, so it does nothing there.
+   */
   #scheduleDebugRefresh(): void {
-    if (!R) {
+    if (this.#sv === null) {
       return;
     }
 
@@ -505,19 +522,19 @@ export class Navigation {
   }
 
   init(): void {
-    Con.DPrint('Navigation: initializing navigation graph...\n');
+    this.con.DPrint('Navigation: initializing navigation graph...\n');
 
     if (Navigation.nav_build_process?.value) {
       this.build();
     }
 
-    console.assert(SV.server.mapname, 'SV.server.mapname is required for navigation initialization');
-    console.assert(SV.server.worldmodel, 'SV.server.worldmodel is required for navigation initialization');
+    console.assert(this.sv.server.mapname, 'SV.server.mapname is required for navigation initialization');
+    console.assert(this.sv.server.worldmodel, 'SV.server.worldmodel is required for navigation initialization');
 
     this.#initWorker();
     this.#subscribePathResponse();
     this.#subscribeDebugCvars();
-    eventBus.publish('nav.load', SV.server.mapname, SV.server.worldmodel!.checksum);
+    eventBus.publish('nav.load', this.sv.server.mapname!, this.sv.server.worldmodel!.checksum);
   }
 
   shutdown(): void {
@@ -542,7 +559,7 @@ export class Navigation {
       this.#debugWaypointsEventListener = null;
     }
 
-    Con.DPrint('Navigation: shutdown complete.\n');
+    this.con.DPrint('Navigation: shutdown complete.\n');
   }
 
   async load(mapname: string, expectedChecksum: number | null = null): Promise<void> {
@@ -555,7 +572,7 @@ export class Navigation {
     this.relinkSkiplist.clear();
 
     // Try to load binary file first (ArrayBuffer). Fallback to text JSON for older files.
-    const buf = await COM.LoadFile(filename);
+    const buf = await this.files.LoadFile(filename);
 
     if (!buf) {
       throw new MissingResourceError(filename);
@@ -678,9 +695,9 @@ export class Navigation {
 
   async save(): Promise<void> {
     console.assert(this.worldmodel !== null, 'Navigation: worldmodel is required');
-    console.assert(SV.server.mapname, 'SV.server.mapname is required');
+    console.assert(this.sv.server.mapname, 'SV.server.mapname is required');
 
-    const filename = `maps/${SV.server.mapname}.nav`;
+    const filename = `maps/${this.sv.server.mapname}.nav`;
 
     const bytes: number[] = [];
     const tmp = new ArrayBuffer(8);
@@ -711,7 +728,7 @@ export class Navigation {
     pushUint32(NAV_FILE_VERSION);
 
     // world name
-    const nameBytes = new TextEncoder().encode(SV.server.mapname!);
+    const nameBytes = new TextEncoder().encode(this.sv.server.mapname!);
     pushUint16(nameBytes.length);
     pushBytes(nameBytes);
 
@@ -748,10 +765,10 @@ export class Navigation {
     }
 
     const out = new Uint8Array(bytes);
-    await COM.WriteFile(filename, out, out.length);
+    await this.files.WriteFile(filename, out, out.length);
 
     // Keep the worker in sync after every successful rebuild, including listen-server sessions.
-    eventBus.publish('nav.load', SV.server.mapname, this.worldmodel!.checksum);
+    eventBus.publish('nav.load', this.sv.server.mapname!, this.worldmodel!.checksum);
   }
 
   #newWalkerStandOffset(): Vector {
@@ -763,7 +780,7 @@ export class Navigation {
    * @returns True when the walker box does not start in solid.
    */
   #isValidStandOrigin(position: Vector): boolean {
-    const trace = SV.collision.traceStaticWorld(
+    const trace = this.sv.collision.traceStaticWorld(
       position.copy(),
       this.walkerMins,
       this.walkerMaxs,
@@ -778,7 +795,7 @@ export class Navigation {
    * @returns The resulting static-world collision trace.
    */
   #traceWalkerStatic(startpos: Vector, endpos: Vector): CollisionTrace {
-    return SV.collision.traceStaticWorld(
+    return this.sv.collision.traceStaticWorld(
       startpos.copy(),
       this.walkerMins,
       this.walkerMaxs,
@@ -795,10 +812,10 @@ export class Navigation {
     const maxs = position.copy().add(this.walkerMaxs);
 
     const allCornersSolid =
-      SV.collision.pointContents(new Vector(mins[0], mins[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID
-      && SV.collision.pointContents(new Vector(mins[0], maxs[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID
-      && SV.collision.pointContents(new Vector(maxs[0], mins[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID
-      && SV.collision.pointContents(new Vector(maxs[0], maxs[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID;
+      this.sv.collision.pointContents(new Vector(mins[0], mins[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID
+      && this.sv.collision.pointContents(new Vector(mins[0], maxs[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID
+      && this.sv.collision.pointContents(new Vector(maxs[0], mins[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID
+      && this.sv.collision.pointContents(new Vector(maxs[0], maxs[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID;
 
     if (allCornersSolid) {
       return true;
@@ -807,7 +824,7 @@ export class Navigation {
     const start = position.copy().add(new Vector(0.0, 0.0, this.walkerMins[2] + 1.0));
     const stop = start.copy().add(new Vector(0.0, 0.0, -2.0 * STEPSIZE));
 
-    let trace = SV.collision.traceStaticWorld(start, Vector.origin, Vector.origin, stop);
+    let trace = this.sv.collision.traceStaticWorld(start, Vector.origin, Vector.origin, stop);
 
     if (trace.fraction === 1.0) {
       return false;
@@ -821,7 +838,7 @@ export class Navigation {
         start[0] = stop[0] = x !== 0 ? maxs[0] : mins[0];
         start[1] = stop[1] = y !== 0 ? maxs[1] : mins[1];
 
-        trace = SV.collision.traceStaticWorld(start, Vector.origin, Vector.origin, stop);
+        trace = this.sv.collision.traceStaticWorld(start, Vector.origin, Vector.origin, stop);
 
         if (trace.fraction !== 1.0 && trace.endpos[2] > bottom) {
           bottom = trace.endpos[2];
@@ -940,7 +957,7 @@ export class Navigation {
       // relying on linearly interpolated z which can pass through solid geometry or miss drops.
       const searchStart = new Vector(sampleXY[0], sampleXY[1], previousOrigin[2] + STEPSIZE);
       const searchEnd = new Vector(sampleXY[0], sampleXY[1], previousOrigin[2] - NAV_TRAVERSAL_DROP_LIMIT);
-      const groundTrace = SV.collision.traceStaticWorld(searchStart, this.walkerMins, this.walkerMaxs, searchEnd);
+      const groundTrace = this.sv.collision.traceStaticWorld(searchStart, this.walkerMins, this.walkerMaxs, searchEnd);
 
       if (groundTrace.fraction === 1.0) {
         return { ok: false, reason: 'step-no-floor' };
@@ -1152,7 +1169,7 @@ export class Navigation {
           const searchStartZ = worldPoint[2] + (-this.walkerMins[2]) + this.requiredRadius * slopeTilt + 2;
           const searchStart = new Vector(worldPoint[0], worldPoint[1], searchStartZ);
           const searchEnd = new Vector(worldPoint[0], worldPoint[1], worldPoint[2] - STEPSIZE);
-          const groundTrace = SV.collision.traceStaticWorld(searchStart, this.walkerMins, this.walkerMaxs, searchEnd);
+          const groundTrace = this.sv.collision.traceStaticWorld(searchStart, this.walkerMins, this.walkerMaxs, searchEnd);
 
           if (groundTrace.fraction >= 1.0 || groundTrace.startsolid) {
             continue;
@@ -1238,7 +1255,7 @@ export class Navigation {
       this.geometry.walkableSurfaces.push(surface);
     }
 
-    Con.DPrint(
+    this.con.DPrint(
       `Navigation: walkable surfaces=${walkableSurfaces.length}, sampled waypoints=${sampledWaypointCount}, retained waypoints=${retainedWaypointCount}, retained surfaces=${this.geometry.walkableSurfaces.length}, invalidFit=${pruneStats.invalidFit}, lowHeight=${pruneStats.lowHeight}, unsupported=${pruneStats.unsupported}\n`,
     );
   }
@@ -1466,10 +1483,10 @@ export class Navigation {
       }
     }
 
-    Con.DPrint(
+    this.con.DPrint(
       `Navigation: merged ${allWaypoints.length} waypoints into ${waypointGroups.length} waypoint groups\n`,
     );
-    Con.PrintWarning(
+    this.con.PrintWarning(
       `Navigation: link stats considered=${linkStats.considered} linked=${linkStats.linked} `
       + `startFit=${linkStats.startFit} endFit=${linkStats.endFit} `
       + `startSupport=${linkStats.startSupport} endSupport=${linkStats.endSupport} `
@@ -1520,8 +1537,8 @@ export class Navigation {
   }
 
   #relinkAll(): void {
-    for (let i = 0; i < SV.server.num_edicts; i++) {
-      const edict = SV.server.edicts[i];
+    for (let i = 0; i < this.sv.server.num_edicts; i++) {
+      const edict = this.sv.server.edicts[i];
 
       if (edict.isFree()) {
         continue;
@@ -1539,7 +1556,7 @@ export class Navigation {
 
   #buildTeleporterLinks(): void {
     // looking for teleporters
-    for (const teleporterEdict of ServerEngineAPI.FindAllByFieldAndValue('classname', 'trigger_teleport')) {
+    for (const teleporterEdict of this.sv.engineAPI.FindAllByFieldAndValue('classname', 'trigger_teleport')) {
       const source = teleporterEdict.entity as ServerEntity | null;
 
       if (!source) {
@@ -1550,22 +1567,22 @@ export class Navigation {
         continue;
       }
 
-      const destinationEdict = Array.from(ServerEngineAPI.FindAllByFieldAndValue('targetname', source.target))[0];
+      const destinationEdict = Array.from(this.sv.engineAPI.FindAllByFieldAndValue('targetname', source.target))[0];
       const destination = destinationEdict?.entity as ServerEntity | null;
 
       if (!destination) {
-        Con.PrintWarning(`Navigation: teleporter without a valid target: ${source.classname}\n`);
+        this.con.PrintWarning(`Navigation: teleporter without a valid target: ${source.classname}\n`);
         continue;
       }
 
       const sp = source.centerPoint.copy(), dp = destination.centerPoint.copy();
 
-      Con.DPrint(`Navigation: found teleporter [${sp}] --> [${dp}]\n`);
+      this.con.DPrint(`Navigation: found teleporter [${sp}] --> [${dp}]\n`);
 
       const destNode = this.#findNearestNode(dp, 96); // Just grab one in proximity of the destination
 
       if (!destNode) {
-        Con.PrintWarning('Navigation: teleporter destination has no nearby navnode\n');
+        this.con.PrintWarning('Navigation: teleporter destination has no nearby navnode\n');
         continue;
       }
 
@@ -1575,17 +1592,17 @@ export class Navigation {
       const sourceNode = new Node(this.graph.nodes.length, sp);
       sourceNode.availableHeight = source.maxs[2] - source.mins[2];
       this.graph.nodes.push(sourceNode);
-      Con.DPrint(`Navigation: adding teleporter source node ${sourceNode.id}\n`);
+      this.con.DPrint(`Navigation: adding teleporter source node ${sourceNode.id}\n`);
 
       // link the new node to its neighbors
       for (const sourceNodeNeighbor of this.#findNearestNodes(sp, 64)) {
-        Con.DPrint(`Navigation: linking teleporter nodes ${sourceNodeNeighbor.id} --> ${sourceNode.id}\n`);
+        this.con.DPrint(`Navigation: linking teleporter nodes ${sourceNodeNeighbor.id} --> ${sourceNode.id}\n`);
         sourceNodeNeighbor.neighbors.push([sourceNode.id, cost, 0]); // one-way link
         // this.graph.edges.push([ sourceNodeNeighbor.id, sourceNode.id, cost ]);
       }
 
       // link the new node to the destination node
-      Con.DPrint(`Navigation: linking teleporter nodes ${sourceNode.id} --> ${destNode.id}\n`);
+      this.con.DPrint(`Navigation: linking teleporter nodes ${sourceNode.id} --> ${destNode.id}\n`);
       sourceNode.neighbors.push([destNode.id, cost, 0]); // one-way link
       // this.graph.edges.push([ sourceNode.id, destNode.id, cost ]);
     }
@@ -1593,7 +1610,7 @@ export class Navigation {
 
   #buildDoorLinks(): void {
     // looking for simple doors
-    for (const doorEdict of ServerEngineAPI.FindAllByFieldAndValue('classname', 'func_door')) {
+    for (const doorEdict of this.sv.engineAPI.FindAllByFieldAndValue('classname', 'func_door')) {
       const door = doorEdict.entity as ServerEntity | null;
 
       if (!door) {
@@ -1620,12 +1637,24 @@ export class Navigation {
 
     for (const n of this.graph.nodes) {
       const o = n.origin;
-      if (o[0] < minX) { minX = o[0]; }
-      if (o[1] < minY) { minY = o[1]; }
-      if (o[2] < minZ) { minZ = o[2]; }
-      if (o[0] > maxX) { maxX = o[0]; }
-      if (o[1] > maxY) { maxY = o[1]; }
-      if (o[2] > maxZ) { maxZ = o[2]; }
+      if (o[0] < minX) {
+        minX = o[0];
+      }
+      if (o[1] < minY) {
+        minY = o[1];
+      }
+      if (o[2] < minZ) {
+        minZ = o[2];
+      }
+      if (o[0] > maxX) {
+        maxX = o[0];
+      }
+      if (o[1] > maxY) {
+        maxY = o[1];
+      }
+      if (o[2] > maxZ) {
+        maxZ = o[2];
+      }
     }
 
     const cx = (minX + maxX) / 2;
@@ -1663,7 +1692,7 @@ export class Navigation {
     }
 
     // fallthrough to full scan if nothing found within maxDist in octree
-    Con.DPrint('Navigation: nearest node not found in octree, falling back to linear scan\n');
+    this.con.DPrint('Navigation: nearest node not found in octree, falling back to linear scan\n');
 
     let best = null;
     let bestDist = Infinity;
@@ -1734,7 +1763,7 @@ export class Navigation {
     const goalNode = this.#findNearestNode(goalPos, 512);
 
     if (!startNode || !goalNode) {
-      Con.DPrint('Navigation: no start or goal node found\n');
+      this.con.DPrint('Navigation: no start or goal node found\n');
       return null;
     }
 
@@ -1794,26 +1823,6 @@ export class Navigation {
     }
   }
 
-  static #emitDotFrontend(position: Vector, color = 15, ttl = Infinity): void {
-    if (!R) {
-      return;
-    }
-
-    const pn = R.AllocParticles(1);
-
-    if (pn.length !== 1) {
-      Con.PrintWarning(`Navigation: failed to allocate particle for debug dot at [${position}]\n`);
-      return;
-    }
-
-    const p = R.particles[pn[0]];
-    p.die = CL.state.time + ttl;
-    p.color = color;
-    p.vel = new Vector(0, 0, 0);
-    p.org = position.copy();
-    p.type = R.ptype.tracer;
-  }
-
   #debugNavigation(): void {
     if (!Navigation.nav_debug_graph!.value) {
       return;
@@ -1862,7 +1871,7 @@ export class Navigation {
     }
 
     if (this.geometry.walkableSurfaces.length === 0) {
-      Con.PrintWarning('Navigation: waypoint debug is only available immediately after a local nav build. Nav files do not include waypoint data.\n');
+      this.con.PrintWarning('Navigation: waypoint debug is only available immediately after a local nav build. Nav files do not include waypoint data.\n');
       return;
     }
 
@@ -1886,8 +1895,8 @@ export class Navigation {
       }
     }
 
-    Con.DPrint(`Navigation: debug waypoints: ${waypoints}\n`);
-    Con.DPrint(`Navigation: extracted walkable surfaces: ${this.geometry.walkableSurfaces.length}\n`);
+    this.con.DPrint(`Navigation: debug waypoints: ${waypoints}\n`);
+    this.con.DPrint(`Navigation: extracted walkable surfaces: ${this.geometry.walkableSurfaces.length}\n`);
 
     for (const { color, origin } of debugPoints) {
       this.#emitDot(origin, color);
@@ -1895,7 +1904,7 @@ export class Navigation {
   }
 
   // #debugKnownTestNavMeshProbes() {
-  //   if (SV.server.mapname !== 'test_nav_mesh') {
+  //   if (this.sv.server.mapname !== 'test_nav_mesh') {
   //     return;
   //   }
 
@@ -1907,7 +1916,7 @@ export class Navigation {
   //   ];
 
   //   for (const [label, origin] of probes) {
-  //     Con.PrintWarning(
+  //     this.con.PrintWarning(
   //       `Navigation: probe ${label} fit=${this.#isValidStandOrigin(origin)} support=${this.#hasGroundSupport(origin)} height=${this.#measureAvailableHeight(origin)}\n`,
   //     );
   //   }
@@ -1922,7 +1931,7 @@ export class Navigation {
     this.relinkSkiplist.clear();
     this.relinkEdictLinks = {};
 
-    Con.PrintWarning('Navigation: node graph out of date, rebuilding...\n');
+    this.con.PrintWarning('Navigation: node graph out of date, rebuilding...\n');
 
     // this.#debugKnownTestNavMeshProbes();
 
@@ -1931,16 +1940,16 @@ export class Navigation {
     this.#buildSpecialConnections();
     this.#buildOctree();
 
-    Con.DPrint(`Navigation: node graph built with ${this.graph.nodes.length} nodes.\n`);
+    this.con.DPrint(`Navigation: node graph built with ${this.graph.nodes.length} nodes.\n`);
 
     void this.save()
       .then(() => {
-        Con.PrintSuccess('Navigation: navigation graph saved!\n');
+        this.con.PrintSuccess('Navigation: navigation graph saved!\n');
         if (Navigation.nav_build_process?.value) {
           void Cmd.ExecuteString('quit');
         }
       })
-      .catch((err) => { Con.PrintError(`Navigation: failed to save navigation graph: ${err}\n`); });
+      .catch((err) => { this.con.PrintError(`Navigation: failed to save navigation graph: ${err}\n`); });
 
     this.#scheduleDebugRefresh();
   }

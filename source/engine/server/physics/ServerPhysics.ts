@@ -6,11 +6,11 @@ import Vector, { Quaternion } from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import Q from '../../../shared/Q.ts';
 import PhysicsMath from '../../common/PhysicsMath.ts';
-import { eventBus, getCommonRegistry } from '../../registry.ts';
 import {
   MAX_BUMP_COUNT,
   BlockedFlags,
 } from './Defs.ts';
+import type Server from '../Server.ts';
 
 interface FlyMoveResult {
   readonly blocked: number;
@@ -23,16 +23,19 @@ interface MovedEntityState {
   readonly edict: ServerEdict;
 }
 
-let { Con, Host, SV } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con, Host, SV } = getCommonRegistry());
-});
-
 /**
  * Handles core physics simulation, entity movement, and collision handling.
  */
 export class ServerPhysics {
+  private readonly sv: Server;
+
+  /**
+   * @param sv The server whose entities are simulated.
+   */
+  constructor(sv: Server) {
+    this.sv = sv;
+  }
+
   /**
    * Convert a world-space point into local pusher space using an orthonormal basis.
    * @returns Point in local space.
@@ -69,8 +72,8 @@ export class ServerPhysics {
    * Iterates all non-static entities to ensure none start inside solid space.
    */
   checkAllEnts(): void {
-    for (let index = 1; index < SV.server.num_edicts; index++) {
-      const check = SV.server.edicts[index];
+    for (let index = 1; index < this.sv.server.num_edicts; index++) {
+      const check = this.sv.server.edicts[index];
       if (check.isFree()) {
         continue;
       }
@@ -83,8 +86,8 @@ export class ServerPhysics {
         default:
       }
 
-      if (SV.collision.testEntityPosition(check)) {
-        Con.Print('entity in invalid position\n');
+      if (this.sv.collision.testEntityPosition(check)) {
+        this.sv.con.Print('entity in invalid position\n');
       }
     }
   }
@@ -101,19 +104,19 @@ export class ServerPhysics {
       let component = velo[index];
 
       if (Q.isNaN(component)) {
-        Con.Print(`Got a NaN velocity on ${entity.classname}\n`);
+        this.sv.con.Print(`Got a NaN velocity on ${entity.classname}\n`);
         component = 0.0;
       }
 
       if (Q.isNaN(origin[index])) {
-        Con.Print(`Got a NaN origin on ${entity.classname}\n`);
+        this.sv.con.Print(`Got a NaN origin on ${entity.classname}\n`);
         origin[index] = 0.0;
       }
 
-      if (component > SV.maxvelocity!.value) {
-        component = SV.maxvelocity!.value;
-      } else if (component < -SV.maxvelocity!.value) {
-        component = -SV.maxvelocity!.value;
+      if (component > this.sv.maxvelocity!.value) {
+        component = this.sv.maxvelocity!.value;
+      } else if (component < -this.sv.maxvelocity!.value) {
+        component = -this.sv.maxvelocity!.value;
       }
 
       velo[index] = component;
@@ -133,16 +136,16 @@ export class ServerPhysics {
     while (true) {
       let thinktime = entity.nextthink!;
 
-      if (thinktime <= 0.0 || thinktime > (SV.server.time + Host.frametime)) {
+      if (thinktime <= 0.0 || thinktime > (this.sv.server.time + this.sv.server.frametime)) {
         return true;
       }
 
-      if (thinktime < SV.server.time) {
-        thinktime = SV.server.time;
+      if (thinktime < this.sv.server.time) {
+        thinktime = this.sv.server.time;
       }
 
       entity.nextthink = 0.0;
-      SV.server.gameAPI!.time = thinktime;
+      this.sv.server.gameAPI!.time = thinktime;
       console.assert(entity.think instanceof Function, 'runThink: entity.think must be a function');
       entity.think!();
 
@@ -156,7 +159,7 @@ export class ServerPhysics {
    * Invokes touch callbacks between two entities.
    */
   impact(e1: ServerEdict, e2: ServerEdict, pushVector: Vector): void {
-    SV.server.gameAPI!.time = SV.server.time;
+    this.sv.server.gameAPI!.time = this.sv.server.time;
 
     const ent1 = e1.entity!;
     const ent2 = e2.entity!;
@@ -190,7 +193,7 @@ export class ServerPhysics {
       }
 
       const end = entity.origin.copy().add(entity.velocity.copy().multiply(timeLeft));
-      const trace = SV.collision.move(entity.origin, entity.mins, entity.maxs, end, 0, ent);
+      const trace = this.sv.collision.move(entity.origin, entity.mins, entity.maxs, end, 0, ent);
 
       if (trace.allsolid) {
         entity.velocity = new Vector();
@@ -281,7 +284,7 @@ export class ServerPhysics {
     const entity = ent.entity!;
     const entGravity = typeof entity.gravity === 'number' ? entity.gravity : 1.0;
     const velocity = entity.velocity;
-    velocity[2] += entGravity * SV.gravity!.value * Host.frametime * -1.0;
+    velocity[2] += entGravity * this.sv.gravity!.value * this.sv.server.frametime * -1.0;
     entity.velocity = velocity;
   }
 
@@ -290,7 +293,7 @@ export class ServerPhysics {
    */
   addBuoyancy(ent: ServerEdict): void {
     const velocity = ent.entity!.velocity;
-    velocity[2] += SV.gravity!.value * Host.frametime * 0.01;
+    velocity[2] += this.sv.gravity!.value * this.sv.server.frametime * 0.01;
     ent.entity!.velocity = velocity;
   }
 
@@ -312,7 +315,7 @@ export class ServerPhysics {
       nomonsters = Defs.moveTypes.MOVE_NORMAL;
     }
 
-    const trace = SV.collision.move(entity.origin, entity.mins, entity.maxs, end, nomonsters, ent);
+    const trace = this.sv.collision.move(entity.origin, entity.mins, entity.maxs, end, nomonsters, ent);
 
     // CR: Only move the entity if the trace made progress. When allsolid is true,
     // the entity started and remained entirely in solid (e.g. spawned inside a wall),
@@ -320,7 +323,7 @@ export class ServerPhysics {
     if (!trace.allsolid) {
       entity.origin = entity.origin.set(trace.endpos);
     }
-    SV.area.linkEdict(ent, true);
+    this.sv.area.linkEdict(ent, true);
 
     if (trace.ent) {
       this.impact(ent, trace.ent, pushVector);
@@ -358,12 +361,12 @@ export class ServerPhysics {
     );
     const finalbasis = pusherEntity.angles.isOrigin() ? null : pusherEntity.angles.toRotationMatrix();
     pusherEntity.ltime! += movetime;
-    SV.area.linkEdict(pusher);
+    this.sv.area.linkEdict(pusher);
 
     const moved: MovedEntityState[] = [];
 
-    for (let index = 1; index < SV.server.num_edicts; index++) {
-      const check = SV.server.edicts[index];
+    for (let index = 1; index < this.sv.server.num_edicts; index++) {
+      const check = this.sv.server.edicts[index];
       if (check.isFree()) {
         continue;
       }
@@ -383,7 +386,7 @@ export class ServerPhysics {
           continue;
         }
 
-        if (!SV.collision.testEntityPosition(check)) {
+        if (!this.sv.collision.testEntityPosition(check)) {
           continue;
         }
       }
@@ -417,10 +420,10 @@ export class ServerPhysics {
       this.pushEntity(check, finalMove);
       pusherEntity.solid = Defs.solid.SOLID_BSP;
 
-      if (SV.collision.testEntityPosition(check)) {
+      if (this.sv.collision.testEntityPosition(check)) {
         if (wasGroundedOnPusher) {
           pusherEntity.solid = Defs.solid.SOLID_NOT;
-          const blockedByOtherSolid = SV.collision.testEntityPosition(check);
+          const blockedByOtherSolid = this.sv.collision.testEntityPosition(check);
           pusherEntity.solid = Defs.solid.SOLID_BSP;
 
           if (!blockedByOtherSolid) {
@@ -443,10 +446,10 @@ export class ServerPhysics {
         }
         checkEntity.origin = entorig;
         checkEntity.angles = entangles;
-        SV.area.linkEdict(check, true);
+        this.sv.area.linkEdict(check, true);
         pusherEntity.origin = pusherEntity.origin.set(pushorig);
         pusherEntity.angles = pusherEntity.angles.set(pushangles);
-        SV.area.linkEdict(pusher);
+        this.sv.area.linkEdict(pusher);
         pusherEntity.ltime! -= movetime;
         if (pusherEntity.blocked) {
           pusherEntity.blocked(checkEntity);
@@ -459,7 +462,7 @@ export class ServerPhysics {
         for (const movedEdict of moved) {
           movedEdict.edict.entity!.origin = movedEdict.origin;
           movedEdict.edict.entity!.angles = movedEdict.angles;
-          SV.area.linkEdict(movedEdict.edict);
+          this.sv.area.linkEdict(movedEdict.edict);
         }
         return;
       }
@@ -475,10 +478,10 @@ export class ServerPhysics {
     const thinktime = entity.nextthink!;
     let movetime: number;
 
-    if (thinktime > 0.0 && thinktime < (oldltime + Host.frametime)) {
+    if (thinktime > 0.0 && thinktime < (oldltime + this.sv.server.frametime)) {
       movetime = Math.max(thinktime - oldltime, 0.0);
     } else {
-      movetime = Host.frametime;
+      movetime = this.sv.server.frametime;
     }
 
     if (movetime > 0.0) {
@@ -490,7 +493,7 @@ export class ServerPhysics {
     }
 
     entity.nextthink = 0.0;
-    SV.server.gameAPI!.time = SV.server.time;
+    this.sv.server.gameAPI!.time = this.sv.server.time;
 
     console.assert(entity.think instanceof Function, 'physicsPusher: entity.think must be a function');
     entity.think!();
@@ -502,15 +505,15 @@ export class ServerPhysics {
   checkStuck(ent: ServerEdict): void {
     const entity = ent.entity!;
 
-    if (!SV.collision.testEntityPosition(ent)) {
+    if (!this.sv.collision.testEntityPosition(ent)) {
       entity.oldorigin = entity.oldorigin!.set(entity.origin);
       return;
     }
 
     entity.origin = entity.origin.set(entity.oldorigin!);
-    if (!SV.collision.testEntityPosition(ent)) {
-      Con.DPrint('Unstuck.\n');
-      SV.area.linkEdict(ent, true);
+    if (!this.sv.collision.testEntityPosition(ent)) {
+      this.sv.con.DPrint('Unstuck.\n');
+      this.sv.area.linkEdict(ent, true);
       return;
     }
 
@@ -519,16 +522,16 @@ export class ServerPhysics {
       for (norg[0] = -1.0; norg[0] <= 1.0; norg[0]++) {
         for (norg[1] = -1.0; norg[1] <= 1.0; norg[1]++) {
           entity.origin = entity.origin.set(norg).add(norg);
-          if (!SV.collision.testEntityPosition(ent)) {
-            Con.DPrint('Unstuck.\n');
-            SV.area.linkEdict(ent, true);
+          if (!this.sv.collision.testEntityPosition(ent)) {
+            this.sv.con.DPrint('Unstuck.\n');
+            this.sv.area.linkEdict(ent, true);
             return;
           }
         }
       }
     }
 
-    Con.DPrint('player is stuck.\n');
+    this.sv.con.DPrint('player is stuck.\n');
   }
 
   /**
@@ -540,7 +543,7 @@ export class ServerPhysics {
     const point = entity.origin.copy().add(new Vector(0.0, 0.0, entity.mins[2] + 1.0));
     entity.waterlevel = Defs.waterlevel.WATERLEVEL_NONE;
     entity.watertype = Defs.content.CONTENT_EMPTY;
-    let cont = SV.collision.pointContents(point);
+    let cont = this.sv.collision.pointContents(point);
     if (cont > Defs.content.CONTENT_WATER) {
       return false;
     }
@@ -548,12 +551,12 @@ export class ServerPhysics {
     entity.waterlevel = Defs.waterlevel.WATERLEVEL_FEET;
     const origin = entity.origin;
     point[2] = origin[2] + (entity.mins[2] + entity.maxs[2]) * 0.5;
-    cont = SV.collision.pointContents(point);
+    cont = this.sv.collision.pointContents(point);
     if (cont <= Defs.content.CONTENT_WATER) {
       entity.waterlevel = Defs.waterlevel.WATERLEVEL_WAIST;
 
       point[2] = origin[2] + entity.view_ofs[2];
-      cont = SV.collision.pointContents(point);
+      cont = this.sv.collision.pointContents(point);
       if (cont <= Defs.content.CONTENT_WATER) {
         entity.waterlevel = Defs.waterlevel.WATERLEVEL_HEAD;
       }
@@ -566,7 +569,7 @@ export class ServerPhysics {
    */
   checkWaterTransition(ent: ServerEdict): void {
     const entity = ent.entity!;
-    const cont = SV.collision.pointContents(entity.origin);
+    const cont = this.sv.collision.pointContents(entity.origin);
 
     if (!entity.watertype) {
       entity.watertype = cont;
@@ -576,7 +579,7 @@ export class ServerPhysics {
 
     if (cont <= Defs.content.CONTENT_WATER) {
       if (entity.watertype === Defs.content.CONTENT_EMPTY) {
-        SV.messages.startSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0);
+        this.sv.messages.startSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0);
       }
       entity.watertype = cont;
       entity.waterlevel = Defs.waterlevel.WATERLEVEL_WAIST;
@@ -585,7 +588,7 @@ export class ServerPhysics {
 
     if (entity.watertype !== Defs.content.CONTENT_EMPTY) {
       // just walked into water
-      SV.messages.startSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0);
+      this.sv.messages.startSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0);
     }
 
     entity.watertype = Defs.content.CONTENT_EMPTY;
@@ -663,13 +666,13 @@ export class ServerPhysics {
     }
 
     if (!entity.avelocity.isOrigin()) {
-      const angularStep = entity.avelocity.copy().multiply(Host.frametime);
+      const angularStep = entity.avelocity.copy().multiply(this.sv.server.frametime);
       entity.angles = Vector.fromQuaternion(
         Quaternion.fromVector(entity.angles).multiply(Quaternion.fromVector(angularStep)),
       );
     }
 
-    const trace = this.pushEntity(ent, entity.velocity.copy().multiply(Host.frametime));
+    const trace = this.pushEntity(ent, entity.velocity.copy().multiply(this.sv.server.frametime));
 
     // CR: If entity started and stayed entirely in solid (e.g. spawned inside a wall),
     // stop movement to prevent falling out of world. This commonly happens when items
@@ -705,13 +708,13 @@ export class ServerPhysics {
   physicsStep(ent: ServerEdict): void {
     const entity = ent.entity!;
     if ((entity.flags & (Defs.flags.FL_ONGROUND | Defs.flags.FL_FLY | Defs.flags.FL_SWIM)) === 0) {
-      const hitsound = entity.velocity[2] < (SV.gravity!.value * -PhysicsMath.VELOCITY_EPSILON);
+      const hitsound = entity.velocity[2] < (this.sv.gravity!.value * -PhysicsMath.VELOCITY_EPSILON);
       this.addGravity(ent);
       this.checkVelocity(ent);
-      this.flyMove(ent, Host.frametime);
-      SV.area.linkEdict(ent, true);
+      this.flyMove(ent, this.sv.server.frametime);
+      this.sv.area.linkEdict(ent, true);
       if ((entity.flags & Defs.flags.FL_ONGROUND) !== 0 && hitsound) {
-        SV.messages.startSound(ent, 0, 'demon/dland2.wav', 255, 1.0);
+        this.sv.messages.startSound(ent, 0, 'demon/dland2.wav', 255, 1.0);
       }
     }
     this.runThink(ent);
@@ -722,22 +725,22 @@ export class ServerPhysics {
    * Runs the main entity physics step for the server.
    */
   physics(): void {
-    console.assert(SV.server.gameAPI !== null, 'physics: gameAPI must not be null');
-    SV.server.gameAPI!.time = SV.server.time;
-    SV.server.gameAPI!.startFrame();
+    console.assert(this.sv.server.gameAPI !== null, 'physics: gameAPI must not be null');
+    this.sv.server.gameAPI!.time = this.sv.server.time;
+    this.sv.server.gameAPI!.startFrame();
 
-    for (let index = 0; index < SV.server.num_edicts; index++) {
-      const ent = SV.server.edicts[index];
+    for (let index = 0; index < this.sv.server.num_edicts; index++) {
+      const ent = this.sv.server.edicts[index];
       if (ent.isFree()) {
         continue;
       }
       // force_retouch: relink ALL entities so stationary objects re-check
       // trigger contacts (e.g. telefrag triggers).
-      if (SV.server.gameAPI!.force_retouch) {
-        SV.area.linkEdict(ent, true);
+      if (this.sv.server.gameAPI!.force_retouch) {
+        this.sv.area.linkEdict(ent, true);
       }
       if (ent.isClient()) {
-        SV.clientPhysics.physicsClient(ent);
+        this.sv.clientPhysics.physicsClient(ent);
         continue;
       }
       switch (ent.entity!.movetype) {
@@ -764,10 +767,10 @@ export class ServerPhysics {
       }
     }
 
-    if (SV.server.gameAPI!.force_retouch) {
-      SV.server.gameAPI!.force_retouch--;
+    if (this.sv.server.gameAPI!.force_retouch) {
+      this.sv.server.gameAPI!.force_retouch--;
     }
 
-    SV.server.time += Host.frametime;
+    this.sv.server.time += this.sv.server.frametime;
   }
 }

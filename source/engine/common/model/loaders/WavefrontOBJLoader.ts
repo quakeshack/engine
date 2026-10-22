@@ -1,8 +1,7 @@
-import { registry } from '../../../registry.ts';
 
 import Vector from '../../../../shared/Vector.ts';
 import { GLTexture } from '../../../client/GL.ts';
-import { PBRMaterial } from '../../../client/renderer/Materials.ts';
+import { PBRMaterial } from '../../../client/renderer/models/Materials.ts';
 import { MeshModel } from '../MeshModel.ts';
 import { ModelLoader } from '../ModelLoader.ts';
 
@@ -78,7 +77,7 @@ export class WavefrontOBJLoader extends ModelLoader {
     const baseName = name.replace(/\.obj$/i, '.png').replace(/^models\//i, 'textures/');
     loadmodel.textureName = baseName;
 
-    if (!registry.isDedicatedServer) {
+    if (this.context.loadRenderData) {
       const material = new PBRMaterial(baseName, 256, 256);
       material.diffuse = (await GLTexture.FromImageFile(baseName))!;
       material.width = material.diffuse.width;

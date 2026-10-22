@@ -1,0 +1,1327 @@
+import fs from 'node:fs/promises';
+import { describe, test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import COMClass from '../../source/engine/common/Com.ts';
+import Mod from '../../source/engine/common/Mod.ts';
+import Vector from '../../source/shared/Vector.ts';
+import { content, moveType } from '../../source/shared/Defs.ts';
+import { DIST_EPSILON, MOVEVAR_CVARS, MoveVars, PM_TYPE, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.ts';
+import { UserCmd } from '../../source/engine/network/Protocol.ts';
+
+import {
+  createBoxBrushModel,
+  createBrushWorldModel,
+  createLegacyWorldModel,
+  createPmoveBoxEntity,
+  createPmoveTrace,
+} from '../support/fixtures.ts';
+import { assertNear } from '../support/assertions.ts';
+import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
+import { installEngineMocks } from '../support/withEngineMocks.ts';
+
+/**
+ * Build a brush-backed world where a solid wall continues as a clip brush.
+ * The seam at y=0 should remain slideable when the player is already tangent
+ * to the shared x face of both brushes.
+ * @returns world model fixture
+ */
+function createWallClipSeamWorldModel(): BrushModel {
+  const model = createBrushWorldModel({ axis: 0, center: [24, -32, 0], halfExtents: [8, 32, 64] });
+  const clipModel = createBoxBrushModel({ center: [24, 32, 0], halfExtents: [8, 32, 64], submodel: false });
+  const planeOffset = model.planes.length;
+  const sideOffset = model.brushsides.length;
+
+  model.planes.push(...clipModel.planes);
+
+  for (const side of clipModel.brushsides) {
+    side.planenum += planeOffset;
+  }
+
+  model.brushsides.push(...clipModel.brushsides);
+
+  const clipBrush = clipModel.brushes[0];
+  clipBrush.firstside += sideOffset;
+  clipBrush.contents = content.CONTENT_CLIP;
+  clipBrush._brushTraceCheck = 0;
+
+  model.brushes.push(clipBrush);
+  model.numBrushes = model.brushes.length;
+
+  model.leafbrushes = [0, 1];
+  model.leafTable.firstLeafBrushes[0] = 0;
+  model.leafTable.numLeafBrushes[0] = 2;
+  model.leafTable.firstLeafBrushes[1] = 2;
+  model.leafTable.numLeafBrushes[1] = 0;
+
+  return model;
+}
+
+/** What one frame of a real-map movement probe moved. */
+interface MapPmoveFrame {
+  origin: Vector;
+  moved: Vector;
+  velocity: Vector;
+  onground: number | null;
+}
+
+/** Options of {@link runMapFrames}. */
+interface MapFrameRunOptions {
+  basePath?: string;
+  mapName: string;
+  frames: number;
+  startOrigin?: Vector | null;
+  yaw?: number | null;
+  buildCmd?: ((player: PmovePlayer, frame: number) => UserCmd) | null;
+}
+
+/**
+ * Parse the BSP entity lump using the engine token parser.
+ * @param text entity lump text
+ * @returns parsed entities
+ */
+function parseMapEntities(text: string): Record<string, string>[] {
+  const entities: Record<string, string>[] = [];
+  let data: string | null = text;
+
+  while (data !== null) {
+    let parsed = COMClass.Parse(data);
+    data = parsed.data;
+
+    if (parsed.token.length === 0) {
+      break;
+    }
+
+    if (parsed.token !== '{') {
+      continue;
+    }
+
+    const entity: Record<string, string> = {};
+
+    while (true) {
+      if (data === null) {
+        throw new Error('Entity lump ends inside an entity');
+      }
+
+      parsed = COMClass.Parse(data);
+      data = parsed.data;
+
+      if (parsed.token === '}') {
+        entities.push(entity);
+        break;
+      }
+
+      if (data === null) {
+        throw new Error('Entity lump ends inside an entity');
+      }
+
+      const key = parsed.token;
+      parsed = COMClass.Parse(data);
+      data = parsed.data;
+      entity[key] = parsed.token;
+    }
+  }
+
+  return entities;
+}
+
+/**
+ * Convert a Quake origin string into a Vector.
+ * @param origin entity origin string
+ * @returns parsed vector
+ */
+function parseMapOrigin(origin: string): Vector {
+  const components = origin.split(/\s+/).map(Number);
+  return new Vector(components[0], components[1], components[2]);
+}
+
+/**
+ * Resolve the first entity matching the predicate.
+ * @param entities parsed entity list
+ * @param predicate entity predicate
+ * @param label entity description for error messages
+ * @returns matching entity
+ */
+function requireMapEntity(entities: Record<string, string>[], predicate: (entity: Record<string, string>) => boolean, label: string): Record<string, string> {
+  const entity = entities.find(predicate);
+
+  if (entity === undefined) {
+    throw new Error(`Could not find ${label} in entity lump`);
+  }
+
+  return entity;
+}
+
+/**
+ * Resolve the movement yaw for a real-map pmove probe.
+ * Prefer the explicit spawn angle when present so map-authored repros do not
+ * depend on a separate direction marker entity.
+ * @param spawn spawn entity
+ * @param entities parsed entity list
+ * @returns yaw in degrees
+ */
+function resolveMapYaw(spawn: Record<string, string>, entities: Record<string, string>[]): number {
+  if (spawn.angle !== undefined) {
+    return Number(spawn.angle);
+  }
+
+  const orientation = requireMapEntity(entities, (entity) => entity.targetname === 'direction', 'orientation entity targetname=direction');
+  const spawnOrigin = parseMapOrigin(spawn.origin);
+  const orientationOrigin = parseMapOrigin(orientation.origin);
+  const forward = orientationOrigin.copy().subtract(spawnOrigin);
+  forward.normalize();
+  return Math.atan2(forward[1], forward[0]) * 180 / Math.PI;
+}
+
+/**
+ * Run a real BSP-backed movement probe for a fixed number of frames.
+ * @param options movement probe options
+ * @returns per-frame movement snapshots
+ */
+async function runMapFrames({
+  basePath = '../../data/id1/',
+  mapName,
+  frames,
+  startOrigin = null,
+  yaw = null,
+  buildCmd = null,
+}: MapFrameRunOptions): Promise<MapPmoveFrame[]> {
+  const baseUrl = new URL(basePath, import.meta.url);
+  const knownKeysBefore = new Set(Object.keys(Mod.known));
+
+  const con = {
+    Print() {},
+    DPrint() {},
+    PrintWarning() {},
+    PrintError(...args: unknown[]) {
+      console.error(...args);
+    },
+    PrintSuccess() {},
+  };
+  const files = {
+    Parse: COMClass.Parse,
+    ParseEntityLump: COMClass.ParseEntityLump,
+    async LoadFile(name: string) {
+      try {
+        const data = await fs.readFile(new URL(name, baseUrl));
+        return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+      } catch {
+        return null;
+      }
+    },
+    async LoadTextFile(name: string) {
+      try {
+        return await fs.readFile(new URL(name, baseUrl), 'utf8');
+      } catch {
+        return null;
+      }
+    },
+  };
+  const restoreEngineMocks = installEngineMocks({ Con: con, Mod, COM: files });
+  Mod.Init({ files, con, loadRenderData: false });
+
+  try {
+    const model = await Mod.ForNameAsync(mapName, true) as BrushModel;
+    const entities = parseMapEntities(model.entities!);
+    const spawn = requireMapEntity(entities, (entity) => entity.classname === 'info_player_start', 'spawn entity classname=info_player_start');
+
+    const spawnOrigin = startOrigin ?? parseMapOrigin(spawn.origin);
+    const moveYaw = yaw ?? resolveMapYaw(spawn, entities);
+
+    const pmove = new Pmove();
+    pmove.setWorldmodel(model);
+
+    const player = pmove.newPlayerMove();
+    player.origin.set(spawnOrigin);
+    player.velocity.clear();
+    player.angles.setTo(0, moveYaw, 0);
+    player.pmFlags = PMF.ON_GROUND;
+    player.onground = 0;
+
+    const rows: MapPmoveFrame[] = [];
+
+    for (let frame = 0; frame < frames; frame++) {
+      const before = player.origin.copy();
+      const cmd = buildCmd?.(player, frame) ?? new UserCmd();
+      if (cmd.msec === 0) {
+        cmd.msec = 50;
+      }
+      if (buildCmd === null) {
+        cmd.forwardmove = 320;
+        cmd.angles = player.angles.copy();
+      }
+      player.cmd = cmd;
+      player.move();
+
+      rows.push({
+        origin: player.origin.copy(),
+        moved: player.origin.copy().subtract(before),
+        velocity: player.velocity.copy(),
+        onground: player.onground,
+      });
+    }
+
+    return rows;
+  } finally {
+    for (const name of Object.keys(Mod.known)) {
+      if (!knownKeysBefore.has(name)) {
+        delete Mod.known[name];
+      }
+    }
+
+    restoreEngineMocks();
+  }
+}
+
+/**
+ * Run a real BSP-backed forward movement probe for a fixed number of frames.
+ * @param mapName map path relative to data/id1
+ * @param frames number of frames to simulate
+ * @returns per-frame movement snapshots
+ */
+async function runMapForwardFrames(mapName: string, frames: number): Promise<MapPmoveFrame[]> {
+  return runMapFrames({ mapName, frames });
+}
+
+void describe('PmovePlayer', () => {
+  void test('DEBUG is disabled before Pmove.Init()', () => {
+    assert.equal(PmovePlayer.DEBUG, false);
+  });
+
+  void describe('resolvePmType', () => {
+    // Regression coverage: server-authoritative movement (ServerClientPhysics)
+    // and the wire protocol writer (ServerMessages) both call this so a
+    // noclip/spectating player's client-side prediction stays in lockstep
+    // with the server instead of falling under gravity/colliding with walls
+    // it can actually fly through.
+    void test('resolves NORMAL for an alive, non-noclip player', () => {
+      assert.equal(PmovePlayer.resolvePmType(0, moveType.MOVETYPE_WALK), PM_TYPE.NORMAL);
+    });
+
+    void test('resolves SPECTATOR for a noclip player', () => {
+      assert.equal(PmovePlayer.resolvePmType(0, moveType.MOVETYPE_NOCLIP), PM_TYPE.SPECTATOR);
+    });
+
+    void test('resolves DEAD regardless of movetype, taking precedence over noclip', () => {
+      assert.equal(PmovePlayer.resolvePmType(1, moveType.MOVETYPE_NOCLIP), PM_TYPE.DEAD);
+      assert.equal(PmovePlayer.resolvePmType(2, moveType.MOVETYPE_WALK), PM_TYPE.DEAD);
+    });
+  });
+
+  void test('move integrates one grounded movement frame against a world model', () => {
+    const worldModel = createBrushWorldModel({ axis: 2, center: [0, 0, -40], halfExtents: [512, 512, 16] });
+    const pmove = new Pmove();
+    const player = pmove.newPlayerMove();
+
+    pmove.setWorldmodel(worldModel);
+
+    player.origin.setTo(0, 0, 0);
+    player.velocity.clear();
+    player.angles.clear();
+    player.cmd = new UserCmd();
+    player.cmd.msec = 100;
+    player.cmd.forwardmove = 200;
+
+    player.move();
+
+    assert.equal((player.pmFlags & PMF.ON_GROUND) !== 0, true);
+    assert.equal(player.onground, 0);
+    assert.ok(player.origin[0] > 0.5);
+    assertNear(player.origin[2], 0, 0.125);
+    assert.ok(player.velocity[0] > 0);
+  });
+
+  void test('move uses noclip-style spectator movement without collision traces', () => {
+    const pmove = new Pmove();
+    const player = pmove.newPlayerMove();
+
+    pmove.clipPlayerMove = () => {
+      throw new Error('spectator movement should not use collision traces');
+    };
+    pmove.isValidPlayerPosition = () => true;
+
+    player.spectator = true;
+    player.origin.clear();
+    player.velocity.clear();
+    player.angles.clear();
+    player.cmd = new UserCmd();
+    player.cmd.msec = 100;
+    player.cmd.forwardmove = 600;
+    player.cmd.upmove = 50;
+
+    player.move();
+
+    assert.equal(player.pmType, PM_TYPE.SPECTATOR);
+    assert.equal(player.onground, null);
+    assert.equal(player.viewheight, 22);
+    assertNear(player.origin[0], 49.875, 0.001);
+    assertNear(player.origin[1], 0.0);
+    assertNear(player.origin[2], 4.125, 0.001);
+    assertNear(player.velocity[0], 498.25, 0.001);
+    assertNear(player.velocity[1], 0.0);
+    assertNear(player.velocity[2], 41.5, 0.001);
+  });
+
+  void test('keeps decisive uphill progress on the brush-backed slope regression map', async () => {
+    const brushFrames = await runMapForwardFrames('maps/test_slope.bsp', 24);
+
+    const firstRampFrame = 13;
+    const lastRampFrame = 20;
+
+    assert.ok(brushFrames[firstRampFrame].moved[0] > 12.0);
+    assert.ok(brushFrames[firstRampFrame].moved[2] > 5.0);
+
+    for (let frame = firstRampFrame; frame <= lastRampFrame; frame++) {
+      assert.ok(brushFrames[frame].onground !== null);
+      assert.ok(brushFrames[frame].moved[0] > 4.0);
+    }
+  });
+
+  void test('tracks the hull slope climb on the brush-backed slope regression map', async () => {
+    const brushFrames = await runMapForwardFrames('maps/test_slope.bsp', 24);
+    const hullFrames = await runMapForwardFrames('maps/test_slope_hull.bsp', 24);
+
+    for (let frame = 0; frame < brushFrames.length; frame++) {
+      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.75);
+      assertNear(brushFrames[frame].origin[2], hullFrames[frame].origin[2], 0.75);
+      assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.75);
+      assertNear(brushFrames[frame].moved[2], hullFrames[frame].moved[2], 0.75);
+    }
+  });
+
+  void test('matches the hull corner slide timing on the brush-backed clip_2 regression map', async () => {
+    const brushFrames = await runMapForwardFrames('maps/test_clip_2.bsp', 12);
+    const hullFrames = await runMapForwardFrames('maps/test_clip_2_hull.bsp', 12);
+
+    for (let frame = 0; frame < brushFrames.length; frame++) {
+      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.25);
+      assertNear(brushFrames[frame].origin[1], hullFrames[frame].origin[1], 0.25);
+      assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.25);
+      assertNear(brushFrames[frame].moved[1], hullFrames[frame].moved[1], 0.25);
+      assertNear(brushFrames[frame].velocity[0], hullFrames[frame].velocity[0], 0.25);
+      assertNear(brushFrames[frame].velocity[1], hullFrames[frame].velocity[1], 0.25);
+    }
+
+    assert.ok(brushFrames[7].moved[1] < -1.0);
+    assert.ok(hullFrames[7].moved[1] < -1.0);
+  });
+
+  void test('matches the hull column blockage on the brush-backed clip_4 regression map', async () => {
+    const brushFrames = await runMapForwardFrames('maps/test_clip_4.bsp', 8);
+    const hullFrames = await runMapForwardFrames('maps/test_clip_4_hull.bsp', 8);
+
+    for (let frame = 0; frame < brushFrames.length; frame++) {
+      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.25);
+      assertNear(brushFrames[frame].origin[1], hullFrames[frame].origin[1], 0.25);
+      assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.25);
+      assertNear(brushFrames[frame].moved[1], hullFrames[frame].moved[1], 0.25);
+      assertNear(brushFrames[frame].velocity[0], hullFrames[frame].velocity[0], 0.25);
+      assertNear(brushFrames[frame].velocity[1], hullFrames[frame].velocity[1], 0.25);
+    }
+
+    assertNear(brushFrames[5].moved[0], 0.0, 0.25);
+    assertNear(brushFrames[5].moved[1], 0.0, 0.25);
+  });
+
+  void test('matches hull progression on the brush-backed complex_2 corner tangency regression map', async () => {
+    const brushFrames = await runMapFrames({
+      mapName: 'maps/test_complex_2.bsp',
+      frames: 10,
+      startOrigin: new Vector(-24, 16, 8.75),
+      yaw: 30,
+    });
+    const hullFrames = await runMapFrames({
+      mapName: 'maps/test_complex_2_hull.bsp',
+      frames: 10,
+      startOrigin: new Vector(-24, 16, 8.75),
+      yaw: 30,
+    });
+
+    for (let frame = 0; frame < brushFrames.length; frame++) {
+      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.5);
+      assertNear(brushFrames[frame].origin[1], hullFrames[frame].origin[1], 0.5);
+      assertNear(brushFrames[frame].origin[2], hullFrames[frame].origin[2], 0.5);
+      assertNear(brushFrames[frame].velocity[0], hullFrames[frame].velocity[0], 0.5);
+      assertNear(brushFrames[frame].velocity[1], hullFrames[frame].velocity[1], 0.5);
+    }
+
+    // Regression: brush path previously snapped to (48, 32, 24) and stalled.
+    assert.ok(brushFrames[6].moved[0] > 8.0);
+  });
+
+  void test('does not wedge on the hw_doom corridor sidestep repro', async () => {
+    const frames = await runMapFrames({
+      mapName: 'maps/test_hw_doom.bsp',
+      frames: 8,
+      startOrigin: new Vector(645.5, -667.875, 24),
+      yaw: 270,
+      buildCmd(player) {
+        const cmd = new UserCmd();
+        cmd.msec = 50;
+        cmd.sidemove = -320;
+        cmd.angles = player.angles.copy();
+        return cmd;
+      },
+    });
+
+    assert.ok(frames[5].moved[0] > 4.0);
+    assert.ok(frames[6].moved[0] > 4.0);
+    assert.ok(frames[7].moved[0] > 4.0);
+  });
+
+  void test('tracks the hull slope climb on the brush-backed slope_2 regression map', async () => {
+    const brushFrames = await runMapForwardFrames('maps/test_slope_2.bsp', 24);
+    const hullFrames = await runMapForwardFrames('maps/test_slope_2_hull.bsp', 24);
+
+    for (let frame = 0; frame < brushFrames.length; frame++) {
+      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.75);
+      assertNear(brushFrames[frame].origin[2], hullFrames[frame].origin[2], 0.75);
+      assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.75);
+      assertNear(brushFrames[frame].moved[2], hullFrames[frame].moved[2], 0.75);
+    }
+  });
+
+  void test('tracks the hull slope_3 descent from the raised spawn height', async () => {
+    const startOrigin = new Vector(160, 0, 24.875);
+    const brushFrames = await runMapFrames({
+      mapName: 'maps/test_slope_3.bsp',
+      frames: 48,
+      startOrigin,
+    });
+    const hullFrames = await runMapFrames({
+      mapName: 'maps/test_slope_3_hull.bsp',
+      frames: 48,
+      startOrigin,
+    });
+
+    for (let frame = 0; frame < brushFrames.length; frame++) {
+      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.75);
+      assertNear(brushFrames[frame].origin[2], hullFrames[frame].origin[2], 0.75);
+      assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.75);
+      assertNear(brushFrames[frame].moved[2], hullFrames[frame].moved[2], 0.75);
+    }
+  });
+
+  void test('does not stall on slope_3 when starting at integer z', async () => {
+    const startOrigin = new Vector(160, 0, 24);
+    const brushFrames = await runMapFrames({
+      mapName: 'maps/test_slope_3.bsp',
+      frames: 48,
+      startOrigin,
+    });
+    const hullFrames = await runMapFrames({
+      mapName: 'maps/test_slope_3_hull.bsp',
+      frames: 48,
+      startOrigin,
+    });
+
+    const brushFinal = brushFrames[brushFrames.length - 1];
+    const hullFinal = hullFrames[hullFrames.length - 1];
+
+    assert.ok(
+      brushFinal.origin[0] < 0,
+      `brushFinal=${brushFinal.origin} hullFinal=${hullFinal.origin}`,
+    );
+    assertNear(brushFinal.origin[0], hullFinal.origin[0], 1.0);
+    assertNear(brushFinal.origin[2], hullFinal.origin[2], 1.0);
+  });
+
+  void describe('_checkDuck', () => {
+    void test('enters ducked state on grounded crouch input and stands when space is clear', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+
+      player.origin.clear();
+      player.cmd = new UserCmd();
+      player.pmFlags = PMF.ON_GROUND;
+      player.cmd.upmove = -1;
+
+      player._checkDuck();
+
+      assert.equal((player.pmFlags & PMF.DUCKED) !== 0, true);
+      assert.equal(player.viewheight, -2);
+
+      player.cmd.upmove = 0;
+      pmove.isValidPlayerPosition = () => true;
+
+      player._checkDuck();
+
+      assert.equal((player.pmFlags & PMF.DUCKED) !== 0, false);
+      assert.equal(player.viewheight, 22);
+    });
+  });
+
+  void describe('_checkSpecialMovement', () => {
+    void test('starts a waterjump when water waist depth meets a solid lip with empty space above', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+
+      player.origin.clear();
+      player.velocity.clear();
+      player.angles.clear();
+      player.waterlevel = 2;
+      player.cmd = new UserCmd();
+      player._clampAngles();
+
+      pmove.clipPlayerMove = (start, end) => {
+        void start;
+        return createPmoveTrace({ endpos: end.copy() });
+      };
+
+      const probes: number[][] = [];
+      pmove.staticWorldContents = (point) => {
+        probes.push([...point]);
+        if (point[2] === 8) {
+          return content.CONTENT_SOLID;
+        }
+        if (point[2] === 32) {
+          return content.CONTENT_EMPTY;
+        }
+        return content.CONTENT_WATER;
+      };
+
+      player._checkSpecialMovement();
+
+      assert.deepEqual(probes, [[24, 0, 8], [24, 0, 32]]);
+      assert.deepEqual([...player.velocity], [50, 0, 310]);
+      assert.equal((player.pmFlags & PMF.TIME_WATERJUMP) !== 0, true);
+      assert.equal(player.pmTime, 255);
+    });
+  });
+
+  void describe('_categorizePosition', () => {
+    void test('keeps grounded state on a walkable slope while climbing quickly', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+
+      pmove.clipPlayerMove = (start, end) => {
+        void start;
+        return createPmoveTrace({
+          endpos: end.copy(),
+          normal: new Vector(0.0, 0.0, 0.75),
+          ent: 0,
+        });
+      };
+      pmove.staticWorldContents = () => content.CONTENT_EMPTY;
+
+      player.origin.setTo(0, 0, 64);
+      player.velocity.setTo(200, 0, 181);
+      player.onground = 0;
+      player.pmFlags = PMF.ON_GROUND;
+
+      player._categorizePosition();
+
+      assert.equal(player.onground, 0);
+      assert.equal((player.pmFlags & PMF.ON_GROUND) !== 0, true);
+      assert.deepEqual(player.touchindices, [0]);
+    });
+
+    void test('still drops ground while moving upward fast after leaving the floor', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let traceCalls = 0;
+
+      pmove.clipPlayerMove = () => {
+        traceCalls += 1;
+        throw new Error('airborne upward guard should skip ground tracing');
+      };
+      pmove.staticWorldContents = () => content.CONTENT_EMPTY;
+
+      player.origin.setTo(0, 0, 64);
+      player.velocity.setTo(200, 0, 181);
+      player.onground = null;
+      player.pmFlags = 0;
+
+      player._categorizePosition();
+
+      assert.equal(player.onground, null);
+      assert.equal((player.pmFlags & PMF.ON_GROUND) !== 0, false);
+      assert.equal(traceCalls, 0);
+    });
+
+    void test('ignores a stale grounded flag while moving upward fast', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let traceCalls = 0;
+
+      pmove.clipPlayerMove = () => {
+        traceCalls += 1;
+        throw new Error('stale PMF.ON_GROUND should not preserve a ground trace');
+      };
+      pmove.staticWorldContents = () => content.CONTENT_EMPTY;
+
+      player.origin.setTo(0, 0, 64);
+      player.velocity.setTo(0, 0, 181);
+      player.onground = null;
+      player.pmFlags = PMF.ON_GROUND;
+
+      player._categorizePosition();
+
+      assert.equal(player.onground, null);
+      assert.equal((player.pmFlags & PMF.ON_GROUND) !== 0, false);
+      assert.equal(traceCalls, 0);
+    });
+  });
+
+  void describe('waterjump movement', () => {
+    void test('applies gravity and clears waterjump once the upward boost turns downward', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let stepSlideCalls = 0;
+
+      pmove.isValidPlayerPosition = () => true;
+      pmove.clipPlayerMove = (start, end) => {
+        void start;
+        return createPmoveTrace({ endpos: end.copy(), normal: new Vector(0, 0, 1) });
+      };
+      pmove.staticWorldContents = () => content.CONTENT_EMPTY;
+
+      player.origin.clear();
+      player.velocity.setTo(0, 0, 10);
+      player.angles.clear();
+      player.pmFlags = PMF.TIME_WATERJUMP;
+      player.pmTime = 255;
+      player.cmd = new UserCmd();
+      player.cmd.msec = 100;
+      player._stepSlideMove = () => {
+        stepSlideCalls += 1;
+      };
+
+      player.move();
+
+      assert.equal(stepSlideCalls, 1);
+      assert.equal((player.pmFlags & PMF.TIME_WATERJUMP) !== 0, false);
+      assert.equal(player.pmTime, 0);
+      assertNear(player.velocity[2], -70.0);
+    });
+  });
+
+  void describe('_stepSlideMove', () => {
+    void test('snaps down to a walkable slope after an unblocked slide', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let slideCalls = 0;
+      let traceCalls = 0;
+
+      player.origin.clear();
+      player.velocity.setTo(30, 0, 0);
+      player.onground = 0;
+      player._slideMove = () => {
+        slideCalls += 1;
+        player.origin.setTo(8, 0, 4);
+        player.velocity.setTo(20, 0, 3);
+        return false;
+      };
+
+      pmove.clipPlayerMove = (start, end) => {
+        traceCalls += 1;
+
+        assert.deepEqual([...start], [8, 0, 4]);
+        assert.deepEqual([...end], [8, 0, -14]);
+
+        return createPmoveTrace({
+          endpos: new Vector(8, 0, 3.5),
+          fraction: 0.03,
+          normal: new Vector(0, 0.75, 0.75),
+          ent: 5,
+        });
+      };
+
+      player._stepSlideMove();
+
+      assert.equal(slideCalls, 1);
+      assert.equal(traceCalls, 1);
+      assert.deepEqual([...player.origin], [8, 0, 3.5]);
+      assert.deepEqual([...player.velocity], [20, 0, 3]);
+      assert.deepEqual(player.touchindices, [5]);
+    });
+
+    void test('still evaluates the stepped retry after a blocked slide move', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let slideCalls = 0;
+      let traceCalls = 0;
+
+      player.origin.clear();
+      player.velocity.setTo(30, 0, 0);
+      player.onground = 0;
+      player._slideMove = () => {
+        slideCalls += 1;
+        if (slideCalls === 1) {
+          player.origin.setTo(8, 0, 4);
+          player.velocity.setTo(20, 0, 3);
+          return true;
+        }
+
+        player.origin.setTo(12, 0, 9);
+        player.velocity.setTo(24, 0, 6);
+        return true;
+      };
+
+      pmove.clipPlayerMove = (start, end) => {
+        traceCalls += 1;
+
+        if (traceCalls === 1) {
+          assert.deepEqual([...start], [0, 0, 0]);
+          assert.deepEqual([...end], [0, 0, 18]);
+          return createPmoveTrace({
+            endpos: new Vector(0, 0, 9),
+            fraction: 0.5,
+            normal: new Vector(0, 0, 1),
+            ent: 3,
+          });
+        }
+
+        if (traceCalls === 2) {
+          assert.deepEqual([...start], [12, 0, 9]);
+          assert.deepEqual([...end], [12, 0, -0.03125]);
+          return createPmoveTrace({
+            endpos: new Vector(12, 0, 4),
+            normal: new Vector(0, 0, 1),
+            ent: 4,
+          });
+        }
+
+        throw new Error(`unexpected trace call ${traceCalls}`);
+      };
+
+      player._stepSlideMove();
+
+      assert.equal(slideCalls, 2);
+      assert.equal(traceCalls, 2);
+      assert.deepEqual([...player.origin], [12, 0, 4]);
+      assert.deepEqual([...player.velocity], [24, 0, 3]);
+      assert.deepEqual(player.touchindices, [3, 4]);
+    });
+  });
+
+  void describe('_slideMove', () => {
+    void test('slides past a wall-to-clip seam and snap keeps the seam walkable', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+
+      pmove.setWorldmodel(createWallClipSeamWorldModel());
+
+      // Approach the wall diagonally so the first bump clips into the wall,
+      // then the remaining movement has to continue across the solid-to-clip seam.
+      player.origin.setTo(-8, -48, 0);
+      player.velocity.setTo(32, 96, 0);
+      player.frametime = 1.0;
+
+      player._slideMove();
+
+      // Raw brush traces keep the player DIST_EPSILON on the near side of the
+      // expanded face. The gameplay path snaps this back to the exact seam.
+      assertNear(player.origin[0], -DIST_EPSILON, 0.001);
+      assertNear(player.origin[1], 48.0, 0.001);
+      assertNear(player.origin[2], 0.0, 0.001);
+      assertNear(player.velocity[0], 0.0, 0.001);
+      assertNear(player.velocity[1], 96.0, 0.001);
+      assertNear(player.velocity[2], 0.0, 0.001);
+
+      player._snapPosition();
+
+      assertNear(player.origin[0], 0.0, 0.001);
+      assertNear(player.origin[1], 48.0, 0.001);
+      assert.equal(pmove.isValidPlayerPosition(player.origin), true);
+
+      const continuedTrace = pmove.clipPlayerMove(player.origin, new Vector(0, 144, 0));
+      assert.equal(continuedTrace.startsolid, false);
+      assert.equal(continuedTrace.allsolid, false);
+      assert.equal(continuedTrace.fraction, 1.0);
+      assert.deepEqual([...continuedTrace.endpos], [0, 144, 0]);
+    });
+
+    void test('treats zero-progress near-parallel brush re-clips as a single slide plane', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let traceCalls = 0;
+
+      player.origin.clear();
+      player.velocity.setTo(100, 100, 0);
+      player.frametime = 1.0;
+
+      pmove.clipPlayerMove = (start, end) => {
+        traceCalls += 1;
+
+        if (traceCalls === 1) {
+          assert.deepEqual([...start], [0, 0, 0]);
+          assert.deepEqual([...end], [100, 100, 0]);
+          return createPmoveTrace({
+            endpos: new Vector(50, 50, 0),
+            fraction: 0.5,
+            normal: new Vector(-1, 0, 0),
+            ent: 1,
+          });
+        }
+
+        if (traceCalls === 2) {
+          assert.deepEqual([...start], [50, 50, 0]);
+          return createPmoveTrace({
+            endpos: new Vector(50, 50, 0),
+            fraction: 0.0,
+            normal: new Vector(-0.9876883625984192, -0.15643446147441864, 0),
+            ent: 1,
+          });
+        }
+
+        return createPmoveTrace({
+          endpos: end.copy(),
+          fraction: 1.0,
+        });
+      };
+
+      player._slideMove();
+
+      assert.equal(traceCalls, 3);
+      assert.ok(player.origin[0] > 48.5);
+      assert.ok(player.origin[1] > 99.0);
+      assert.ok(Math.abs(player.velocity[0]) < 2.0);
+      assert.ok(player.velocity[1] > 99.0);
+    });
+
+    void test('ignores exact duplicate seam planes without nudging velocity into walls', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let traceCalls = 0;
+
+      player.origin.clear();
+      player.velocity.setTo(100, 100, 0);
+      player.frametime = 1.0;
+
+      pmove.clipPlayerMove = (start, end) => {
+        traceCalls += 1;
+
+        if (traceCalls === 1) {
+          assert.deepEqual([...start], [0, 0, 0]);
+          assert.deepEqual([...end], [100, 100, 0]);
+          return createPmoveTrace({
+            endpos: new Vector(50, 50, 0),
+            fraction: 0.5,
+            normal: new Vector(-1, 0, 0),
+            ent: 1,
+          });
+        }
+
+        if (traceCalls === 2) {
+          assert.deepEqual([...start], [50, 50, 0]);
+          return createPmoveTrace({
+            endpos: new Vector(50, 50, 0),
+            fraction: 0.0,
+            normal: new Vector(-1, 0, 0),
+            ent: 1,
+          });
+        }
+
+        return createPmoveTrace({
+          endpos: end.copy(),
+          fraction: 1.0,
+        });
+      };
+
+      player._slideMove();
+
+      assert.equal(traceCalls, 3);
+      assertNear(player.origin[0], 50.0, 0.001);
+      assertNear(player.origin[1], 100.0, 0.001);
+      assertNear(player.velocity[0], 0.0, 0.001);
+      assertNear(player.velocity[1], 100.0, 0.001);
+    });
+
+    void test('keeps sliding around convex rounded corners on zero-progress re-clips', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let traceCalls = 0;
+
+      player.origin.clear();
+      player.velocity.setTo(120, 40, 0);
+      player.frametime = 1.0;
+
+      pmove.clipPlayerMove = (start, end) => {
+        traceCalls += 1;
+
+        if (traceCalls === 1) {
+          assert.deepEqual([...start], [0, 0, 0]);
+          assert.deepEqual([...end], [120, 40, 0]);
+          return createPmoveTrace({
+            endpos: new Vector(48, 16, 0),
+            fraction: 0.4,
+            normal: new Vector(-1, 0, 0),
+            ent: 1,
+          });
+        }
+
+        if (traceCalls === 2) {
+          assert.deepEqual([...start], [48, 16, 0]);
+          return createPmoveTrace({
+            endpos: new Vector(48, 16, 0),
+            fraction: 0.0,
+            normal: new Vector(-0.95, -0.31224989991991997, 0),
+            ent: 1,
+          });
+        }
+
+        return createPmoveTrace({
+          endpos: end.copy(),
+          fraction: 1.0,
+        });
+      };
+
+      player._slideMove();
+
+      assert.ok(traceCalls >= 2);
+      assert.ok(player.origin[0] > 40.0);
+      assert.ok(player.origin[1] > 20.0);
+      assert.ok(player.velocity[1] > 0.0);
+      assert.ok(player.velocity.len() > 1.0);
+    });
+
+    void test('keeps sliding around mirrored convex rounded corners regardless of north/south orientation', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+
+      const runCase = (secondNormalY: number) => {
+        let traceCalls = 0;
+
+        player.origin.clear();
+        player.velocity.setTo(120, secondNormalY > 0 ? -40 : 40, 0);
+        player.frametime = 1.0;
+
+        pmove.clipPlayerMove = (start, end) => {
+          traceCalls += 1;
+
+          if (traceCalls === 1) {
+            return createPmoveTrace({
+              endpos: new Vector(48, secondNormalY > 0 ? -16 : 16, 0),
+              fraction: 0.4,
+              normal: new Vector(-1, 0, 0),
+              ent: 1,
+            });
+          }
+
+          if (traceCalls === 2) {
+            return createPmoveTrace({
+              endpos: new Vector(48, secondNormalY > 0 ? -16 : 16, 0),
+              fraction: 0.0,
+              normal: new Vector(-0.95, secondNormalY, 0),
+              ent: 1,
+            });
+          }
+
+          return createPmoveTrace({
+            endpos: end.copy(),
+            fraction: 1.0,
+          });
+        };
+
+        player._slideMove();
+
+        assert.ok(player.origin[0] > 40.0);
+        assert.ok(Math.abs(player.origin[1]) > 20.0);
+        assert.ok(Math.abs(player.velocity[1]) > 0.0);
+        assert.ok(player.velocity.len() > 1.0);
+      };
+
+      runCase(-0.31224989991991997);
+      runCase(0.31224989991991997);
+    });
+  });
+});
+
+void describe('Pmove', () => {
+  void describe('clipPlayerMove', () => {
+    void test('keeps startsolid end positions in world space', () => {
+      const pmove = new Pmove();
+
+      pmove.addEntity(createPmoveBoxEntity({
+        origin: new Vector(),
+        mins: new Vector(-32, -32, -32),
+        maxs: new Vector(32, 32, 32),
+      }));
+
+      const start = new Vector();
+      const end = new Vector(128, 0, 0);
+      const trace = pmove.clipPlayerMove(start, end);
+
+      assert.equal(trace.startsolid, true);
+      assert.equal(trace.fraction, 0.0);
+      assert.deepEqual([...trace.endpos], [...start]);
+    });
+
+    void test('reports hull hits in world coordinates', () => {
+      const pmove = new Pmove();
+
+      pmove.addEntity(createPmoveBoxEntity({
+        origin: new Vector(64, 0, 0),
+        mins: new Vector(-16, -16, -16),
+        maxs: new Vector(16, 16, 16),
+      }));
+
+      const trace = pmove.clipPlayerMove(new Vector(0, 0, 0), new Vector(100, 0, 0));
+
+      assert.equal(trace.startsolid, false);
+      assert.ok(trace.fraction < 1.0);
+      assertNear(trace.endpos[0], 31.96875, 0.001);
+      assertNear(trace.endpos[1], 0);
+      assertNear(trace.endpos[2], 0);
+    });
+
+    void test('preserves later startsolid when an earlier equal-fraction clip already won', () => {
+      const pmove = new Pmove();
+      const start = new Vector(0, 0, 0);
+      const end = new Vector(100, 0, 0);
+      const worldModel = createLegacyWorldModel(
+        new Vector(-256, -256, -128),
+        new Vector(256, 256, 128),
+      );
+
+      pmove.setWorldmodel(worldModel);
+      pmove.addEntity(createPmoveBoxEntity({
+        origin: new Vector(64, 0, 0),
+        mins: new Vector(-16, -16, -16),
+        maxs: new Vector(16, 16, 16),
+        num: 1,
+      }));
+
+      pmove.physents[0].tracePlayerMove = () => createPmoveTrace({
+        endpos: start.copy(),
+        fraction: 0.0,
+        normal: new Vector(-1, 0, 0),
+      });
+      pmove.physents[1].tracePlayerMove = () => createPmoveTrace({
+        endpos: end.copy(),
+        startsolid: true,
+        allsolid: false,
+      });
+
+      const trace = pmove.clipPlayerMove(start, end);
+
+      assert.equal(trace.fraction, 0.0);
+      assert.equal(trace.startsolid, true);
+      assert.equal(trace.allsolid, false);
+      assert.deepEqual([...trace.endpos], [...start]);
+    });
+
+    void test('ands allsolid across equal-fraction startsolid physents', () => {
+      const pmove = new Pmove();
+      const start = new Vector(0, 0, 0);
+      const end = new Vector(100, 0, 0);
+      const worldModel = createLegacyWorldModel(
+        new Vector(-256, -256, -128),
+        new Vector(256, 256, 128),
+      );
+
+      pmove.setWorldmodel(worldModel);
+      pmove.addEntity(createPmoveBoxEntity({
+        origin: new Vector(64, 0, 0),
+        mins: new Vector(-16, -16, -16),
+        maxs: new Vector(16, 16, 16),
+        num: 1,
+      }));
+
+      pmove.physents[0].tracePlayerMove = () => createPmoveTrace({
+        endpos: end.copy(),
+        startsolid: true,
+        allsolid: true,
+      });
+      pmove.physents[1].tracePlayerMove = () => createPmoveTrace({
+        endpos: end.copy(),
+        startsolid: true,
+        allsolid: false,
+      });
+
+      const trace = pmove.clipPlayerMove(start, end);
+
+      assert.equal(trace.fraction, 0.0);
+      assert.equal(trace.startsolid, true);
+      assert.equal(trace.allsolid, false);
+      assert.deepEqual([...trace.endpos], [...start]);
+    });
+  });
+
+  void test('server-style smoke setup mirrors TestServerside assertions', () => {
+    const worldModel = createLegacyWorldModel(
+      new Vector(-256, -256, -128),
+      new Vector(256, 256, 128),
+    );
+    const pmove = new Pmove();
+    const entity = createPmoveBoxEntity({
+      origin: new Vector(128, 0, 0),
+      mins: new Vector(-16, -16, -16),
+      maxs: new Vector(16, 16, 16),
+      num: 1,
+    });
+
+    pmove.setWorldmodel(worldModel);
+
+    assert.equal(pmove.physents[0].constructor.name, 'PhysEnt');
+    assert.equal(pmove.physents[0].hulls.length, worldModel.hulls.length);
+    assert.equal(pmove.physents[0].hulls, worldModel.hulls, 'Pmove uses the hulls of the model and does not copy them');
+
+    pmove.addEntity(entity);
+
+    assert.equal(pmove.physents.length, 2);
+    assert.equal(pmove.physents[1].origin.equals(entity.origin), true);
+    assert.equal(pmove.physents[1].edictId, 1);
+
+    const playerOrigin = new Vector(0, 0, 0);
+    assert.equal(pmove.isValidPlayerPosition(playerOrigin), true);
+
+    const playerMoveTraceIntoSpace = pmove.clipPlayerMove(playerOrigin, new Vector(0, 0, 999999));
+    assert.equal(playerMoveTraceIntoSpace instanceof Trace, true);
+    assert.equal(playerMoveTraceIntoSpace.ent, 0);
+    assert.ok(playerMoveTraceIntoSpace.fraction < 1.0);
+
+    const playerMoveTraceHigher = pmove.clipPlayerMove(playerOrigin, new Vector(0, 0, 64.0));
+    assert.equal(playerMoveTraceHigher instanceof Trace, true);
+    assert.equal(playerMoveTraceHigher.ent, null);
+    assert.equal(playerMoveTraceHigher.fraction, 1.0);
+  });
+
+  void test('traceStaticWorldPlayerMove traces world only and ignores dynamic physents', () => {
+    const worldModel = createLegacyWorldModel(
+      new Vector(-256, -256, -128),
+      new Vector(256, 256, 128),
+    );
+    const pmove = new Pmove();
+
+    pmove.setWorldmodel(worldModel);
+    pmove.addEntity(createPmoveBoxEntity({
+      origin: new Vector(64, 0, 0),
+      mins: new Vector(-16, -16, -16),
+      maxs: new Vector(16, 16, 16),
+      num: 1,
+    }));
+
+    const staticWorldTrace = pmove.traceStaticWorldPlayerMove(new Vector(0, 0, 0), new Vector(100, 0, 0));
+    const aggregateTrace = pmove.clipPlayerMove(new Vector(0, 0, 0), new Vector(100, 0, 0));
+
+    assert.equal(staticWorldTrace.fraction, 1.0);
+    assert.deepEqual([...staticWorldTrace.endpos], [100, 0, 0]);
+    assert.ok(aggregateTrace.fraction < 1.0);
+    assertNear(aggregateTrace.endpos[0], 31.96875, 0.001);
+  });
+
+  void test('brush-list world path supports server-style vertical smoke checks', () => {
+    const worldModel = createBrushWorldModel({ axis: 2, center: [0, 0, 144], halfExtents: [512, 512, 16] });
+    const pmove = new Pmove();
+    const entity = createPmoveBoxEntity({
+      origin: new Vector(128, 0, 0),
+      mins: new Vector(-16, -16, -16),
+      maxs: new Vector(16, 16, 16),
+      num: 1,
+    });
+
+    pmove.setWorldmodel(worldModel);
+    pmove.addEntity(entity);
+
+    const playerOrigin = new Vector(0, 0, 0);
+    assert.equal(pmove.physents[0].usesBrushTracing, true);
+    assert.equal(pmove.isValidPlayerPosition(playerOrigin), true);
+
+    const playerMoveTraceIntoSpace = pmove.clipPlayerMove(playerOrigin, new Vector(0, 0, 999999));
+    assert.equal(playerMoveTraceIntoSpace instanceof Trace, true);
+    assert.equal(playerMoveTraceIntoSpace.ent, 0);
+    assert.ok(playerMoveTraceIntoSpace.fraction < 1.0);
+
+    const playerMoveTraceHigher = pmove.clipPlayerMove(playerOrigin, new Vector(0, 0, 64.0));
+    assert.equal(playerMoveTraceHigher instanceof Trace, true);
+    assert.equal(playerMoveTraceHigher.ent, null);
+    assert.equal(playerMoveTraceHigher.fraction, 1.0);
+  });
+
+  void describe('staticWorldContents', () => {
+    void test('uses brush-backed world solids before leaf contents', () => {
+      const worldModel = createBrushWorldModel({ center: [64, 0, 0], halfExtents: [16, 16, 16] });
+      const pmove = new Pmove();
+
+      worldModel.leafTable.contents[0] = content.CONTENT_WATER;
+
+      pmove.setWorldmodel(worldModel);
+
+      assert.equal(pmove.staticWorldContents(new Vector(64, 0, 0)), content.CONTENT_SOLID);
+      assert.equal(pmove.staticWorldContents(new Vector(8, 0, 0)), content.CONTENT_WATER);
+    });
+
+    void test('normalizes brush-backed current leaves to water', () => {
+      const worldModel = createBrushWorldModel({ center: [64, 0, 0], halfExtents: [16, 16, 16] });
+      const pmove = new Pmove();
+
+      worldModel.leafTable.contents[0] = content.CONTENT_CURRENT_UP;
+
+      pmove.setWorldmodel(worldModel);
+
+      assert.equal(pmove.staticWorldContents(new Vector(8, 0, 0)), content.CONTENT_WATER);
+    });
+  });
+
+  void describe('crouching movement', () => {
+    void test('uses duckspeed as the movement cap while ducked on the ground', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      const recordedWishspeeds: number[] = [];
+
+      player.origin.clear();
+      player.velocity.clear();
+      player.angles.clear();
+      player.onground = 0;
+      player.pmFlags = PMF.ON_GROUND | PMF.DUCKED;
+      player.cmd = new UserCmd();
+      player.cmd.forwardmove = 400;
+      player._clampAngles();
+      player._accelerate = (_wishdir, wishspeed) => {
+        recordedWishspeeds.push(wishspeed);
+      };
+      player._stepSlideMove = () => {};
+
+      player._airMove();
+
+      assert.deepEqual(recordedWishspeeds, [pmove.movevars.duckspeed]);
+      assert.equal(player.velocity[2], 0);
+    });
+  });
+});
+
+void describe('MoveVars', () => {
+  void describe('setFromCvar', () => {
+    void test('sets the variable behind each movement cvar and says so', () => {
+      const vars = new MoveVars();
+
+      for (const [variable, cvarName] of Object.entries(MOVEVAR_CVARS)) {
+        assert.equal(vars.setFromCvar(cvarName, '123.5'), true, cvarName);
+        assert.equal(vars[variable as keyof MoveVars], 123.5, cvarName);
+      }
+    });
+
+    void test('reads the text the way a cvar reads it', () => {
+      const vars = new MoveVars();
+
+      vars.setFromCvar('sv_gravity', '');
+      assert.equal(vars.gravity, 0);
+
+      vars.setFromCvar('sv_friction', '0.7');
+      assert.equal(vars.friction, 0.7);
+    });
+
+    void test('leaves the variables alone for any other cvar', () => {
+      const vars = new MoveVars();
+      const before = { ...vars };
+
+      assert.equal(vars.setFromCvar('sv_cheats', '1'), false);
+      assert.equal(vars.setFromCvar('gravity', '1'), false);
+      assert.deepEqual({ ...vars }, before);
+    });
+
+    void test('does not touch the variables no cvar sets', () => {
+      const vars = new MoveVars();
+
+      for (const cvarName of Object.values(MOVEVAR_CVARS)) {
+        vars.setFromCvar(cvarName, '1');
+      }
+
+      assert.equal(vars.entgravity, 1.0);
+      assert.equal(vars.duckspeed, 100);
+      assert.equal(vars.waterspeed, 400);
+    });
+  });
+});

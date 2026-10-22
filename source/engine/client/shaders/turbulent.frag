@@ -20,23 +20,17 @@ uniform sampler2D tDlight;
 uniform sampler2D tLightStyleA;
 uniform sampler2D tLightStyleB;
 uniform sampler2D tDepth;
-uniform mat4 uPerspective;
+#include "depth.glsl"
 uniform vec2 uScreenSize;
 uniform float uWaterFogDensity;
 uniform float uCameraInside;
 
 in vec4 vTexCoord;
 in vec4 vLightStyle;
-in float vFog;
+#include "fog-fragment.glsl"
 in vec3 vFallbackLight;
 in vec2 vDlightTexCoord;
 in float vHasLightmap;
-uniform vec3 uFogColor;
-
-float linearizeDepth(highp float depth) {
-  highp float z_ndc = depth * 2.0 - 1.0;
-  return uPerspective[3][2] / (z_ndc + uPerspective[2][2]);
-}
 
 void main(void) {
   vec2 warpedTexCoord = vTexCoord.st + vec2(sin(vTexCoord.t * 3.141593 + uTime), sin(vTexCoord.s * 3.141593 + uTime)) * 0.125;

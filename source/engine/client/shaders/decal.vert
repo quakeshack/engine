@@ -11,9 +11,8 @@ in vec3 aColor;
 
 out vec2 vTexCoord;
 out vec3 vColor;
-out float vFog;
 
-uniform vec4 uFogParams; // start, end, density, mode
+#include "fog-vertex.glsl"
 
 void main(void) {
   vec3 position = uViewAngles * (aPosition - uViewOrigin);
@@ -22,14 +21,5 @@ void main(void) {
 
   vTexCoord = aTexCoord;
   vColor = aColor;
-  float dist = length(aPosition - uViewOrigin);
-  float fogLinear = clamp((uFogParams.y - dist) / max(0.0001, uFogParams.y - uFogParams.x), 0.0, 1.0);
-  float fogExp = clamp(exp(-uFogParams.z * dist), 0.0, 1.0);
-  float fogExp2 = clamp(exp(-uFogParams.z * uFogParams.z * dist * dist), 0.0, 1.0);
-
-  float isNoFog = step(uFogParams.w, -0.5);
-  float isLinear = step(uFogParams.w, 0.5) * (1.0 - isNoFog);
-  float isExp = step(abs(uFogParams.w - 1.0), 0.5) * (1.0 - isNoFog - isLinear);
-
-  vFog = mix(mix(mix(fogExp2, fogExp, isExp), fogLinear, isLinear), 1.0, isNoFog);
+  vFog = computeFog(length(aPosition - uViewOrigin));
 }

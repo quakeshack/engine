@@ -1,21 +1,18 @@
-import Cvar from '../common/Cvar.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import * as Def from '../common/Def.ts';
 import ClientInput from './ClientInput.ts';
 import CL from './CL.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import GameModule from '../common/GameModule.ts';
-import { MoveVars, Pmove } from '../common/Pmove.ts';
-import { ClientEngineAPI } from '../common/GameAPIs.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
-import type { SerializedParticle } from './R.ts';
+import { MoveVars } from '../common/Pmove.ts';
+import { engineApi } from './PageServices.ts';
+import { eventBus } from '../common/EventBus.ts';
+import type { SerializedParticle } from './renderer/effects/Particles.ts';
 import type { SerializedClientEntity } from './ClientEntities.ts';
+import clientCvars from './ClientCvars.ts';
+import { clientPmove } from './ClientPhysics.ts';
+import Host from '../common/Host.ts';
 
-let { Host } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Host } = getClientRegistry());
-});
 
 /** The client game can tell the menu what to do when a new game is requested. */
 export interface StartGameInterface {
@@ -40,12 +37,11 @@ export default class ClientLifecycle {
   static async init(): Promise<void> {
     CL.ClearState();
     ClientInput.Init();
-    CL.pmove = new Pmove();
-    CL.pmove.movevars = new MoveVars();
-    this.#registerCvars();
+    clientPmove.movevars = new MoveVars();
+    clientCvars.register();
     this.#registerCommands();
     await clientRuntimeState.clientEntities.initTempEntities();
-    CL.ConfigureConnectionIdentity({ name: CL.name, color: CL.color, rcon_password: CL.rcon_password });
+    CL.ConfigureConnectionIdentity({ name: clientCvars.name, color: clientCvars.color, rcon_password: clientCvars.rcon_password });
     this.initGame();
   }
 
@@ -61,9 +57,9 @@ export default class ClientLifecycle {
 
     document.title = `${activeGameModule.identification.name} (${activeGameModule.identification.version.join('.')}) on ${Def.productName} (${hostVersion?.string ?? ''})`;
 
-    activeGameModule.ClientGameAPI.Init(ClientEngineAPI);
+    activeGameModule.ClientGameAPI.Init(engineApi);
 
-    this.startGame = activeGameModule.ClientGameAPI.GetStartGameInterface(ClientEngineAPI);
+    this.startGame = activeGameModule.ClientGameAPI.GetStartGameInterface(engineApi);
 
     if (!this.startGame) {
       this.startGame = new DefaultStartGameFunctions();
@@ -81,32 +77,6 @@ export default class ClientLifecycle {
   static resumeGame(clientdata: string | null, particles: SerializedParticle[] | null, clientEntities: SerializedClientEntity[] | null): void {
     CL.Connect('local');
     clientRuntimeState.loadClientData = [clientdata, particles, clientEntities];
-  }
-
-  static #registerCvars(): void {
-    CL.name = new Cvar('_cl_name', 'player', Cvar.FLAG.ARCHIVE);
-    CL.color = new Cvar('_cl_color', '0', Cvar.FLAG.ARCHIVE);
-    CL.upspeed = new Cvar('cl_upspeed', '200');
-    CL.forwardspeed = new Cvar('cl_forwardspeed', '400', Cvar.FLAG.ARCHIVE);
-    CL.backspeed = new Cvar('cl_backspeed', '400', Cvar.FLAG.ARCHIVE);
-    CL.sidespeed = new Cvar('cl_sidespeed', '350');
-    CL.movespeedkey = new Cvar('cl_movespeedkey', '2.0');
-    CL.yawspeed = new Cvar('cl_yawspeed', '140');
-    CL.pitchspeed = new Cvar('cl_pitchspeed', '150');
-    CL.anglespeedkey = new Cvar('cl_anglespeedkey', '1.5');
-    CL.shownet = new Cvar('cl_shownet', '0');
-    CL.nolerp = new Cvar('cl_nolerp', '0', Cvar.FLAG.ARCHIVE);
-    CL.lookspring = new Cvar('lookspring', '0', Cvar.FLAG.ARCHIVE);
-    CL.lookstrafe = new Cvar('lookstrafe', '0', Cvar.FLAG.ARCHIVE);
-    CL.sensitivity = new Cvar('sensitivity', '3', Cvar.FLAG.ARCHIVE);
-    CL.m_pitch = new Cvar('m_pitch', '0.022', Cvar.FLAG.ARCHIVE);
-    CL.m_yaw = new Cvar('m_yaw', '0.022', Cvar.FLAG.ARCHIVE);
-    CL.m_forward = new Cvar('m_forward', '1', Cvar.FLAG.ARCHIVE);
-    CL.m_side = new Cvar('m_side', '0.8', Cvar.FLAG.ARCHIVE);
-    CL.rcon_password = new Cvar('rcon_password', '');
-    CL.nopred = new Cvar('cl_nopred', '0', Cvar.FLAG.NONE, 'Enables/disables client-side prediction');
-    CL.nohud = new Cvar('cl_nohud', '0', Cvar.FLAG.NONE, 'Disables all HUD elements');
-    CL.areaportals = new Cvar('cl_areaportals', '0', Cvar.FLAG.ARCHIVE, 'Enables/disables client-side area portal culling');
   }
 
   static #registerCommands(): void {

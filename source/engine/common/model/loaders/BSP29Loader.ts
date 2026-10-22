@@ -3,37 +3,18 @@ import Q from '../../../../shared/Q.ts';
 import { content } from '../../../../shared/Defs.ts';
 import { GLTexture } from '../../../client/GL.ts';
 import W, { readWad3Texture, translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.ts';
+import COM from '../../Com.ts';
 import { CRC16CCITT } from '../../CRC.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
-import { eventBus, getCommonRegistry, registry } from '../../../registry.ts';
 import { ModelLoader } from '../ModelLoader.ts';
-import { Brush, BrushModel, BrushSide, Node, type BrushTexInfo, type Clipnode, type Hull } from '../BSP.ts';
+import { Brush, BrushModel, BrushSide, type BrushTexInfo } from '../BSP.ts';
+import { LeafTable, NodeTable } from '../BspTree.ts';
+import { ClipTree, Hull, PlaneTable } from '../../collision/Hull.ts';
 import { QSMatLoader } from '../QSMatLoader.ts';
 import { BSPXLoader } from '../BSPXLoader.ts';
 import { Face, Plane } from '../BaseModel.ts';
-import { MaterialFlags, noTextureMaterial, QuakeMaterial } from '../../../client/renderer/Materials.ts';
-import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/Sky.ts';
-
-// Get registry references (will be set by eventBus)
-let { COM, Con } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con } = getCommonRegistry());
-});
-
-interface AllowedClipnodeHull extends Hull {
-  allowedClipNodes?: Uint8Array | null;
-}
-
-/**
- * Helper function to get a child node from a BSP node, with type assertion.
- * @returns The child node at the specified index.
- */
-function getNodeChild(node: Node, childIndex: 0 | 1): Node {
-  const child = node.children[childIndex];
-  console.assert(child instanceof Node, 'BSP29Loader expected linked BSP child node');
-  return child as Node;
-}
+import { MaterialFlags, noTextureMaterial, QuakeMaterial } from '../../../client/renderer/models/Materials.ts';
+import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/scene/Sky.ts';
 
 /**
  * Loader for Quake BSP29 format (.bsp)
@@ -87,7 +68,7 @@ export class BSP29Loader extends ModelLoader {
     this._loadEdges(loadmodel, buffer);
     this.#loadSurfedges(loadmodel, buffer);
     this.#loadTextures(loadmodel, buffer);
-    await QSMatLoader.load(loadmodel);
+    await QSMatLoader.load(loadmodel, this.context);
     this.#loadLighting(loadmodel, buffer);
     this.#loadPlanes(loadmodel, buffer);
     this.#loadTexinfo(loadmodel, buffer);
@@ -99,7 +80,7 @@ export class BSP29Loader extends ModelLoader {
     this._loadNodes(loadmodel, buffer);
     this._loadClipnodes(loadmodel, buffer);
     this.#makeHull0(loadmodel);
-    BSPXLoader.load(loadmodel, buffer, loadmodel.bspxoffset);
+    BSPXLoader.load(loadmodel, buffer, loadmodel.bspxoffset, this.context.con, this.context.loadRenderData);
     this._loadBrushList(loadmodel, buffer);
     this.#loadLightingRGB(loadmodel, buffer);
     this.#loadSubmodels(loadmodel, buffer); // CR: must be last, since it creates additional models based on this one
@@ -108,7 +89,7 @@ export class BSP29Loader extends ModelLoader {
       // Some third-party map compilers (e.g. certain BSP2 qbsp builds) can emit an
       // unclipped/infinite headnode bounding box for the world model. Recover by
       // deriving bounds from the actual vertex data instead of trusting the lump.
-      Con.PrintWarning(`BSP29Loader: ${name} has invalid model bounds in the models lump, recomputing from vertex data\n`);
+      this.context.con.PrintWarning(`BSP29Loader: ${name} has invalid model bounds in the models lump, recomputing from vertex data\n`);
       this.#recoverModelBoundsFromVertexes(loadmodel);
     }
 
@@ -132,7 +113,7 @@ export class BSP29Loader extends ModelLoader {
   }
 
   async #loadSkybox(loadmodel: BrushModel): Promise<void> {
-    if (registry.isDedicatedServer) {
+    if (!this.context.loadRenderData) {
       return;
     }
 
@@ -261,7 +242,7 @@ export class BSP29Loader extends ModelLoader {
       let luminanceTexture = null;
 
       // Load texture data (skip for dedicated server)
-      if (!registry.isDedicatedServer) {
+      if (this.context.loadRenderData) {
         const txname = tx.name.toLowerCase();
 
         // HACK: textures starting with sky are special
@@ -433,7 +414,7 @@ export class BSP29Loader extends ModelLoader {
    * computes PHS (Potentially Hearable Set) via transitive closure of PVS.
    */
   #buildClusterData(loadmodel: BrushModel): void {
-    const numclusters = loadmodel.leafs.length - 1; // leaf 0 is outside sentinel
+    const numclusters = loadmodel.leafTable.count - 1; // leaf 0 is outside sentinel
     loadmodel.numclusters = numclusters;
 
     // BSP29/BSP2 maps have no area data — single area, no portals
@@ -445,11 +426,11 @@ export class BSP29Loader extends ModelLoader {
     }
 
     // Build clusterPvsOffsets from leaf visofs values
-    // For BSP29: cluster c = leaf c+1, so clusterPvsOffsets[c] = leafs[c+1].visofs
+    // For BSP29: cluster c = leaf c+1, so clusterPvsOffsets[c] = visofs of leaf c+1
     const clusterPvsOffsets = new Array(numclusters);
 
     for (let c = 0; c < numclusters; c++) {
-      clusterPvsOffsets[c] = loadmodel.leafs[c + 1].visofs;
+      clusterPvsOffsets[c] = loadmodel.leafTable.visofs[c + 1];
     }
 
     loadmodel.clusterPvsOffsets = clusterPvsOffsets;
@@ -588,7 +569,7 @@ export class BSP29Loader extends ModelLoader {
       const submodel = loadmodel.submodels[def.modelIndex - 1]; // *N -> submodels[N-1]
 
       if (!submodel) {
-        Con.PrintWarning(`BSP29Loader.computeAreas: portal ${def.portalNum} references invalid model *${def.modelIndex}\n`);
+        this.context.con.PrintWarning(`BSP29Loader.computeAreas: portal ${def.portalNum} references invalid model *${def.modelIndex}\n`);
         continue;
       }
 
@@ -653,7 +634,13 @@ export class BSP29Loader extends ModelLoader {
     const leafSignatures = new Map<number, string>();
 
     /** Recursively classify nodes against portal planes. */
-    const classifyRecursive = (node: Node, states: number[]): void => {
+    const classifyRecursive = (reference: number, states: number[]): void => {
+      const nodes = loadmodel.nodeTable;
+      const leafs = loadmodel.leafTable;
+      const leaf = ~reference;
+      const bounds = reference >= 0 ? nodes.bounds : leafs.bounds;
+      const base = (reference >= 0 ? reference : leaf) * 6;
+
       // Check unknown portals against node bounds
       const nextStates = states.slice();
 
@@ -663,38 +650,24 @@ export class BSP29Loader extends ModelLoader {
         }
 
         const p = portals[i];
-        const nodeMins = node.mins;
-        const nodeMaxs = node.maxs;
 
-        if (nodeMins === null || nodeMaxs === null) {
-          continue;
-        }
-
-        if (nodeMaxs[p.axis] < p.dist) {
+        if (bounds[base + 3 + p.axis] < p.dist) {
           nextStates[i] = 0;
-        } else if (nodeMins[p.axis] > p.dist) {
+        } else if (bounds[base + p.axis] > p.dist) {
           nextStates[i] = 1;
         }
       }
 
-      if (node.contents < content.CONTENT_NONE) {
-        // Leaf Node
-        if (node.contents === content.CONTENT_SOLID) {
-          node.area = 0;
+      if (reference < 0) {
+        // Leaf
+        if (leafs.contents[leaf] === content.CONTENT_SOLID) {
+          leafs.areas[leaf] = 0;
           return;
         }
 
-        const nodeMins = node.mins;
-        const nodeMaxs = node.maxs;
-        console.assert(nodeMins !== null && nodeMaxs !== null, 'leaf nodes require bounds for area computation');
-
-        if (nodeMins === null || nodeMaxs === null) {
-          return;
-        }
-
-        const cx = (nodeMins[0] + nodeMaxs[0]) * 0.5;
-        const cy = (nodeMins[1] + nodeMaxs[1]) * 0.5;
-        const cz = (nodeMins[2] + nodeMaxs[2]) * 0.5;
+        const cx = (bounds[base] + bounds[base + 3]) * 0.5;
+        const cy = (bounds[base + 1] + bounds[base + 4]) * 0.5;
+        const cz = (bounds[base + 2] + bounds[base + 5]) * 0.5;
         const center = [cx, cy, cz];
 
         let sig = '';
@@ -708,7 +681,7 @@ export class BSP29Loader extends ModelLoader {
 
           // Nearness check via PHS
           const p = portals[i];
-          const isNear = side === 0 ? p.backVis.isRevealed(node.num) : p.frontVis.isRevealed(node.num);
+          const isNear = side === 0 ? p.backVis.isRevealed(leaf) : p.frontVis.isRevealed(leaf);
 
           // Sig Codes: 0=BackFar, 1=BackNear, 2=FrontNear, 3=FrontFar
           let code = 0;
@@ -722,22 +695,18 @@ export class BSP29Loader extends ModelLoader {
           sig += code.toString();
         }
 
-        leafSignatures.set(node.num, sig);
+        leafSignatures.set(leaf, sig);
         return;
       }
 
       // Inner Node
-      if (node.children[0]) {
-        classifyRecursive(getNodeChild(node, 0), nextStates);
-      }
-      if (node.children[1]) {
-        classifyRecursive(getNodeChild(node, 1), nextStates);
-      }
+      classifyRecursive(nodes.children[reference * 2], nextStates);
+      classifyRecursive(nodes.children[reference * 2 + 1], nextStates);
     };
 
     // Start traversal from root
     const initialStates = new Array(portals.length).fill(-1);
-    classifyRecursive(loadmodel.nodes[0], initialStates);
+    classifyRecursive(0, initialStates);
 
     // 4. Cluster Signatures into Areas (PVS connectivity)
     const sigGroups = new Map();
@@ -774,18 +743,18 @@ export class BSP29Loader extends ModelLoader {
         // BFS within this signature group using PVS
         const queue = [startLeaf];
         visited.add(startLeaf);
-        loadmodel.leafs[startLeaf].area = area;
+        loadmodel.leafTable.areas[startLeaf] = area;
         areaLeafs.push(startLeaf);
 
         while (queue.length > 0) {
           const current = queue.shift();
-          const pvs = loadmodel.getPvsByLeaf(loadmodel.leafs[current]);
+          const pvs = loadmodel.getPvsByLeaf(current);
 
           // We only need to check leaves in the same signature group
           for (const candidate of leafIndices) {
             if (!visited.has(candidate) && pvs.isRevealed(candidate)) {
               visited.add(candidate);
-              loadmodel.leafs[candidate].area = area;
+              loadmodel.leafTable.areas[candidate] = area;
               areaLeafs.push(candidate);
               queue.push(candidate);
             }
@@ -841,7 +810,7 @@ export class BSP29Loader extends ModelLoader {
 
         // Check A seeing B (optimization: only check first few or scan until hit)
         for (let li = 0; li < leafsA.length && !pvsAdjacent; li++) {
-          const pvs = loadmodel.getPvsByLeaf(loadmodel.leafs[leafsA[li]]);
+          const pvs = loadmodel.getPvsByLeaf(leafsA[li]);
           for (let lj = 0; lj < leafsB.length; lj++) {
             if (pvs.isRevealed(leafsB[lj])) {
               pvsAdjacent = true;
@@ -873,7 +842,7 @@ export class BSP29Loader extends ModelLoader {
     loadmodel.portalDefs = allConnections;
     loadmodel.areaPortals.init(loadmodel.numAreas, allConnections, numGroups);
 
-    Con.DPrint(`BSP29Loader.computeAreas: computed ${loadmodel.numAreas} areas, ${allConnections.length} connections, ${numGroups} groups\n`);
+    this.context.con.DPrint(`BSP29Loader.computeAreas: computed ${loadmodel.numAreas} areas, ${allConnections.length} connections, ${numGroups} groups\n`);
   }
 
   /**
@@ -891,7 +860,7 @@ export class BSP29Loader extends ModelLoader {
     const autoAssignDoors: { modelIndex: number; model: string }[] = [];
     let maxExplicitPortal = -1;
 
-    Con.DPrint('BSP29Loader.#parsePortalEntities: looking for portals in entity lump...\n');
+    this.context.con.DPrint('BSP29Loader.#parsePortalEntities: looking for portals in entity lump...\n');
 
     for (const ent of COM.ParseEntityLump(loadmodel.entities)) {
       if (!ent.model || !ent.model.startsWith('*')) {
@@ -923,7 +892,7 @@ export class BSP29Loader extends ModelLoader {
       // CR: temporarily disabled due to funny bugs
       // // Auto-assign portal numbers to door entities
       // if (ent.classname is an auto-assigned door classname) {
-      //   Con.DPrint(`...detected portal ${ent.classname} with model ${ent.model}\n`);
+      //   this.context.con.DPrint(`...detected portal ${ent.classname} with model ${ent.model}\n`);
       //   autoAssignDoors.push({ modelIndex, model: ent.model });
       // }
     }
@@ -999,7 +968,7 @@ export class BSP29Loader extends ModelLoader {
     }
 
     if (autoAssignDoors.length > 0) {
-      Con.DPrint(`BSP29Loader.#parsePortalEntities: auto-assigned ${autoAssignDoors.length} door portals (${groupPortal.size} groups)\n`);
+      this.context.con.DPrint(`BSP29Loader.#parsePortalEntities: auto-assigned ${autoAssignDoors.length} door portals (${groupPortal.size} groups)\n`);
     }
 
     return portals;
@@ -1060,17 +1029,17 @@ export class BSP29Loader extends ModelLoader {
    * nearest-neighbor fallback when the viewleaf has no visible turbulent chains.
    */
   #buildLiquidFogAnchors(loadmodel: BrushModel): void {
-    for (const leaf of loadmodel.leafs) {
-      if (leaf.contents > content.CONTENT_WATER) {
+    const leafs = loadmodel.leafTable;
+
+    for (let leaf = 0; leaf < leafs.count; leaf++) {
+      if (leafs.contents[leaf] > content.CONTENT_WATER) {
         continue;
       }
 
-      if (leaf.mins === null || leaf.maxs === null) {
-        continue;
-      }
+      const bounds = leafs.bounds;
 
-      for (let i = 0; i < leaf.nummarksurfaces; i++) {
-        const faceIndex = loadmodel.marksurfaces[leaf.firstmarksurface + i];
+      for (let i = 0; i < leafs.numMarkSurfaces[leaf]; i++) {
+        const faceIndex = loadmodel.marksurfaces[leafs.firstMarkSurfaces[leaf] + i];
         const face = loadmodel.faces[faceIndex];
 
         if (!face?.turbulent) {
@@ -1084,7 +1053,11 @@ export class BSP29Loader extends ModelLoader {
         }
 
         loadmodel.liquidFogAnchors.push({
-          center: leaf.mins.copy().add(leaf.maxs).multiply(0.5),
+          center: new Vector(
+            (bounds[leaf * 6] + bounds[leaf * 6 + 3]) * 0.5,
+            (bounds[leaf * 6 + 1] + bounds[leaf * 6 + 4]) * 0.5,
+            (bounds[leaf * 6 + 2] + bounds[leaf * 6 + 5]) * 0.5,
+          ),
           fogTint: mat.fogTint,
         });
 
@@ -1108,7 +1081,7 @@ export class BSP29Loader extends ModelLoader {
       const modelIndex = parseInt(entity.model.substring(1), 10);
 
       if (isNaN(modelIndex) || modelIndex <= 0) {
-        Con.PrintWarning(`func_fog has invalid model '${entity.model}'\n`);
+        this.context.con.PrintWarning(`func_fog has invalid model '${entity.model}'\n`);
         continue;
       }
 
@@ -1126,7 +1099,7 @@ export class BSP29Loader extends ModelLoader {
         maxs: submodel ? [submodel.maxs[0], submodel.maxs[1], submodel.maxs[2]] : [0, 0, 0],
       });
 
-      Con.DPrint(`Found func_fog: model *${modelIndex}, color ${colorParts}, density ${entity.fog_density || '0.01'}\n`);
+      this.context.con.DPrint(`Found func_fog: model *${modelIndex}, color ${colorParts}, density ${entity.fog_density || '0.01'}\n`);
     }
   }
 
@@ -1244,12 +1217,19 @@ export class BSP29Loader extends ModelLoader {
       const dist = view.getFloat32(fileofs + 12, true);
       const out = new Plane(normal, dist);
       out.type = view.getUint32(fileofs + 16, true);
-      if (out.normal[0] < 0) { out.signbits |= 1; }
-      if (out.normal[1] < 0) { out.signbits |= 2; }
-      if (out.normal[2] < 0) { out.signbits |= 4; }
+      if (out.normal[0] < 0) {
+        out.signbits |= 1;
+      }
+      if (out.normal[1] < 0) {
+        out.signbits |= 2;
+      }
+      if (out.normal[2] < 0) {
+        out.signbits |= 4;
+      }
       loadmodel.planes[i] = out;
       fileofs += 20;
     }
+    loadmodel.planeTable = PlaneTable.fromPlanes(loadmodel.planes);
     loadmodel.bspxoffset = Math.max(loadmodel.bspxoffset, fileofs);
   }
 
@@ -1373,17 +1353,27 @@ export class BSP29Loader extends ModelLoader {
   }
 
   /**
-   * Recursively set parent references for BSP tree nodes.
+   * Checks that the nodes only refer to nodes, leafs and planes that exist, and sets the parents of the tree.
    */
-  #setParent(node: Node, parent: Node | null): void {
-    node.parent = parent;
+  protected _linkTree(loadmodel: BrushModel): void {
+    const nodes = loadmodel.nodeTable;
+    const leafs = loadmodel.leafTable;
 
-    if (node.contents < content.CONTENT_NONE) {
-      return;
+    for (let node = 0; node < nodes.count; node++) {
+      if (nodes.planeNums[node] >= loadmodel.planes.length) {
+        throw new CorruptedResourceError(loadmodel.name, `${this.getName()}: node ${node} refers to a plane that does not exist`);
+      }
+
+      for (let side = 0; side < 2; side++) {
+        const child = nodes.children[node * 2 + side];
+
+        if (child >= 0 ? child >= nodes.count : ~child >= leafs.count) {
+          throw new CorruptedResourceError(loadmodel.name, `${this.getName()}: node ${node} refers to a child that does not exist`);
+        }
+      }
     }
 
-    this.#setParent(node.children[0] as Node, node);
-    this.#setParent(node.children[1] as Node, node);
+    nodes.linkParents(leafs);
   }
 
   /**
@@ -1400,43 +1390,29 @@ export class BSP29Loader extends ModelLoader {
     }
 
     const count = filelen / 24;
-    loadmodel.nodes.length = 0;
+    const nodes = new NodeTable(count);
+    loadmodel.nodeTable = nodes;
 
     for (let i = 0; i < count; i++) {
-      loadmodel.nodes[i] = Object.assign(new Node(loadmodel), {
-        num: i,
-        planenum: view.getUint32(fileofs, true),
-        children: [view.getInt16(fileofs + 4, true), view.getInt16(fileofs + 6, true)],
-        mins: new Vector(view.getInt16(fileofs + 8, true), view.getInt16(fileofs + 10, true), view.getInt16(fileofs + 12, true)),
-        maxs: new Vector(view.getInt16(fileofs + 14, true), view.getInt16(fileofs + 16, true), view.getInt16(fileofs + 18, true)),
-        firstface: view.getUint16(fileofs + 20, true),
-        numfaces: view.getUint16(fileofs + 22, true),
-      });
-      loadmodel.nodes[i].baseMins = loadmodel.nodes[i].mins!.copy();
-      loadmodel.nodes[i].baseMaxs = loadmodel.nodes[i].maxs!.copy();
+      nodes.planeNums[i] = view.getUint32(fileofs, true);
+      nodes.children[i * 2] = view.getInt16(fileofs + 4, true);
+      nodes.children[i * 2 + 1] = view.getInt16(fileofs + 6, true);
+
+      for (let k = 0; k < 6; k++) {
+        nodes.bounds[i * 6 + k] = view.getInt16(fileofs + 8 + k * 2, true);
+      }
+
+      nodes.firstFaces[i] = view.getUint16(fileofs + 20, true);
+      nodes.numFaces[i] = view.getUint16(fileofs + 22, true);
       fileofs += 24;
     }
 
-    for (let i = 0; i < count; i++) {
-      const out = loadmodel.nodes[i];
-      out.plane = loadmodel.planes[out.planenum];
-      // At this point children contain indices, we convert them to Node references
-      const child0Idx = out.children[0] as number;
-      const child1Idx = out.children[1] as number;
-      out.children[0] = child0Idx >= 0
-        ? loadmodel.nodes[child0Idx]
-        : loadmodel.leafs[-1 - child0Idx];
-      out.children[1] = child1Idx >= 0
-        ? loadmodel.nodes[child1Idx]
-        : loadmodel.leafs[-1 - child1Idx];
-    }
-
-    this.#setParent(loadmodel.nodes[0], null);
+    this._linkTree(loadmodel);
     loadmodel.bspxoffset = Math.max(loadmodel.bspxoffset, fileofs);
   }
 
   /**
-   * Load BSP leaf nodes from BSP lump.
+   * Load BSP leafs from BSP lump.
    */
   protected _loadLeafs(loadmodel: BrushModel, buf: ArrayBuffer): void {
     const view = new DataView(buf);
@@ -1447,27 +1423,25 @@ export class BSP29Loader extends ModelLoader {
       throw new CorruptedResourceError(loadmodel.name, 'BSP29Loader: leafs lump size is not a multiple of 28');
     }
     const count = filelen / 28;
-    loadmodel.leafs.length = count;
+    const leafs = new LeafTable(count);
+    loadmodel.leafTable = leafs;
 
     for (let i = 0; i < count; i++) {
-      loadmodel.leafs[i] = Object.assign(new Node(loadmodel), {
-        num: i,
-        contents: view.getInt32(fileofs, true),
-        visofs: view.getInt32(fileofs + 4, true),
-        cluster: i > 0 ? i - 1 : -1,
-        mins: new Vector(view.getInt16(fileofs + 8, true), view.getInt16(fileofs + 10, true), view.getInt16(fileofs + 12, true)),
-        maxs: new Vector(view.getInt16(fileofs + 14, true), view.getInt16(fileofs + 16, true), view.getInt16(fileofs + 18, true)),
-        firstmarksurface: view.getUint16(fileofs + 20, true),
-        nummarksurfaces: view.getUint16(fileofs + 22, true),
-        ambient_level: [
-          view.getUint8(fileofs + 24),
-          view.getUint8(fileofs + 25),
-          view.getUint8(fileofs + 26),
-          view.getUint8(fileofs + 27),
-        ],
-      });
-      loadmodel.leafs[i].baseMins = loadmodel.leafs[i].mins!.copy();
-      loadmodel.leafs[i].baseMaxs = loadmodel.leafs[i].maxs!.copy();
+      leafs.contents[i] = view.getInt32(fileofs, true);
+      leafs.visofs[i] = view.getInt32(fileofs + 4, true);
+      leafs.clusters[i] = i > 0 ? i - 1 : -1;
+
+      for (let k = 0; k < 6; k++) {
+        leafs.bounds[i * 6 + k] = view.getInt16(fileofs + 8 + k * 2, true);
+      }
+
+      leafs.firstMarkSurfaces[i] = view.getUint16(fileofs + 20, true);
+      leafs.numMarkSurfaces[i] = view.getUint16(fileofs + 22, true);
+
+      for (let k = 0; k < 4; k++) {
+        leafs.ambient[i * 4 + k] = view.getUint8(fileofs + 24 + k);
+      }
+
       fileofs += 28;
     }
     loadmodel.bspxoffset = Math.max(loadmodel.bspxoffset, fileofs);
@@ -1482,31 +1456,15 @@ export class BSP29Loader extends ModelLoader {
     let fileofs = view.getUint32((lump.clipnodes << 3) + 4, true);
     const filelen = view.getUint32((lump.clipnodes << 3) + 8, true);
     const count = filelen >> 3;
-    loadmodel.clipnodes.length = 0;
+    const tree = new ClipTree(count);
+    loadmodel.clipTree = tree;
 
     loadmodel.hulls.length = 0;
-    loadmodel.hulls[1] = {
-      clipnodes: loadmodel.clipnodes,
-      firstclipnode: 0,
-      lastclipnode: count - 1,
-      planes: loadmodel.planes,
-      clip_mins: new Vector(-16.0, -16.0, -24.0),
-      clip_maxs: new Vector(16.0, 16.0, 32.0),
-    };
-    loadmodel.hulls[2] = {
-      clipnodes: loadmodel.clipnodes,
-      firstclipnode: 0,
-      lastclipnode: count - 1,
-      planes: loadmodel.planes,
-      clip_mins: new Vector(-32.0, -32.0, -24.0),
-      clip_maxs: new Vector(32.0, 32.0, 64.0),
-    };
+    loadmodel.hulls[1] = new Hull(loadmodel.planeTable, tree, new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 32.0), 0, count - 1);
+    loadmodel.hulls[2] = new Hull(loadmodel.planeTable, tree, new Vector(-32.0, -32.0, -24.0), new Vector(32.0, 32.0, 64.0), 0, count - 1);
 
     for (let i = 0; i < count; i++) {
-      loadmodel.clipnodes[i] = {
-        planenum: view.getUint32(fileofs, true),
-        children: [view.getInt16(fileofs + 4, true), view.getInt16(fileofs + 6, true)],
-      };
+      tree.set(i, view.getUint32(fileofs, true), view.getInt16(fileofs + 4, true), view.getInt16(fileofs + 6, true));
       fileofs += 8;
     }
     loadmodel.bspxoffset = Math.max(loadmodel.bspxoffset, fileofs);
@@ -1516,27 +1474,19 @@ export class BSP29Loader extends ModelLoader {
    * Create hull0 (point hull) from BSP nodes for collision detection.
    */
   #makeHull0(loadmodel: BrushModel): void {
-    type Clipnode = { planenum: number; children: (number | Node)[] };
+    const nodes = loadmodel.nodeTable;
+    const leafs = loadmodel.leafTable;
+    const tree = new ClipTree(nodes.count);
 
-    const clipnodes = [] as Clipnode[];
-    const hull = {
-      clipnodes: clipnodes,
-      lastclipnode: loadmodel.nodes.length - 1,
-      planes: loadmodel.planes,
-      clip_mins: new Vector(),
-      clip_maxs: new Vector(),
-    } as Hull;
+    for (let i = 0; i < nodes.count; i++) {
+      // a child is a node index, or the contents of the leaf it stands for
+      const front = nodes.children[i * 2];
+      const back = nodes.children[i * 2 + 1];
 
-    for (let i = 0; i < loadmodel.nodes.length; i++) {
-      const node = loadmodel.nodes[i];
-      const out = { planenum: node.planenum, children: [] } as Clipnode;
-      const child0 = node.children[0] as Node;
-      const child1 = node.children[1] as Node;
-      out.children[0] = child0.contents < content.CONTENT_NONE ? child0.contents : child0.num;
-      out.children[1] = child1.contents < content.CONTENT_NONE ? child1.contents : child1.num;
-      clipnodes[i] = out;
+      tree.set(i, nodes.planeNums[i], front >= 0 ? front : leafs.contents[~front], back >= 0 ? back : leafs.contents[~back]);
     }
-    loadmodel.hulls[0] = hull;
+
+    loadmodel.hulls[0] = new Hull(loadmodel.planeTable, tree, new Vector(), new Vector(), 0, nodes.count - 1);
   }
 
   /**
@@ -1545,29 +1495,26 @@ export class BSP29Loader extends ModelLoader {
    * submodels, so traces must stay within the owning subtree.
    * @returns A mask of reachable clipnodes, or null when the requested root is invalid.
    */
-  _buildAllowedClipnodeMask(clipnodes: Clipnode[], firstclipnode: number): Uint8Array | null {
-    if (!clipnodes || clipnodes.length === 0 || firstclipnode < 0 || firstclipnode >= clipnodes.length) {
+  _buildAllowedClipnodeMask(tree: ClipTree, firstclipnode: number): Uint8Array | null {
+    if (tree.count === 0 || firstclipnode < 0 || firstclipnode >= tree.count) {
       return null;
     }
 
-    const allowedClipNodes = new Uint8Array(clipnodes.length);
+    const allowedClipNodes = new Uint8Array(tree.count);
     const stack = [firstclipnode];
 
     while (stack.length > 0) {
       const nodeIndex = stack.pop()!;
 
-      if (nodeIndex < 0 || nodeIndex >= clipnodes.length || allowedClipNodes[nodeIndex] === 1) {
+      if (nodeIndex < 0 || nodeIndex >= tree.count || allowedClipNodes[nodeIndex] === 1) {
         continue;
       }
 
       allowedClipNodes[nodeIndex] = 1;
 
-      const node = clipnodes[nodeIndex];
-      if (!node) {
-        continue;
-      }
+      for (let side = 0; side < 2; side++) {
+        const childIndex = tree.children[nodeIndex * 2 + side];
 
-      for (const childIndex of node.children) {
         if (childIndex >= 0) {
           stack.push(childIndex);
         }
@@ -1580,12 +1527,8 @@ export class BSP29Loader extends ModelLoader {
   /**
    * Attach the owning subtree mask to a legacy hull.
    */
-  #assignAllowedClipnodeMask(hull?: AllowedClipnodeHull): void {
-    if (!hull || hull.firstclipnode === undefined) {
-      return;
-    }
-
-    hull.allowedClipNodes = this._buildAllowedClipnodeMask(hull.clipnodes, hull.firstclipnode);
+  #assignAllowedClipnodeMask(hull: Hull): void {
+    hull.allowedClipNodes = this._buildAllowedClipnodeMask(hull.tree, hull.firstClipNode);
   }
 
   /**
@@ -1625,55 +1568,37 @@ export class BSP29Loader extends ModelLoader {
 
     loadmodel.mins.setTo(view.getFloat32(fileofs, true) - 1.0, view.getFloat32(fileofs + 4, true) - 1.0, view.getFloat32(fileofs + 8, true) - 1.0);
     loadmodel.maxs.setTo(view.getFloat32(fileofs + 12, true) + 1.0, view.getFloat32(fileofs + 16, true) + 1.0, view.getFloat32(fileofs + 20, true) + 1.0);
-    loadmodel.hulls[0].firstclipnode = view.getUint32(fileofs + 36, true);
-    loadmodel.hulls[1].firstclipnode = view.getUint32(fileofs + 40, true);
-    loadmodel.hulls[2].firstclipnode = view.getUint32(fileofs + 44, true);
+    loadmodel.hulls[0].firstClipNode = view.getUint32(fileofs + 36, true);
+    loadmodel.hulls[1].firstClipNode = view.getUint32(fileofs + 40, true);
+    loadmodel.hulls[2].firstClipNode = view.getUint32(fileofs + 44, true);
     this.#assignAllowedClipnodeMask(loadmodel.hulls[0]);
     this.#assignAllowedClipnodeMask(loadmodel.hulls[1]);
     this.#assignAllowedClipnodeMask(loadmodel.hulls[2]);
     fileofs += 64;
 
-    const clipnodes = loadmodel.hulls[0].clipnodes;
+    const hull0Tree = loadmodel.hulls[0].tree;
     for (let i = 1; i < count; i++) {
       const out = new BrushModel('*' + i);
       out.submodel = true;
       out.mins.setTo(view.getFloat32(fileofs, true) - 1.0, view.getFloat32(fileofs + 4, true) - 1.0, view.getFloat32(fileofs + 8, true) - 1.0);
       out.maxs.setTo(view.getFloat32(fileofs + 12, true) + 1.0, view.getFloat32(fileofs + 16, true) + 1.0, view.getFloat32(fileofs + 20, true) + 1.0);
       out.origin.setTo(view.getFloat32(fileofs + 24, true), view.getFloat32(fileofs + 28, true), view.getFloat32(fileofs + 32, true));
+      // the planes and the trees are shared with the world, a hull of a submodel only has a root of its own
       out.hulls = [
-        {
-          clipnodes: clipnodes,
-          firstclipnode: view.getUint32(fileofs + 36, true),
-          lastclipnode: loadmodel.nodes.length - 1,
-          planes: loadmodel.planes,
-          clip_mins: new Vector(),
-          clip_maxs: new Vector(),
-        },
-        {
-          clipnodes: loadmodel.clipnodes,
-          firstclipnode: view.getUint32(fileofs + 40, true),
-          lastclipnode: loadmodel.clipnodes.length - 1,
-          planes: loadmodel.planes,
-          clip_mins: new Vector(-16.0, -16.0, -24.0),
-          clip_maxs: new Vector(16.0, 16.0, 32.0),
-        },
-        {
-          clipnodes: loadmodel.clipnodes,
-          firstclipnode: view.getUint32(fileofs + 44, true),
-          lastclipnode: loadmodel.clipnodes.length - 1,
-          planes: loadmodel.planes,
-          clip_mins: new Vector(-32.0, -32.0, -24.0),
-          clip_maxs: new Vector(32.0, 32.0, 64.0),
-        },
+        new Hull(loadmodel.planeTable, hull0Tree, new Vector(), new Vector(), view.getUint32(fileofs + 36, true), loadmodel.nodeTable.count - 1),
+        new Hull(loadmodel.planeTable, loadmodel.clipTree, new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 32.0), view.getUint32(fileofs + 40, true), loadmodel.clipTree.count - 1),
+        new Hull(loadmodel.planeTable, loadmodel.clipTree, new Vector(-32.0, -32.0, -24.0), new Vector(32.0, 32.0, 64.0), view.getUint32(fileofs + 44, true), loadmodel.clipTree.count - 1),
       ];
+      out.planeTable = loadmodel.planeTable;
+      out.clipTree = loadmodel.clipTree;
       this.#assignAllowedClipnodeMask(out.hulls[0]);
       this.#assignAllowedClipnodeMask(out.hulls[1]);
       this.#assignAllowedClipnodeMask(out.hulls[2]);
       out.vertexes = loadmodel.vertexes;
       out.edges = loadmodel.edges;
       out.surfedges = loadmodel.surfedges;
-      out.nodes = loadmodel.nodes;
-      out.leafs = loadmodel.leafs;
+      out.nodeTable = loadmodel.nodeTable;
+      out.leafTable = loadmodel.leafTable;
       out.texinfo = loadmodel.texinfo;
       out.textures = loadmodel.textures;
       out.marksurfaces = loadmodel.marksurfaces;
@@ -1765,9 +1690,15 @@ export class BSP29Loader extends ModelLoader {
       } else {
         p.type = 5;
       }
-      if (normal[0] < 0) { p.signbits |= 1; }
-      if (normal[1] < 0) { p.signbits |= 2; }
-      if (normal[2] < 0) { p.signbits |= 4; }
+      if (normal[0] < 0) {
+        p.signbits |= 1;
+      }
+      if (normal[1] < 0) {
+        p.signbits |= 2;
+      }
+      if (normal[2] < 0) {
+        p.signbits |= 4;
+      }
       return p;
     };
 
@@ -1779,7 +1710,7 @@ export class BSP29Loader extends ModelLoader {
       offset += 4;
 
       if (ver !== 1) {
-        Con.Print(`BSP29Loader: unsupported BRUSHLIST version ${ver}\n`);
+        this.context.con.Print(`BSP29Loader: unsupported BRUSHLIST version ${ver}\n`);
         return;
       }
 
@@ -1796,7 +1727,7 @@ export class BSP29Loader extends ModelLoader {
 
       for (let b = 0; b < numbrushes; b++) {
         if (offset + 28 > endOffset) {
-          Con.Print('BSP29Loader: BRUSHLIST lump truncated at brush header\n');
+          this.context.con.Print('BSP29Loader: BRUSHLIST lump truncated at brush header\n');
           return;
         }
 
@@ -1825,7 +1756,7 @@ export class BSP29Loader extends ModelLoader {
 
         // Parse the non-axial planes from the lump
         if (offset + brushNumPlanes * 16 > endOffset) {
-          Con.Print('BSP29Loader: BRUSHLIST lump truncated at brush planes\n');
+          this.context.con.Print('BSP29Loader: BRUSHLIST lump truncated at brush planes\n');
           return;
         }
 
@@ -1882,7 +1813,7 @@ export class BSP29Loader extends ModelLoader {
       }
 
       if (planesRead !== numplanes) {
-        Con.Print(`BSP29Loader: BRUSHLIST plane count mismatch for model ${modelnum}: expected ${numplanes}, got ${planesRead}\n`);
+        this.context.con.Print(`BSP29Loader: BRUSHLIST plane count mismatch for model ${modelnum}: expected ${numplanes}, got ${planesRead}\n`);
       }
 
       modelBrushRanges.set(modelnum, { firstBrush, numBrushes: numbrushes });
@@ -1912,29 +1843,25 @@ export class BSP29Loader extends ModelLoader {
     // so that world traces don't collide with submodel brushes (func_plat,
     // trigger_*, func_door, etc.) and vice versa.
 
-    const leafIndexMap = new Map<Node, number>();
-    for (let i = 0; i < loadmodel.leafs.length; i++) {
-      leafIndexMap.set(loadmodel.leafs[i], i);
-    }
+    const nodes = loadmodel.nodeTable;
+    const leafs = loadmodel.leafTable;
+    const bspPlanes = loadmodel.planes;
 
-    const leafBrushLists: number[][] = new Array(loadmodel.leafs.length);
-    for (let i = 0; i < loadmodel.leafs.length; i++) {
+    const leafBrushLists: number[][] = new Array(leafs.count);
+    for (let i = 0; i < leafs.count; i++) {
       leafBrushLists[i] = [];
     }
 
-    /** Recursively insert a brush into BSP leaf nodes whose bounds overlap. */
-    const insertBrushRecursive = (node: Node, brushIdx: number, brush: Brush): void => {
-      // Leaf node: add the brush here
-      if (node.contents < content.CONTENT_NONE) {
-        const leafIndex = leafIndexMap.get(node);
-        if (leafIndex !== undefined) {
-          leafBrushLists[leafIndex].push(brushIdx);
-        }
+    /** Recursively insert a brush into BSP leafs whose bounds overlap. */
+    const insertBrushRecursive = (reference: number, brushIdx: number, brush: Brush): void => {
+      // Leaf: add the brush here
+      if (reference < 0) {
+        leafBrushLists[~reference].push(brushIdx);
         return;
       }
 
       // Internal node: test brush AABB against splitting plane
-      const plane = node.plane!;
+      const plane = bspPlanes[nodes.planeNums[reference]];
       console.assert(plane !== undefined, 'BSP node without plane');
 
       let d1, d2;
@@ -1960,24 +1887,14 @@ export class BSP29Loader extends ModelLoader {
       }
 
       if (d1 >= 0) {
-        const frontChild = node.children[0];
-        console.assert(frontChild !== null, 'brush insertion requires linked BSP child');
-
-        if (frontChild !== null) {
-          insertBrushRecursive(frontChild as Node, brushIdx, brush);
-        }
+        insertBrushRecursive(nodes.children[reference * 2], brushIdx, brush);
       }
       // Brushes that touch the split plane on their back-most extent must be
       // inserted into both leaves. Otherwise exact-boundary player positions
       // can miss a clip brush in one leaf and hit it only after a tiny move
       // into the adjacent leaf, producing false stuck/allsolid behavior.
       if (d2 <= 0) {
-        const backChild = node.children[1];
-        console.assert(backChild !== null, 'brush insertion requires linked BSP child');
-
-        if (backChild !== null) {
-          insertBrushRecursive(backChild as Node, brushIdx, brush);
-        }
+        insertBrushRecursive(nodes.children[reference * 2 + 1], brushIdx, brush);
       }
     };
 
@@ -1990,12 +1907,9 @@ export class BSP29Loader extends ModelLoader {
     // Submodel collision is handled by brute-force testing against the
     // submodel's brush range (see BrushTrace.boxTraceModel).
     const worldRange = modelBrushRanges.get(0);
-    if (worldRange) {
-      const rootNode = loadmodel.nodes[0];
-      if (rootNode) {
-        for (let brushIdx = worldRange.firstBrush; brushIdx < worldRange.firstBrush + worldRange.numBrushes; brushIdx++) {
-          insertBrushRecursive(rootNode, brushIdx, allBrushes[brushIdx]);
-        }
+    if (worldRange && nodes.count > 0) {
+      for (let brushIdx = worldRange.firstBrush; brushIdx < worldRange.firstBrush + worldRange.numBrushes; brushIdx++) {
+        insertBrushRecursive(0, brushIdx, allBrushes[brushIdx]);
       }
     }
 
@@ -2009,11 +1923,10 @@ export class BSP29Loader extends ModelLoader {
     // Build the flat leafbrushes array from per-leaf lists
     const leafbrushes: number[] = [];
 
-    for (let i = 0; i < loadmodel.leafs.length; i++) {
-      const leaf = loadmodel.leafs[i];
+    for (let i = 0; i < leafs.count; i++) {
       const list = leafBrushLists[i];
-      leaf.firstleafbrush = leafbrushes.length;
-      leaf.numleafbrushes = list.length;
+      leafs.firstLeafBrushes[i] = leafbrushes.length;
+      leafs.numLeafBrushes[i] = list.length;
       for (const brushIdx of list) {
         leafbrushes.push(brushIdx);
       }
@@ -2021,7 +1934,7 @@ export class BSP29Loader extends ModelLoader {
 
     loadmodel.leafbrushes = leafbrushes;
 
-    Con.DPrint(`BSP29Loader: loaded BRUSHLIST with ${allBrushes.length} brushes, ${allBrushSides.length} sides, ${leafbrushes.length} leaf-brush refs\n`);
+    this.context.con.DPrint(`BSP29Loader: loaded BRUSHLIST with ${allBrushes.length} brushes, ${allBrushSides.length} sides, ${leafbrushes.length} leaf-brush refs\n`);
   }
 
   /**
@@ -2049,10 +1962,10 @@ export class BSP29Loader extends ModelLoader {
   async #loadExternalLighting(loadmodel: BrushModel, filename: string): Promise<void> {
     const rgbFilename = filename.replace(/\.bsp$/i, '.lit');
 
-    const data = await COM.LoadFile(rgbFilename);
+    const data = await this.context.files.LoadFile(rgbFilename);
 
     if (!data) {
-      Con.DPrint(`BSP29Loader: no external RGB lighting file found: ${rgbFilename}\n`);
+      this.context.con.DPrint(`BSP29Loader: no external RGB lighting file found: ${rgbFilename}\n`);
       return;
     }
 

@@ -4,17 +4,17 @@ import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import ConsoleOverlay from './ConsoleOverlay.ts';
+import Con from '../common/Console.ts';
+import { clientStaticState } from './ClientState.ts';
+import CL from './CL.ts';
+import M from './Menu.ts';
+import Host from '../common/Host.ts';
 
-let { CL, Con, Host, M } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, Host, M } = getClientRegistry());
-});
 
 /**
  * Where key events are routed to, when the drop-down console isn't the one claiming them.
- * The console is no longer a peer destination — see `Con.isOpen`, which takes dispatch
+ * The console is no longer a peer destination — see `ConsoleOverlay.isOpen`, which takes dispatch
  * priority over whichever of these is active underneath it (kept numbered as before, minus
  * the retired `console` member, so nothing here needs renumbering).
  */
@@ -473,7 +473,7 @@ export default class Key {
   /** Routes a raw key event to the appropriate handler based on current destination. */
   static Event(key: K, down: boolean): void {
     // Allow cancelling a pending connection with Escape.
-    if (CL.cls.state === clientConnectionState.connecting && key === K.ESCAPE && down) {
+    if (clientStaticState.state === clientConnectionState.connecting && key === K.ESCAPE && down) {
       CL.Disconnect();
       M.ToggleMenu_f();
       return;
@@ -500,8 +500,8 @@ export default class Key {
       if (!down) {
         return;
       }
-      if (Con.isOpen) {
-        Con.isOpen = false;
+      if (ConsoleOverlay.isOpen) {
+        ConsoleOverlay.isOpen = false;
         Key.history_line = Key.lines.length;
         return;
       }
@@ -536,7 +536,7 @@ export default class Key {
     // underneath (game or menu) — it's an overlay, not a peer destination. Keys it doesn't
     // consume as text (e.g. the toggle key itself) still execute their bound command, so `~`
     // continues to close it.
-    if (Con.isOpen) {
+    if (ConsoleOverlay.isOpen) {
       if (!Key.consolekeys.has(key)) {
         const binding = Key.bindings[key];
         if (binding !== null && binding !== undefined) {
@@ -554,7 +554,7 @@ export default class Key {
     }
 
     // During demo playback, any console key in game mode opens the menu.
-    if (CL.cls.demoplayback && Key.consolekeys.has(key) && Key.destination === KeyDestination.game) {
+    if (clientStaticState.demoplayback && Key.consolekeys.has(key) && Key.destination === KeyDestination.game) {
       M.ToggleMenu_f();
       return;
     }
@@ -565,7 +565,7 @@ export default class Key {
     // mousedown time (before M.Keydown() could react to this same click and change
     // Key.destination) so a click on the menu's own Back/Close button can't immediately reopen
     // what it was just asked to close.
-    if (key === K.MOUSE1 && Key.destination === KeyDestination.game && CL.cls.state !== clientConnectionState.connected) {
+    if (key === K.MOUSE1 && Key.destination === KeyDestination.game && clientStaticState.state !== clientConnectionState.connected) {
       M.Menu_Main_f();
       return;
     }
@@ -605,7 +605,7 @@ export default class Key {
 
   /** Forwards clipboard text (e.g. from a Ctrl+V shortcut) to the active text input. */
   static Paste(text: string): void {
-    if (Con.isOpen) {
+    if (ConsoleOverlay.isOpen) {
       Key.#consoleEditor.paste(text);
       return;
     }

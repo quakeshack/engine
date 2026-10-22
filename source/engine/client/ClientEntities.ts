@@ -1,12 +1,11 @@
 import type { ClientEventValue, SerializedData } from '../../shared/GameInterfaces.ts';
-import type { GameTrace } from '../common/GameAPIs.ts';
+import type { GameTrace } from '../common/GameApiSupport.ts';
 import type { SFX } from './Sound.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ModelScope, type BrushModel } from '../common/Mod.ts';
 import type { Pmove } from '../common/Pmove.ts';
 
 import Vector, { Quaternion } from '../../shared/Vector.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
 import * as Def from '../common/Def.ts';
 import { content, effect, moveType, solid } from '../../shared/Defs.ts';
 import Chase from './Chase.ts';
@@ -14,8 +13,16 @@ import ClientEntityPhysics from './ClientEntityPhysics.ts';
 import { DefaultClientEdictHandler } from './ClientLegacy.ts';
 import { BaseClientEdictHandler, type ClientSpawnParameters } from '../../shared/ClientEdict.ts';
 import GameModule from '../common/GameModule.ts';
-import { ClientEngineAPI } from '../common/GameAPIs.ts';
-import { revealedVisibility, type Node, type Visibility } from '../common/model/BSP.ts';
+import { engineApi } from './PageServices.ts';
+import { revealedVisibility, type Visibility } from '../common/model/BSP.ts';
+import Con from '../common/Console.ts';
+import Mod from '../common/Mod.ts';
+import { clientRuntimeState } from './ClientState.ts';
+import clientCvars from './ClientCvars.ts';
+import rendererCvars from './renderer/resources/RendererCvars.ts';
+import Host from '../common/Host.ts';
+import S from './Sound.ts';
+import Camera from './renderer/scene/Camera.ts';
 
 interface ClientEntityLerpState {
   readonly frame: [number, number, number];
@@ -53,12 +60,6 @@ export interface SerializedClientEntity {
   readonly handlerData: SerializedData | null;
 }
 
-let { CL, Con, Host, Mod, R, S } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, Host, Mod, R, S } = getClientRegistry());
-});
-
 export class ClientDlight {
   /** light radius */
   radius = 0.0;
@@ -84,7 +85,7 @@ export class ClientDlight {
   bornTime = 0.0;
 
   isFree(): boolean {
-    return this.radius < 0.0 || this.die < CL.state.time;
+    return this.radius < 0.0 || this.die < clientRuntimeState.time;
   }
 
   clear(): void {
@@ -111,7 +112,7 @@ export class ClientDlight {
     const fadeWindow = Math.min(lifetime * 0.5, 0.25);
 
     if (fadeWindow > 0.0) {
-      const remaining = this.die - CL.state.time;
+      const remaining = this.die - clientRuntimeState.time;
       const fade = Math.min(Math.max(remaining / fadeWindow, 0.0), 1.0);
       this.radius *= fade;
     }
@@ -219,7 +220,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
 
   /**
    * Time-smoothed static/dynamic lighting terms, blended towards the newly
-   * sampled values each frame by `R._CalculateLightValues` so lighting eases
+   * sampled values each frame by `EntityLighting.CalculateLightValues` so lighting eases
    * across lightmap boundaries instead of snapping. Null until first sampled.
    */
   smoothedAmbientLight: Vector | null;
@@ -282,15 +283,15 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
      */
     this.lerp = {
       get frame(): [number, number, number] {
-        const time = CL.state.clientMessages.renderTime;
-        if (that.lerpEndTime <= time || that.framePrevious === null || CL.nolerp.value) {
+        const time = clientRuntimeState.clientMessages.renderTime;
+        if (that.lerpEndTime <= time || that.framePrevious === null || clientCvars.nolerp.value) {
           return [that.frame, that.frame, 0];
         }
         return [that.framePrevious, that.frame, (time - that.frameTime) / (that.lerpEndTime - that.frameTime)];
       },
       get origin(): Vector {
-        const time = CL.state.clientMessages.renderTime;
-        if (that.lerpEndTime <= time || CL.nolerp.value || that.originPrevious.isInfinite()) {
+        const time = clientRuntimeState.clientMessages.renderTime;
+        if (that.lerpEndTime <= time || clientCvars.nolerp.value || that.originPrevious.isInfinite()) {
           return that.origin;
         }
         const f = Math.min(1, Math.max(0, (time - that.originTime) / (that.lerpEndTime - that.originTime)));
@@ -304,8 +305,8 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
         return l;
       },
       get angles(): Vector {
-        const time = CL.state.clientMessages.renderTime;
-        if (that.lerpEndTime <= time || CL.nolerp.value || that.anglesPrevious.isInfinite()) {
+        const time = clientRuntimeState.clientMessages.renderTime;
+        if (that.lerpEndTime <= time || clientCvars.nolerp.value || that.anglesPrevious.isInfinite()) {
           return that.angles;
         }
         const f = Math.min(1, Math.max(0, (time - that.anglesTime) / (that.lerpEndTime - that.anglesTime)));
@@ -397,7 +398,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
    * This has to be called after the origin for a client-side entity has been changed.
    */
   linkEdict(): void {
-    const worldmodel = CL.state.worldmodel;
+    const worldmodel = clientRuntimeState.worldmodel;
 
     console.assert(worldmodel !== null, 'worldmodel must be set before linking an entity');
     console.assert(this.isClientOwned(), 'linkEdict is only valid for client-side entities');
@@ -407,9 +408,8 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
       return;
     }
 
-    const rootNode = worldmodel.nodes[0];
-    console.assert(rootNode !== undefined, 'worldmodel must have a root node before linking an entity');
-    if (rootNode === undefined) {
+    console.assert(worldmodel.nodeTable.count > 0, 'worldmodel must have a root node before linking an entity');
+    if (worldmodel.nodeTable.count === 0) {
       return;
     }
 
@@ -421,39 +421,35 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
 
     const emins = this.origin.copy().add(this.model.mins);
     const emaxs = this.origin.copy().add(this.model.maxs);
-    this.#splitEntityOnNode(rootNode, emins, emaxs);
+    this.#splitEntityOnNode(worldmodel, 0, emins, emaxs);
   }
 
   /**
-   * @param node BSP node to split the entity on
+   * @param worldmodel world model with the BSP tree
+   * @param reference BSP node to split the entity on (its index), or a leaf (`~index`)
    * @param emins entity mins
    * @param emaxs entity maxs
    */
-  #splitEntityOnNode(node: Node, emins: Vector, emaxs: Vector): void {
-    if (node.contents === content.CONTENT_SOLID) {
+  #splitEntityOnNode(worldmodel: BrushModel, reference: number, emins: Vector, emaxs: Vector): void {
+    if (reference < 0) {
+      const leaf = ~reference;
+
+      if (worldmodel.leafTable.contents[leaf] !== content.CONTENT_SOLID) {
+        this.leafs[this.leafs.length] = leaf;
+      }
+
       return;
     }
 
-    if (node.contents < content.CONTENT_NONE) {
-      this.leafs[this.leafs.length] = node.num;
-      return;
+    const nodes = worldmodel.nodeTable;
+    const sides = Vector.boxOnPlaneSide(emins, emaxs, worldmodel.planes[nodes.planeNums[reference]]);
+
+    if ((sides & 1) !== 0) {
+      this.#splitEntityOnNode(worldmodel, nodes.children[reference * 2], emins, emaxs);
     }
 
-    const plane = node.plane;
-    if (plane === null) {
-      return;
-    }
-
-    const sides = Vector.boxOnPlaneSide(emins, emaxs, plane);
-    const frontChild = node.children[0];
-    const backChild = node.children[1];
-
-    if ((sides & 1) !== 0 && frontChild !== null && typeof frontChild !== 'number') {
-      this.#splitEntityOnNode(frontChild, emins, emaxs);
-    }
-
-    if ((sides & 2) !== 0 && backChild !== null && typeof backChild !== 'number') {
-      this.#splitEntityOnNode(backChild, emins, emaxs);
+    if ((sides & 2) !== 0) {
+      this.#splitEntityOnNode(worldmodel, nodes.children[reference * 2 + 1], emins, emaxs);
     }
   }
 
@@ -491,7 +487,17 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
       return entityHandler;
     })() ?? DefaultClientEdictHandler;
 
-    this.#handler = new handler(this, ClientEngineAPI);
+    this.#handler = new handler(this, engineApi);
+  }
+
+  /**
+   * Makes `lerp.origin` return `origin` as is, for as long as nothing snapshots a new previous origin.
+   * Client prediction moves the player's origin every frame, so interpolating it from the origin
+   * the last server message found would drag the player along a line between that stale point and
+   * the predicted one (a flicker, and a sweep across the map after a teleport).
+   */
+  dropOriginLerp(): void {
+    this.originPrevious.setTo(Infinity, Infinity, Infinity);
   }
 
   /**
@@ -499,7 +505,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
    * @param doLerp whether to do a point lerp
    */
   updatePosition(doLerp: boolean): void {
-    const time = CL.state.clientMessages.mtime[0];
+    const time = clientRuntimeState.clientMessages.mtime[0];
 
     // not precisely a position, but it is part of the lerp too
     if (time > this.lerpEndTime || this.framePrevious === null) {
@@ -780,7 +786,7 @@ export default class ClientEntities {
     dl.minlight = 0.0;
     dl.entity = entityId;
     dl.color.setTo(1.0, 1.0, 1.0);
-    dl.bornTime = CL.state.time;
+    dl.bornTime = clientRuntimeState.time;
     return dl;
   }
 
@@ -863,7 +869,7 @@ export default class ClientEntities {
   /**
    * Captures every persistent, live client-only entity for save/load: `classname` + `origin` +
    * `angles` + `velocity` (the universal fields every client-only entity has) plus one opaque
-   * blob from the owning handler (`ClientEdict.serialize()`). Mirrors `R.SerializeParticles()`'s
+   * blob from the owning handler (`ClientEdict.serialize()`). Mirrors `Particles.SerializeParticles()`'s
    * shape and round-trip, extended to the handler-owned tagged `SerializedData` format (see
    * `source/shared/ClientSerialization.ts`) instead of particles' flat fields, since a handler's
    * extra state can be richer than a single die time.
@@ -918,7 +924,7 @@ export default class ClientEntities {
       const clent = this.allocateSimulatedEntity(entry.classname);
 
       if (entry.model !== null) {
-        clent.model = CL.state.model_precache.find((model) => model?.name === entry.model) ?? null;
+        clent.model = clientRuntimeState.model_precache.find((model) => model?.name === entry.model) ?? null;
       }
 
       clent.spawn();
@@ -964,15 +970,15 @@ export default class ClientEntities {
       let yaw: number;
       let pitch: number;
       const b = this.beams[i];
-      if (b.model === null || b.endtime < CL.state.time) {
+      if (b.model === null || b.endtime < clientRuntimeState.time) {
         continue;
       }
-      if (b.entity === CL.state.viewentity) {
-        if (CL.state.playerentity === null) {
+      if (b.entity === clientRuntimeState.viewentity) {
+        if (clientRuntimeState.playerentity === null) {
           continue;
         }
 
-        b.start = CL.state.playerentity.origin.copy();
+        b.start = clientRuntimeState.playerentity.origin.copy();
       }
       const dist = b.end.copy().subtract(b.start);
       if ((dist[0] === 0.0) && (dist[1] === 0.0)) {
@@ -1001,7 +1007,7 @@ export default class ClientEntities {
         const dl = this.allocateDynamicLight(0);
         dl.origin = org.copy();
         dl.radius = 50;
-        dl.die = CL.state.time + 0.1;
+        dl.die = clientRuntimeState.time + 0.1;
         dl.color.setTo(0.7, 0.7, 1.0);
 
         const ent = this.allocateTempEntity();
@@ -1041,7 +1047,7 @@ export default class ClientEntities {
    * at rest yet. Skipped while paused.
    */
   #physicsEntities(): void {
-    if (CL.state.paused) {
+    if (clientRuntimeState.paused) {
       return;
     }
 
@@ -1083,11 +1089,13 @@ export default class ClientEntities {
       }
 
       // skip position update for the player when prediction already set the correct position
-      if (CL.state.predicted && clent.num === CL.state.viewentity) {
+      if (clientRuntimeState.predicted && clent.num === clientRuntimeState.viewentity) {
         // prediction already set origin/velocity, only update angles from server state
         clent.angles.set(clent.msg_angles[0]);
+        // a server message snapshots originPrevious, which must not leak into the rendered origin (see chase cam)
+        clent.dropOriginLerp();
       } else {
-        clent.updatePosition(clent.num !== CL.state.viewentity);
+        clent.updatePosition(clent.num !== clientRuntimeState.viewentity);
       }
 
       // if the entity is not visible, skip it
@@ -1096,7 +1104,7 @@ export default class ClientEntities {
       }
 
       // do not render the player entity, unless we are in chase cam mode
-      if (i === CL.state.viewentity && !Chase.active.value) {
+      if (i === clientRuntimeState.viewentity && !Chase.active.value) {
         continue;
       }
 
@@ -1104,15 +1112,14 @@ export default class ClientEntities {
       this.visedicts[this.num_visedicts++] = clent;
     }
 
-    const worldmodel = CL.state.worldmodel;
+    const worldmodel = clientRuntimeState.worldmodel;
     console.assert(worldmodel !== null, 'worldmodel must be set before emitting client entities');
     if (worldmodel === null) {
       return;
     }
 
     // get the PVS for the current view
-    const rendererState = R as typeof R & { novis: { value: number } };
-    const vis = rendererState.novis.value !== 0 ? revealedVisibility : worldmodel.getPvsByPoint(R.refdef.vieworg);
+    const vis = rendererCvars.novis.value !== 0 ? revealedVisibility : worldmodel.getPvsByPoint(Camera.refdef.vieworg);
     this.#viewVisibility = vis;
 
     for (const clent of this.static_entities) {
@@ -1167,7 +1174,7 @@ export default class ClientEntities {
   }
 
   emit(): void {
-    if (CL.state.worldmodel === null) {
+    if (clientRuntimeState.worldmodel === null) {
       // no world model, nothing to render
       return;
     }

@@ -1,13 +1,8 @@
-import { eventBus, getCommonRegistry } from '../../registry.ts';
+import type { ConsoleOutput } from '../Services.ts';
 import Q from '../../../shared/Q.ts';
 import Vector from '../../../shared/Vector.ts';
-import { type BSPXLumps, type BrushModel, type LightgridLeaf, type LightgridNode, type LightgridPointSample, type LightgridStyleSample } from './BSP.ts';
-
-let { Con } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con } = getCommonRegistry());
-});
+import type { BSPXLumps, BrushModel } from './BSP.ts';
+import { Lightgrid } from './Lightgrid.ts';
 
 const BSPX_MAGIC = 0x58505342;
 
@@ -35,9 +30,13 @@ export class BSPXLoader {
   /**
    * Parse the BSPX trailer starting at `bspxoffset` (rounded up to the next
    * 4-byte boundary, matching the on-disk convention) and load the lightgrid
-   * octree and deluxemap lumps when present.
+   * octree, deluxemap and face normal lumps when present.
+   *
+   * Those three lumps are only read by the renderer, so they are skipped when
+   * `loadRenderData` is false (a server). The lightgrid alone costs up to a
+   * thousand times its lump size as objects. The lump directory is kept either way.
    */
-  static load(loadmodel: BrushModel, buffer: ArrayBuffer, bspxoffset: number): void {
+  static load(loadmodel: BrushModel, buffer: ArrayBuffer, bspxoffset: number, con: ConsoleOutput, loadRenderData: boolean): void {
     loadmodel.bspxlumps = null;
     loadmodel.lightgrid = null;
     loadmodel.deluxemap = null;
@@ -45,7 +44,7 @@ export class BSPXLoader {
     const alignedOffset = (bspxoffset + 3) & ~3;
 
     if (alignedOffset + 8 > buffer.byteLength) {
-      Con.DPrint('BSPXLoader: no BSPX data found\n');
+      con.DPrint('BSPXLoader: no BSPX data found\n');
       return;
     }
 
@@ -53,12 +52,12 @@ export class BSPXLoader {
     const magic = view.getUint32(alignedOffset, true);
 
     if (magic !== BSPX_MAGIC) {
-      Con.DPrint('BSPXLoader: no BSPX data found\n');
+      con.DPrint('BSPXLoader: no BSPX data found\n');
       return;
     }
 
     const numlumps = view.getUint32(alignedOffset + 4, true);
-    Con.DPrint(`BSPXLoader: found BSPX data with ${numlumps} lumps\n`);
+    con.DPrint(`BSPXLoader: found BSPX data with ${numlumps} lumps\n`);
 
     const bspxLumps: BSPXLumps = {};
 
@@ -71,9 +70,13 @@ export class BSPXLoader {
 
     loadmodel.bspxlumps = bspxLumps;
 
-    BSPXLoader.#loadLightgridOctree(loadmodel, buffer);
+    if (!loadRenderData) {
+      return;
+    }
+
+    BSPXLoader.#loadLightgridOctree(loadmodel, buffer, con);
     BSPXLoader.#loadDeluxeMap(loadmodel, buffer);
-    BSPXLoader.#loadFaceNormals(loadmodel, buffer);
+    BSPXLoader.#loadFaceNormals(loadmodel, buffer, con);
   }
 
   /**
@@ -96,7 +99,7 @@ export class BSPXLoader {
   /**
    * Load the lightgrid octree from the `LIGHTGRID_OCTREE` BSPX lump if available.
    */
-  static #loadLightgridOctree(loadmodel: BrushModel, buf: ArrayBuffer): void {
+  static #loadLightgridOctree(loadmodel: BrushModel, buf: ArrayBuffer, con: ConsoleOutput): void {
     if (!loadmodel.bspxlumps || !loadmodel.bspxlumps['LIGHTGRID_OCTREE']) {
       return;
     }
@@ -108,172 +111,16 @@ export class BSPXLoader {
     }
 
     try {
-      const view = new DataView(buf);
-      let offset = fileofs;
-      const endOffset = fileofs + filelen;
+      loadmodel.lightgrid = Lightgrid.parse(buf, fileofs, filelen, con);
 
-      // Minimum size check: vec3_t step (12) + ivec3_t size (12) + vec3_t mins (12) + byte numstyles (1) + uint32_t rootnode (4) + uint32_t numnodes (4) + uint32_t numleafs (4) = 49 bytes
-      if (filelen < 49) {
-        Con.DPrint('BSPXLoader: LIGHTGRID_OCTREE lump too small\n');
-        return;
+      if (loadmodel.lightgrid !== null) {
+        con.DPrint(`BSPXLoader: loaded LIGHTGRID_OCTREE with ${loadmodel.lightgrid.nodeCount} nodes and ${loadmodel.lightgrid.leafCount} leafs\n`);
       }
-
-      // vec3_t step
-      const step: [number, number, number] = [
-        view.getFloat32(offset, true),
-        view.getFloat32(offset + 4, true),
-        view.getFloat32(offset + 8, true),
-      ];
-      offset += 12;
-
-      // ivec3_t size
-      const size: [number, number, number] = [
-        view.getInt32(offset, true),
-        view.getInt32(offset + 4, true),
-        view.getInt32(offset + 8, true),
-      ];
-      offset += 12;
-
-      // vec3_t mins
-      const mins = new Vector(
-        view.getFloat32(offset, true),
-        view.getFloat32(offset + 4, true),
-        view.getFloat32(offset + 8, true),
-      );
-      offset += 12;
-
-      // byte numstyles (WARNING: misaligns the rest of the data)
-      const numstyles = view.getUint8(offset);
-      offset += 1;
-
-      // uint32_t rootnode
-      const rootnode = view.getUint32(offset, true);
-      offset += 4;
-
-      // uint32_t numnodes
-      const numnodes = view.getUint32(offset, true);
-      offset += 4;
-
-      // Check if we have enough data for nodes (each node is 44 bytes: 3*4 for mid + 8*4 for children)
-      if (offset + (numnodes * 44) > endOffset) {
-        Con.DPrint('BSPXLoader: LIGHTGRID_OCTREE nodes data truncated\n');
-        return;
-      }
-
-      // Parse nodes
-      const nodes: LightgridNode[] = [];
-      for (let i = 0; i < numnodes; i++) {
-        const mid = [
-          view.getUint32(offset, true),
-          view.getUint32(offset + 4, true),
-          view.getUint32(offset + 8, true),
-        ] as [number, number, number];
-        offset += 12;
-
-        const child: number[] = [];
-        for (let j = 0; j < 8; j++) {
-          child[j] = view.getUint32(offset, true);
-          offset += 4;
-        }
-
-        nodes[i] = { mid, child };
-      }
-
-      // uint32_t numleafs
-      if (offset + 4 > endOffset) {
-        Con.DPrint('BSPXLoader: LIGHTGRID_OCTREE numleafs missing\n');
-        return;
-      }
-      const numleafs = view.getUint32(offset, true);
-      offset += 4;
-
-      // Parse leafs
-      const leafs: LightgridLeaf[] = [];
-      for (let i = 0; i < numleafs; i++) {
-        // Check bounds for leaf header (mins + size = 24 bytes)
-        if (offset + 24 > endOffset) {
-          Con.DPrint(`BSPXLoader: LIGHTGRID_OCTREE leaf ${i} header truncated\n`);
-          return;
-        }
-
-        const leafMins: [number, number, number] = [
-          view.getInt32(offset, true),
-          view.getInt32(offset + 4, true),
-          view.getInt32(offset + 8, true),
-        ];
-        offset += 12;
-
-        const leafSize: [number, number, number] = [
-          view.getInt32(offset, true),
-          view.getInt32(offset + 4, true),
-          view.getInt32(offset + 8, true),
-        ];
-        offset += 12;
-
-        // Parse per-point data
-        const totalPoints = leafSize[0] * leafSize[1] * leafSize[2];
-        const points: LightgridPointSample[] = [];
-
-        for (let p = 0; p < totalPoints; p++) {
-          // Check bounds for stylecount byte
-          if (offset >= endOffset) {
-            Con.DPrint(`BSPXLoader: LIGHTGRID_OCTREE leaf ${i} point ${p} truncated\n`);
-            return;
-          }
-
-          const stylecount = view.getUint8(offset);
-          offset += 1;
-
-          // Skip points with no data (stylecount = 0xff means missing)
-          if (stylecount === 0xff) {
-            points.push({ stylecount, styles: [] });
-            continue;
-          }
-
-          const styles: LightgridStyleSample[] = [];
-          for (let s = 0; s < stylecount; s++) {
-            // Check bounds for style data (1 byte stylenum + 3 bytes rgb = 4 bytes)
-            if (offset + 3 >= endOffset) {
-              Con.DPrint(`BSPXLoader: LIGHTGRID_OCTREE leaf ${i} point ${p} style ${s} truncated\n`);
-              return;
-            }
-
-            const stylenum = view.getUint8(offset);
-
-            offset += 1;
-
-            const rgb = [
-              view.getUint8(offset),
-              view.getUint8(offset + 1),
-              view.getUint8(offset + 2),
-            ] as [number, number, number];
-            offset += 3;
-
-            styles.push({ stylenum, rgb });
-          }
-
-          points.push({ stylecount, styles });
-        }
-
-        leafs.push({ mins: leafMins, size: leafSize, points });
-      }
-
-      loadmodel.lightgrid = {
-        step,
-        size,
-        mins,
-        numstyles,
-        rootnode,
-        nodes,
-        leafs,
-      };
-
-      Con.DPrint(`BSPXLoader: loaded LIGHTGRID_OCTREE with ${numnodes} nodes and ${numleafs} leafs\n`);
     } catch (error) {
       if (error instanceof Error) {
-        Con.PrintError(`BSPXLoader: error loading LIGHTGRID_OCTREE: ${error.message}\n`);
+        con.PrintError(`BSPXLoader: error loading LIGHTGRID_OCTREE: ${error.message}\n`);
       } else {
-        Con.PrintError('BSPXLoader: error loading LIGHTGRID_OCTREE\n');
+        con.PrintError('BSPXLoader: error loading LIGHTGRID_OCTREE\n');
       }
       loadmodel.lightgrid = null;
     }
@@ -285,7 +132,7 @@ export class BSPXLoader {
    * `BSPXLoader.load()` after its face lump has been parsed, since the per-face vertex count
    * comes from `face.numedges`.
    */
-  static #loadFaceNormals(loadmodel: BrushModel, buf: ArrayBuffer): void {
+  static #loadFaceNormals(loadmodel: BrushModel, buf: ArrayBuffer, con: ConsoleOutput): void {
     if (!loadmodel.bspxlumps || !loadmodel.bspxlumps['FACENORMALS']) {
       return;
     }
@@ -302,7 +149,7 @@ export class BSPXLoader {
       const endOffset = fileofs + filelen;
 
       if (offset + 4 > endOffset) {
-        Con.DPrint('BSPXLoader: FACENORMALS lump too small\n');
+        con.DPrint('BSPXLoader: FACENORMALS lump too small\n');
         return;
       }
 
@@ -313,7 +160,7 @@ export class BSPXLoader {
       offset += 4;
 
       if (offset + numVecs * 12 > endOffset) {
-        Con.DPrint('BSPXLoader: FACENORMALS vector table truncated\n');
+        con.DPrint('BSPXLoader: FACENORMALS vector table truncated\n');
         return;
       }
 
@@ -334,7 +181,7 @@ export class BSPXLoader {
         const face = loadmodel.faces[f];
 
         if (offset + face.numedges * 12 > endOffset) {
-          Con.DPrint(`BSPXLoader: FACENORMALS data truncated at face ${f}\n`);
+          con.DPrint(`BSPXLoader: FACENORMALS data truncated at face ${f}\n`);
           return;
         }
 
@@ -349,7 +196,7 @@ export class BSPXLoader {
           offset += 12;
 
           if (normalIndex >= numVecs || tangentIndex >= numVecs || bitangentIndex >= numVecs) {
-            Con.DPrint(`BSPXLoader: FACENORMALS vector index out of range at face ${f}\n`);
+            con.DPrint(`BSPXLoader: FACENORMALS vector index out of range at face ${f}\n`);
             return;
           }
 
@@ -369,12 +216,12 @@ export class BSPXLoader {
         loadmodel.faces[f].vertexBitangents = perFaceBitangents[f];
       }
 
-      Con.DPrint(`BSPXLoader: loaded FACENORMALS for ${loadmodel.faces.length} faces\n`);
+      con.DPrint(`BSPXLoader: loaded FACENORMALS for ${loadmodel.faces.length} faces\n`);
     } catch (error) {
       if (error instanceof Error) {
-        Con.PrintError(`BSPXLoader: error loading FACENORMALS: ${error.message}\n`);
+        con.PrintError(`BSPXLoader: error loading FACENORMALS: ${error.message}\n`);
       } else {
-        Con.PrintError('BSPXLoader: error loading FACENORMALS\n');
+        con.PrintError('BSPXLoader: error loading FACENORMALS\n');
       }
     }
   }

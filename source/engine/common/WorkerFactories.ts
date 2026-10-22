@@ -5,6 +5,7 @@ import type { WorkerFactoryRegistry } from './PlatformWorker.ts';
  */
 const workerFactories: WorkerFactoryRegistry = {
   'server/DummyWorker.ts': (name) => new Worker(new URL('../server/DummyWorker.ts', import.meta.url), { name, type: 'module' }),
+  'server/ServerWorker.ts': (name) => new Worker(new URL('../server/ServerWorker.ts', import.meta.url), { name, type: 'module' }),
   'server/NavigationWorker.ts': (name) => new Worker(new URL('../server/NavigationWorker.ts', import.meta.url), { name, type: 'module' }),
 };
 

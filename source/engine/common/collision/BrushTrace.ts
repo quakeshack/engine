@@ -2,7 +2,7 @@ import Vector from '../../../shared/Vector.ts';
 import { content } from '../../../shared/Defs.ts';
 import { BrushModel } from '../Mod.ts';
 import { DIST_EPSILON, MIN_STEP_NORMAL, Trace } from '../Pmove.ts';
-import { Node, type Brush } from '../model/BSP.ts';
+import type { Brush } from '../model/BSP.ts';
 
 /* eslint-disable jsdoc/require-returns */
 
@@ -152,17 +152,13 @@ export class BrushTrace {
    * enter a node's bounds. Used only for pruning; false negatives are avoided
    * by falling back when bounds are missing.
    */
-  static _estimateNodeEntryFraction(ctx: BrushTraceContext, node: Node): number {
-    if (node.mins === null || node.mins === undefined || node.maxs === null || node.maxs === undefined) {
-      return 0;
-    }
-
+  static _estimateNodeEntryFraction(ctx: BrushTraceContext, bounds: Float32Array, base: number): number {
     let enter = 0;
     let leave = 1;
 
     for (let axis = 0; axis < 3; axis++) {
-      const expandedMin = node.mins[axis] - ctx.extents[axis];
-      const expandedMax = node.maxs[axis] + ctx.extents[axis];
+      const expandedMin = bounds[base + axis] - ctx.extents[axis];
+      const expandedMax = bounds[base + 3 + axis] + ctx.extents[axis];
       const start = ctx.start[axis];
       const delta = ctx.totalMove[axis];
 
@@ -194,25 +190,29 @@ export class BrushTrace {
   }
 
   /**
-   * Check whether a node can still affect the current trace.
+   * Check whether a node or leaf can still affect the current trace.
    */
-  static _nodeMayAffectTrace(ctx: BrushTraceContext, node: Node): boolean {
-    if (node.mins === null || node.mins === undefined || node.maxs === null || node.maxs === undefined) {
-      return true;
-    }
-
-    if (!BrushTrace._boundsOverlap(ctx.sweepMins, ctx.sweepMaxs, node.mins, node.maxs)) {
+  static _nodeMayAffectTrace(ctx: BrushTraceContext, bounds: Float32Array, base: number): boolean {
+    if (!BrushTrace._boundsOverlapTable(ctx.sweepMins, ctx.sweepMaxs, bounds, base)) {
       return false;
     }
 
-    return BrushTrace._estimateNodeEntryFraction(ctx, node) <= ctx.trace.fraction;
+    return BrushTrace._estimateNodeEntryFraction(ctx, bounds, base) <= ctx.trace.fraction;
+  }
+
+  /**
+   * Test whether a box overlaps the bounds of a node or leaf in a table.
+   */
+  static _boundsOverlapTable(mins: Vector, maxs: Vector, bounds: Float32Array, base: number): boolean {
+    return mins[0] <= bounds[base + 3] && mins[1] <= bounds[base + 4] && mins[2] <= bounds[base + 5]
+      && maxs[0] >= bounds[base] && maxs[1] >= bounds[base + 1] && maxs[2] >= bounds[base + 2];
   }
 
   /**
    * Resolve the head node for world-model BSP traversal.
    */
   static _getHeadNode(model: BrushModel): number {
-    return model.hulls[0]?.firstclipnode ?? 0;
+    return model.hulls[0]?.firstClipNode ?? 0;
   }
 
   /**
@@ -351,7 +351,7 @@ export class BrushTrace {
     console.assert(!Number.isNaN(start[0]) && !Number.isNaN(start[1]) && !Number.isNaN(start[2]), 'NaN start');
     console.assert(!Number.isNaN(end[0]) && !Number.isNaN(end[1]) && !Number.isNaN(end[2]), 'NaN end');
 
-    if (!worldModel.nodes || worldModel.nodes.length === 0) {
+    if (worldModel.nodeTable.count === 0) {
       trace.allsolid = false;
       trace.endpos.set(end);
       return trace;
@@ -386,15 +386,13 @@ export class BrushTrace {
       trueFraction: 1.0,
     };
 
-    const rootNode = worldModel.nodes[headNode];
-
-    if (!rootNode) {
+    if (headNode < 0 || headNode >= worldModel.nodeTable.count) {
       trace.allsolid = false;
       trace.endpos.set(end);
       return trace;
     }
 
-    BrushTrace._recursiveHullCheck(ctx, rootNode, 0, 1, start, end);
+    BrushTrace._recursiveHullCheck(ctx, headNode, 0, 1, start, end);
 
     if (trace.fraction === 1.0) {
       trace.endpos.set(end);
@@ -423,7 +421,7 @@ export class BrushTrace {
    * @returns true when the position is clear of solid brushes
    */
   static testPosition(worldModel: BrushModel, headNode: number, position: Vector, mins: Vector, maxs: Vector): boolean {
-    if (!worldModel.nodes || worldModel.nodes.length === 0) {
+    if (worldModel.nodeTable.count === 0) {
       return true;
     }
 
@@ -437,8 +435,7 @@ export class BrushTrace {
       -mins[2] > maxs[2] ? -mins[2] : maxs[2],
     );
 
-    const rootNode = worldModel.nodes[headNode];
-    if (!rootNode) {
+    if (headNode < 0 || headNode >= worldModel.nodeTable.count) {
       return true;
     }
 
@@ -449,7 +446,7 @@ export class BrushTrace {
     const positionBounds = BrushTrace._computePositionBounds(position, mins, maxs);
 
     return !BrushTrace._testPositionRecursive(
-      worldModel, rootNode, position, mins, maxs, positionBounds.mins, positionBounds.maxs, extents, isPoint, checkCount,
+      worldModel, headNode, position, mins, maxs, positionBounds.mins, positionBounds.maxs, extents, isPoint, checkCount,
     );
   }
 
@@ -457,19 +454,26 @@ export class BrushTrace {
    * Recursively walk the BSP tree for position testing, expanding by box
    * extents to visit all leaves the player box overlaps.
    */
-  static _testPositionRecursive(worldModel: BrushModel, node: Node, position: Vector, mins: Vector, maxs: Vector, boundsMins: Vector, boundsMaxs: Vector, extents: Vector, isPoint: boolean, checkCount: number): boolean {
-    if (node.mins !== null && node.mins !== undefined && node.maxs !== null && node.maxs !== undefined
-      && !BrushTrace._boundsOverlap(boundsMins, boundsMaxs, node.mins, node.maxs)) {
+  static _testPositionRecursive(worldModel: BrushModel, reference: number, position: Vector, mins: Vector, maxs: Vector, boundsMins: Vector, boundsMaxs: Vector, extents: Vector, isPoint: boolean, checkCount: number): boolean {
+    // Leaf: test all brushes in this leaf
+    if (reference < 0) {
+      const leaf = ~reference;
+
+      if (!BrushTrace._boundsOverlapTable(boundsMins, boundsMaxs, worldModel.leafTable.bounds, leaf * 6)) {
+        return false;
+      }
+
+      return BrushTrace._testLeafSolid(worldModel, leaf, position, mins, maxs, boundsMins, boundsMaxs, checkCount);
+    }
+
+    const nodes = worldModel.nodeTable;
+
+    if (!BrushTrace._boundsOverlapTable(boundsMins, boundsMaxs, nodes.bounds, reference * 6)) {
       return false;
     }
 
-    // Leaf node: test all brushes in this leaf
-    if (node.contents < content.CONTENT_NONE) {
-      return BrushTrace._testLeafSolid(worldModel, node, position, mins, maxs, boundsMins, boundsMaxs, checkCount);
-    }
-
     // Internal node: test which side(s) of the splitting plane the box is on
-    const plane = node.plane!;
+    const plane = worldModel.planes[nodes.planeNums[reference]];
     let d, offset;
 
     if (plane.type < 3) {
@@ -486,46 +490,32 @@ export class BrushTrace {
       }
     }
 
+    const frontChild = nodes.children[reference * 2];
+    const backChild = nodes.children[reference * 2 + 1];
+
     // Entirely on front side
     if (d >= offset) {
-      const frontChild = node.children[0];
-      console.assert(typeof frontChild === 'object' && frontChild !== null, 'brush trace expected linked BSP child node');
-      if (typeof frontChild !== 'object' || frontChild === null) {
-        return false;
-      }
       return BrushTrace._testPositionRecursive(
-        worldModel, frontChild as Node, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
+        worldModel, frontChild, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
       );
     }
 
     // Entirely on back side
     if (d < -offset) {
-      const backChild = node.children[1];
-      console.assert(typeof backChild === 'object' && backChild !== null, 'brush trace expected linked BSP child node');
-      if (typeof backChild !== 'object' || backChild === null) {
-        return false;
-      }
       return BrushTrace._testPositionRecursive(
-        worldModel, backChild as Node, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
+        worldModel, backChild, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
       );
     }
 
     // Box straddles the plane: test both sides
-    const frontChild = node.children[0];
-    const backChild = node.children[1];
-    console.assert(typeof frontChild === 'object' && frontChild !== null, 'brush trace expected linked BSP child node');
-    console.assert(typeof backChild === 'object' && backChild !== null, 'brush trace expected linked BSP child node');
-    if (typeof frontChild !== 'object' || frontChild === null || typeof backChild !== 'object' || backChild === null) {
-      return false;
-    }
     if (BrushTrace._testPositionRecursive(
-      worldModel, frontChild as Node, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
+      worldModel, frontChild, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
     )) {
       return true;
     }
 
     return BrushTrace._testPositionRecursive(
-      worldModel, backChild as Node, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
+      worldModel, backChild, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
     );
   }
 
@@ -665,7 +655,7 @@ export class BrushTrace {
   /**
    * Test if a player-sized box overlaps any solid brush in a leaf.
    */
-  static _testLeafSolid(worldModel: BrushModel, leaf: Node, position: Vector, mins: Vector, maxs: Vector, boundsMins: Vector, boundsMaxs: Vector, checkCount: number): boolean {
+  static _testLeafSolid(worldModel: BrushModel, leaf: number, position: Vector, mins: Vector, maxs: Vector, boundsMins: Vector, boundsMaxs: Vector, checkCount: number): boolean {
     const brushes = worldModel.brushes;
     const leafbrushes = worldModel.leafbrushes;
 
@@ -676,8 +666,10 @@ export class BrushTrace {
     const isPoint = (mins[0] === 0 && mins[1] === 0 && mins[2] === 0
                   && maxs[0] === 0 && maxs[1] === 0 && maxs[2] === 0);
 
-    for (let k = 0; k < leaf.numleafbrushes; k++) {
-      const brushNum = leafbrushes[leaf.firstleafbrush + k];
+    const leafs = worldModel.leafTable;
+
+    for (let k = 0; k < leafs.numLeafBrushes[leaf]; k++) {
+      const brushNum = leafbrushes[leafs.firstLeafBrushes[leaf] + k];
       const brush = brushes[brushNum];
 
       if (!brush || brush.numsides === 0) {
@@ -754,8 +746,14 @@ export class BrushTrace {
    * Recursively traverse the BSP node tree, expanding by trace extents.
    * At leaf nodes, test all brushes. Equivalent to Q2’s CM_RecursiveHullCheck.
    */
-  static _recursiveHullCheck(ctx: BrushTraceContext, node: Node, p1f: number, p2f: number, p1: Vector, p2: Vector, depth: number = 0) {
-    if (!BrushTrace._nodeMayAffectTrace(ctx, node)) {
+  static _recursiveHullCheck(ctx: BrushTraceContext, reference: number, p1f: number, p2f: number, p1: Vector, p2: Vector, depth: number = 0) {
+    const nodes = ctx.worldModel.nodeTable;
+    const leafs = ctx.worldModel.leafTable;
+    const leaf = ~reference;
+
+    if (reference < 0
+      ? !BrushTrace._nodeMayAffectTrace(ctx, leafs.bounds, leaf * 6)
+      : !BrushTrace._nodeMayAffectTrace(ctx, nodes.bounds, reference * 6)) {
       return;
     }
 
@@ -763,14 +761,14 @@ export class BrushTrace {
       return; // already hit something nearer
     }
 
-    // Leaf node: test brushes
-    if (node.contents < content.CONTENT_NONE) {
-      BrushTrace._traceToLeaf(ctx, node);
+    // Leaf: test brushes
+    if (reference < 0) {
+      BrushTrace._traceToLeaf(ctx, leaf);
       return;
     }
 
     // Internal node: find the point distances to the splitting plane
-    const plane = node.plane!;
+    const plane = ctx.worldModel.planes[nodes.planeNums[reference]];
     let t1, t2, offset;
 
     if (plane.type < 3) {
@@ -791,23 +789,13 @@ export class BrushTrace {
 
     // Both on front side
     if (t1 >= offset && t2 >= offset) {
-      const frontChild = node.children[0];
-      console.assert(typeof frontChild === 'object' && frontChild !== null, 'brush trace expected linked BSP child node');
-      if (typeof frontChild !== 'object' || frontChild === null) {
-        return;
-      }
-      BrushTrace._recursiveHullCheck(ctx, frontChild as Node, p1f, p2f, p1, p2, depth + 1);
+      BrushTrace._recursiveHullCheck(ctx, nodes.children[reference * 2], p1f, p2f, p1, p2, depth + 1);
       return;
     }
 
     // Both on back side
     if (t1 < -offset && t2 < -offset) {
-      const backChild = node.children[1];
-      console.assert(typeof backChild === 'object' && backChild !== null, 'brush trace expected linked BSP child node');
-      if (typeof backChild !== 'object' || backChild === null) {
-        return;
-      }
-      BrushTrace._recursiveHullCheck(ctx, backChild as Node, p1f, p2f, p1, p2, depth + 1);
+      BrushTrace._recursiveHullCheck(ctx, nodes.children[reference * 2 + 1], p1f, p2f, p1, p2, depth + 1);
       return;
     }
 
@@ -845,12 +833,7 @@ export class BrushTrace {
     mid[1] = p1[1] + frac * (p2[1] - p1[1]);
     mid[2] = p1[2] + frac * (p2[2] - p1[2]);
 
-    const nearChild = node.children[side as 0 | 1];
-    console.assert(typeof nearChild === 'object' && nearChild !== null, 'brush trace expected linked BSP child node');
-    if (typeof nearChild !== 'object' || nearChild === null) {
-      return;
-    }
-    BrushTrace._recursiveHullCheck(ctx, nearChild as Node, p1f, midf, p1, mid, depth + 1);
+    BrushTrace._recursiveHullCheck(ctx, nodes.children[reference * 2 + side], p1f, midf, p1, mid, depth + 1);
 
     // Go past the node
     const midf2 = p1f + (p2f - p1f) * frac2;
@@ -859,25 +842,23 @@ export class BrushTrace {
     mid2[1] = p1[1] + frac2 * (p2[1] - p1[1]);
     mid2[2] = p1[2] + frac2 * (p2[2] - p1[2]);
 
-    const farChild = node.children[(side ^ 1) as 0 | 1];
-    console.assert(typeof farChild === 'object' && farChild !== null, 'brush trace expected linked BSP child node');
-    if (typeof farChild !== 'object' || farChild === null) {
-      return;
-    }
-    BrushTrace._recursiveHullCheck(ctx, farChild as Node, midf2, p2f, mid2, p2, depth + 1);
+    BrushTrace._recursiveHullCheck(ctx, nodes.children[reference * 2 + (side ^ 1)], midf2, p2f, mid2, p2, depth + 1);
   }
 
   /**
    * Test all brushes in a leaf against the current trace.
    * Equivalent to Q2’s CM_TraceToLeaf.
    */
-  static _traceToLeaf(ctx: BrushTraceContext, leaf: Node) {
+  static _traceToLeaf(ctx: BrushTraceContext, leaf: number) {
+    const leafs = ctx.worldModel.leafTable;
+    const contents = leafs.contents[leaf];
+
     // Q1 content classification for trace flags
-    if (leaf.contents !== content.CONTENT_SOLID && leaf.contents !== content.CONTENT_SKY) {
+    if (contents !== content.CONTENT_SOLID && contents !== content.CONTENT_SKY) {
       ctx.trace.allsolid = false;
-      if (leaf.contents === content.CONTENT_EMPTY) {
+      if (contents === content.CONTENT_EMPTY) {
         ctx.trace.inopen = true;
-      } else if (leaf.contents <= content.CONTENT_WATER) {
+      } else if (contents <= content.CONTENT_WATER) {
         ctx.trace.inwater = true;
       }
     }
@@ -889,8 +870,8 @@ export class BrushTrace {
       return;
     }
 
-    for (let k = 0; k < leaf.numleafbrushes; k++) {
-      const brushNum = leafbrushes[leaf.firstleafbrush + k];
+    for (let k = 0; k < leafs.numLeafBrushes[leaf]; k++) {
+      const brushNum = leafbrushes[leafs.firstLeafBrushes[leaf] + k];
       const brush = brushes[brushNum];
 
       if (!brush || brush.numsides === 0) {
@@ -941,6 +922,12 @@ export class BrushTrace {
     let getout = false;
     let startout = false;
 
+    // A box that only touches the side of a brush cannot reach it by moving straight up or down. The tangent handling
+    // below keeps the faces around a touched wall in play for horizontal moves, which a vertical move would turn into a
+    // hit on the top or bottom of the brush: a player flush against a wall of two stacked brushes, the lower one step
+    // high, stepped onto the lower brush from the side that way.
+    const verticalMove = Math.abs(ctx.totalMove[0]) <= DIST_EPSILON * 0.01 && Math.abs(ctx.totalMove[1]) <= DIST_EPSILON * 0.01;
+
     for (let i = 0; i < brush.numsides; i++) {
       const side = brushsides[brush.firstside + i];
       const plane = planes[side.planenum];
@@ -950,9 +937,21 @@ export class BrushTrace {
       if (!ctx.isPoint) {
         // Push the plane out appropriately for mins/maxs
         let ofs0 = 0, ofs1 = 0, ofs2 = 0;
-        if (plane.normal[0] < 0) { ofs0 = ctx.maxs[0]; } else { ofs0 = ctx.mins[0]; }
-        if (plane.normal[1] < 0) { ofs1 = ctx.maxs[1]; } else { ofs1 = ctx.mins[1]; }
-        if (plane.normal[2] < 0) { ofs2 = ctx.maxs[2]; } else { ofs2 = ctx.mins[2]; }
+        if (plane.normal[0] < 0) {
+          ofs0 = ctx.maxs[0];
+        } else {
+          ofs0 = ctx.mins[0];
+        }
+        if (plane.normal[1] < 0) {
+          ofs1 = ctx.maxs[1];
+        } else {
+          ofs1 = ctx.mins[1];
+        }
+        if (plane.normal[2] < 0) {
+          ofs2 = ctx.maxs[2];
+        } else {
+          ofs2 = ctx.mins[2];
+        }
         dist = plane.dist - (ofs0 * plane.normal[0] + ofs1 * plane.normal[1] + ofs2 * plane.normal[2]);
       } else {
         dist = plane.dist;
@@ -962,7 +961,8 @@ export class BrushTrace {
       const d2 = plane.normal.dot(ctx.end) - dist;
       const startClear = d1 >= -DIST_EPSILON;
       const endClear = d2 >= -DIST_EPSILON;
-      const axialWallClearContact = plane.type < 3
+      const axialWallClearContact = !verticalMove
+        && plane.type < 3
         && Math.abs(plane.normal[2]) <= DIST_EPSILON
         && Math.abs(d1) <= DIST_EPSILON
         && d2 >= -DIST_EPSILON;

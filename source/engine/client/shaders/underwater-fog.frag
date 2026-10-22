@@ -9,14 +9,9 @@ uniform sampler2D tDepth;
 uniform sampler2D tBoundaryDepth;
 uniform vec3 uFogColor;
 uniform float uFogDensity;
-uniform mat4 uPerspective;
+#include "depth.glsl"
 
 in vec2 vTexCoord;
-
-float linearizeDepth(highp float depth) {
-  highp float z_ndc = depth * 2.0 - 1.0;
-  return uPerspective[3][2] / (z_ndc + uPerspective[2][2]);
-}
 
 void main(void) {
   vec4 sceneColor = texture(tScene, vTexCoord);

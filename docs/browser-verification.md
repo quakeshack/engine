@@ -62,8 +62,17 @@ node ./dist/dedicated/dedicated.mjs -game <mod> -port 3001 +exec server.cfg   # 
 
 A plain `+exec server.cfg` with no `-game` flag defaults to `id1` (`Def.ts`'s
 `defaultGame`/`defaultBasedir`), not whichever mod you're testing — pass `-game <mod>`
-explicitly. The dedicated server serves both the game socket and the static browser client
+explicitly. A mod that sits on another base game needs `-basedir` as well (`-basedir librequake -game hellwave`
+for the Hellwave maps; with the default base `id1` the server cannot find the assets and the client fails with
+`Couldn't load progs/...`), and the browser build has to be made with the matching
+`VITE_GAME_DIR`/`VITE_BASE_DIR` (section 8). The dedicated server serves both the game socket and the static browser client
 (`/qfs/*` via `Sys.ts`'s Express route) on that one port, so one process is enough.
+
+The dedicated build writes its worker bundles to `dist/dedicated/workers/` whatever `--outDir` says, so a
+scratch build with another `--outDir` still overwrites those (same sources, harmless), and its own server then
+cannot find its navigation worker. For a client-only check you do not need a new server at all: the watch
+build's `dist/browser/` is served by the dedicated server that is already running, and a server that runs in
+the browser's own worker (the default, `?serverthread` opts out, see [server-worker.md](server-worker.md)) needs nothing from it.
 
 If a `vite build --watch` process was already running, don't assume it picked up your
 latest edit — check before trusting it:
@@ -94,11 +103,11 @@ guessing from a screenshot.
 
 ## 5. Reach a gated menu/HUD page without its full physical trigger
 
-`Sys.ts`'s `Init()` exposes `window.registry` in the browser (`CL`, `COM`, `Con`, `Host`,
-`M`, `Key`, `SV`, etc.). From a Playwright `page.evaluate()`:
+The page's composition root (`bootstrap/createBrowserClient.ts`) exposes `window.engine` in the browser (`Frame`, whose `records` and `violations` are the passes of the last frame in a development build, `CL`, `COM`, `Con`,
+`ConsoleOverlay`, `Host`, `M`, `Key`, etc.; `SV` is `null` unless the page runs with `?serverthread`, by default the server is in a worker and `CL.cls.serverController.state` is what the page knows of it). From a Playwright `page.evaluate()`:
 
 ```js
-const { M, Key } = window.registry;
+const { M, Key } = window.engine;
 Key.destination = 3; // KeyDestination.menu — required, or the page becomes "active"
                       // (onEnter fires) but M.Draw() never renders it, since only
                       // ClientEngineAPI.Menu.Open() sets this before push()
@@ -110,8 +119,7 @@ live, and still exercises the real server round-trip for anything the page's act
 (e.g. a buy-menu row click sends a real `impulse N` to the same-process listen-server game,
 which validates it server-side) — without needing to physically navigate to the trigger.
 
-`Cmd`/`Cvar` are deliberately excluded from `window.registry` (see the registry pattern in
-`code-style-guide.instructions.md`), so `window.registry.Cmd.ExecuteString(...)` throws.
+`Cmd`/`Cvar` are not on `window.engine`, so `window.engine.Cmd.ExecuteString(...)` throws.
 Drive console commands through real keyboard input instead — `` ` ``/`~` opens the
 drop-down console by default:
 
@@ -124,6 +132,15 @@ await page.keyboard.press('Backquote');
 
 This round-trips through the real `Key`/`Con`/`Cbuf`/`Cmd` pipeline, so it works for map
 loads and any cvar/console command (e.g. toggling `r_shadows`/`r_bloom`/`gl_msaa` live).
+Two traps when scripting this: the console closes itself after commands like `map`/`load`, so a
+fixed "press Backquote, type, press Enter, press Backquote" sequence drifts out of sync (the second
+Backquote then opens it again and the next command's first Backquote closes it, so the text lands in
+the game); check whether the drawer is open before and after each command instead (read `window.engine.ConsoleOverlay.isOpen`, or take a screenshot, or look at whether `window.engine.Con.text` grew). And the first
+character typed right after the console opens can be swallowed, so wait about 700 ms after the
+opening Backquote. To start a single-player game without typing `map`, press Enter twice on the main
+menu (Single Player, New Game). `window.engine.Con.text` holds the console lines, which is how to
+read the output of a command such as `status`.
+
 Screenshots plus zero console errors/warnings across a `page.on('console', ...)` capture is
 a strong signal a rendering-pipeline change (texture binding, FBO attachment points, etc.)
 didn't break anything a mocked-`gl` unit test wouldn't catch.
@@ -168,6 +185,80 @@ mod-filtering will correctly hide it. Send `{ type: 'leave-session' }` (or let t
 die) to simulate the host leaving. With a Playwright page already sitting on the
 session-list menu, toggling this synthetic host on/off and asserting the list updates with
 no navigation/click in between is a fast, real end-to-end proof of a realtime push feature.
+
+## 8. Comparing two builds (before/after screenshots)
+
+A refactor that must not change a pixel (shader chunks are the example) is proven by rendering the same scene with
+the build from `HEAD` and the build from the working tree.
+
+- **Do not build into `dist/`.** A `vite build --watch` is usually running and rewrites it, so a scratch build there
+  is clobbered half way through a capture. Build each side into its own folder:
+  `VITE_GAME_DIR=<game> VITE_BASE_DIR=<base> npx vite build --mode production --outDir <scratch>/dist-after --emptyOutDir`,
+  and for `HEAD` do the same from a copy of the tree with the changed files restored from `git show HEAD:<path>`.
+- **Set `VITE_GAME_DIR` and `VITE_BASE_DIR` yourself.** The shell that runs the watch build may export them (it
+  baked `hellwave`/`librequake` into the page and the dedicated server it started), and a build without them defaults
+  to `id1`. A page built for one game against a server that serves the other reports `Could not spawn server`.
+- **Serve each folder with a throwaway static server** that proxies `/qfs/*` to the running dedicated server, one
+  port per side, and leave that server alone.
+- **Freeze the scene:** `map <name>`, `god`, `impulse 9`, `pause`, then put dlights into
+  `CL.state.clientEntities.dlights` (`radius`, `origin`, `color`, `die` far in the future) relative to the player's
+  origin. `chase_active 1` (with `chase_back`, `chase_up`) shows the player model.
+- **Expect noise and measure it.** The sky, turbulent (water, lava) surfaces and the HUD clock animate even while
+  paused, and the idle pose of a model is whichever frame the pause hit. Capture the baseline twice, build a mask from
+  where those captures differ (dilated by a few pixels), and compare before/after outside it. Report the masked
+  pixel count next to the result. A model whose pose varies cannot be compared pixel by pixel across builds.
+- Two captures of the same build 1.5 s apart differ only in the noise; if they differ elsewhere, the scene is not
+  frozen yet.
+
+### The capture scripts
+
+`scripts/renderer-capture/` automates the recipe above for renderer work:
+
+```bash
+# one production build per side, never into dist/
+npx vite build --mode production --outDir <scratch>/dist-before --emptyOutDir
+# ... change or check out the other side, then
+npx vite build --mode production --outDir <scratch>/dist-after --emptyOutDir
+
+# capture each build at least twice (a dedicated server must be running, see section 2)
+node scripts/renderer-capture/capture.mjs <scratch>/dist-before <scratch>/before-a 3101
+node scripts/renderer-capture/capture.mjs <scratch>/dist-before <scratch>/before-b 3102
+node scripts/renderer-capture/capture.mjs <scratch>/dist-after  <scratch>/after-a  3103
+node scripts/renderer-capture/capture.mjs <scratch>/dist-after  <scratch>/after-b  3104
+
+node scripts/renderer-capture/compare.mjs \
+  --before <scratch>/before-a,<scratch>/before-b --after <scratch>/after-a,<scratch>/after-b
+```
+
+- `capture.mjs` loads the map the new-game menu path starts (`start`), pauses, pins the client clock and seeds the particle generator, and writes nine
+  views: the spawn view, two dynamic lights with particles and a decal, the player model in chase view, bloom, fog,
+  a camera under the largest sky face, above the largest liquid surface and inside it, and the spawn view again.
+  It records the `r_speeds` lines of each view in `views.json`. A capture takes about 80 seconds; the page runs on
+  software GL at 3 to 5 FPS, so it says nothing about frame time.
+- `compare.mjs` needs at least two captures on one side. It measures how far two captures of one build are apart
+  and flags a view only when even the closest before/after pair is further apart than that. A view that is
+  flagged by a small margin is worth a third capture before it is worth a look. A broken sky or particle pass is
+  flagged by a wide margin (tested by disabling both).
+- **`r_speeds` is not a rendering check.** It counts brush and alias draws, not sky, particles, decals, coronas or
+  post-processing. A build with sky and particles disabled has identical counts. The pixel comparison is what
+  sees those.
+- Three environment variables of `capture.mjs` change the setup: `CAPTURE_MAP=<map>` loads that map with the `map`
+  command (the default is the new-game menu path, which loads `start`), `CAPTURE_GAME=<mod>` makes the page run that mod (the build,
+  the dedicated server and its `-basedir` have to match, see section 2), and `CAPTURE_MSAA=<samples>` sets `gl_msaa`
+  and nudges the viewport by a pixel and back. A build from before 2026-10-13 takes a new sample count only when the
+  size of the scene target changes; later builds take it up at the next frame, and the nudge does no harm there.
+  `DEDICATED_PORT` points the file proxy at the right server. `views.json` records the map, `gl_msaa`, the sample
+  count in effect and the number of fog volumes under `setup`, and for each view the passes of the frame and its
+  violations (`frame`, `null` in a production build, which does not record: build with `--mode development` to
+  check the frame as well, and a failing check also lands in `log`).
+- The scripts reach into the engine through `window.engine` (see section 5). `installAdapter()` in
+  `capture.mjs` names every member it uses, once. A change that moves a member updates that function and exposes
+  the new home in `bootstrap/createBrowserClient.ts`; to capture the build from before such a move with the same
+  script, give that one lookup a fallback to the old home (`engine.Camera ?? engine.R`) while the refactor lasts.
+- What they do not cover: input and pointer lock (section 6), anything that needs another map, and a second
+  renderer state such as a changed resolution. Underwater fog is only covered with `CAPTURE_WATERFOG=1` in the
+  environment of `capture.mjs`: `start` has no `_qs_waterfog` volume, so the key is set on the worldspawn before the
+  liquid views and the "inside the lava" view then shows the underwater fog effect.
 
 ## Reporting results
 

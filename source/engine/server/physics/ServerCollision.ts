@@ -1,12 +1,11 @@
-import type { Hull } from '../../common/model/BSP.ts';
+import type { Hull } from '../../common/collision/Hull.ts';
 import type { ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
-import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.ts';
+import type { CollisionModelSource } from '../../common/CollisionModelSource.ts';
 import { AliasModel, BrushModel, MeshModel } from '../../common/Mod.ts';
 import { BrushTrace, DIST_EPSILON, Trace as SharedTrace } from '../../common/Pmove.ts';
-import { eventBus, getCommonRegistry } from '../../registry.ts';
 import {
   AliasCollisionState,
   BrushCollisionState,
@@ -19,11 +18,10 @@ import {
   TriangleCollisionState,
   TriangleTraceContext,
 } from './ServerCollisionSupport.ts';
-import {
-  hullPointContents as legacyHullPointContents,
-  pointContents as legacyPointContents,
-  recursiveHullCheck as legacyRecursiveHullCheck,
-} from './ServerLegacyHullCollision.ts';
+import { pointContents as legacyPointContents } from './ServerLegacyHullCollision.ts';
+import type { Octree } from '../../../shared/Octree.ts';
+import type { EntityHulls } from '../../common/collision/EntityHulls.ts';
+import type { ConsoleOutput } from '../../common/Services.ts';
 
 type CollisionModel = BrushModel | MeshModel | AliasModel | object | null;
 
@@ -37,15 +35,22 @@ interface TraceExtents {
   readonly maxs: Vector;
 }
 
-type LegacyHull = Hull & {
-  readonly firstclipnode: number;
-};
-
-let { Con, SV } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con, SV } = getCommonRegistry());
-});
+/**
+ * What the collision code needs from whoever owns it: the entities and the time of a server, a console for warnings, and
+ * the spatial tree and the hulls of its area. A `Server` is one; the client builds one for the narrow phase against the
+ * entities it knows (`ClientCollision`), which has no tree and no server entities.
+ */
+export interface CollisionHost {
+  readonly server: {
+    readonly edicts: readonly ServerEdict[];
+    readonly time: number;
+  };
+  readonly con: Pick<ConsoleOutput, 'DPrint' | 'PrintWarning'>;
+  readonly area: {
+    readonly tree: Octree<ServerEdict> | null;
+    readonly hulls: EntityHulls;
+  };
+}
 
 /**
  * Handles collision detection and tracing for entities in the world.
@@ -57,12 +62,15 @@ export class ServerCollision {
   static readonly MISSILE_MAXS = new Vector(15.0, 15.0, 15.0);
 
   private readonly _modelSource: CollisionModelSource;
+  private readonly sv: CollisionHost;
+  readonly #warnedMissingGeometry = new Set<string>();
 
   /**
    * Resolve a collision model by model index from either the active server or
    * the client precache populated by server signon data.
    */
-  constructor(modelSource: CollisionModelSource = createRegistryCollisionModelSource()) {
+  constructor(sv: CollisionHost, modelSource: CollisionModelSource) {
+    this.sv = sv;
     this._modelSource = modelSource;
   }
 
@@ -80,11 +88,24 @@ export class ServerCollision {
    * @returns The collision model associated with the entity.
    */
   _getEntityModel(ent: ServerEdict): CollisionModel {
-    if (ent === SV.server?.edicts?.[0]) {
+    if (ent === this.sv.server?.edicts?.[0]) {
       return this._getStaticWorldSource().worldModel;
     }
 
     return this._getModelByIndex(ent.entity!.modelindex);
+  }
+
+  /**
+   * Tells the developer, once per model, that a `SOLID_MESH` entity is traced as its bounding box because
+   * the game precached the model without `{ meshCollision: true }`.
+   */
+  #warnMissingCollisionGeometry(ent: ServerEdict, model: AliasModel): void {
+    if (this.#warnedMissingGeometry.has(model.name)) {
+      return;
+    }
+
+    this.#warnedMissingGeometry.add(model.name);
+    this.sv.con.PrintWarning(`${ent.entity!.classname} is SOLID_MESH, but ${model.name} was precached without { meshCollision: true }, using its bounding box\n`);
   }
 
   /**
@@ -102,6 +123,11 @@ export class ServerCollision {
       }
 
       if (this._isAliasModel(model)) {
+        if (!model.hasCollisionGeometry) {
+          this.#warnMissingCollisionGeometry(ent, model);
+          return new HullCollisionState(ent);
+        }
+
         return new AliasCollisionState(ent, model);
       }
 
@@ -222,7 +248,7 @@ export class ServerCollision {
       : '<none>';
     const classname = typeof hitEntity.classname === 'string' ? hitEntity.classname : '<no classname>';
 
-    Con.DPrint(
+    this.sv.con.DPrint(
       `ServerCollision.move point trace hit ent=${trace.ent.num} classname=${classname} solid=${hitEntity.solid} movetype=${hitEntity.movetype} `
       + `modelindex=${hitEntity.modelindex} model=${modelName} fraction=${trace.fraction.toFixed(4)} `
       + `start=(${start[0].toFixed(1)} ${start[1].toFixed(1)} ${start[2].toFixed(1)}) `
@@ -268,7 +294,7 @@ export class ServerCollision {
       return false;
     }
 
-    if (state.ent === SV.server?.edicts?.[0]) {
+    if (state.ent === this.sv.server?.edicts?.[0]) {
       return true;
     }
 
@@ -374,11 +400,11 @@ export class ServerCollision {
     const trace = CollisionTrace.hullInitial(end);
 
     const offset = new Vector();
-    const hull = SV.area.hullForEntity(state.ent, mins, maxs, offset);
+    const hull = this.sv.area.hulls.forEntity(state.ent, mins, maxs, offset);
     const startLocal = start.copy().subtract(offset);
     const endLocal = end.copy().subtract(offset);
 
-    this.recursiveHullCheck(hull, hull.firstclipnode ?? 0, 0.0, 1.0, startLocal, endLocal, trace);
+    hull.trace(trace, startLocal, endLocal, false);
 
     if (trace.fraction !== 1.0) {
       trace.endpos.add(offset);
@@ -398,17 +424,8 @@ export class ServerCollision {
    */
   _traceLegacyHullLine(hull: Hull, start: Vector, end: Vector): CollisionTrace {
     const trace = CollisionTrace.hullInitial(end);
-    const legacyHull = this._asLegacyHull(hull);
-    this.recursiveHullCheck(legacyHull, legacyHull.firstclipnode, 0.0, 1.0, start, end, trace);
+    hull.trace(trace, start, end, false);
     return trace;
-  }
-
-  /**
-   * Determines the contents inside a hull by descending the clipnode tree.
-   * @returns The contents value at the point within the hull.
-   */
-  hullPointContents(hull: Hull, num: number, p: Vector): number {
-    return legacyHullPointContents(this._asLegacyHull(hull), num, p);
   }
 
   /**
@@ -440,7 +457,7 @@ export class ServerCollision {
       return Defs.content.CONTENT_SOLID;
     }
 
-    return this._normalizeStaticWorldContents(worldModel.getLeafForPoint(point).contents);
+    return this._normalizeStaticWorldContents(worldModel.leafTable.contents[worldModel.getLeafIndexForPoint(point)]);
   }
 
   /**
@@ -537,32 +554,6 @@ export class ServerCollision {
   }
 
   /**
-   * Recursively tests a swept hull against the world and aggregates the trace result.
-   * @returns True when traversal should continue.
-   */
-  recursiveHullCheck(
-    hull: Hull,
-    num: number,
-    p1f: number,
-    p2f: number,
-    p1: Vector,
-    p2: Vector,
-    trace: CollisionTrace,
-    depth = 0,
-  ): boolean {
-    return legacyRecursiveHullCheck(this._asLegacyHull(hull), num, p1f, p2f, p1, p2, trace, depth);
-  }
-
-  /**
-   * Narrow a BSP hull to the legacy shape required by clipnode traversal.
-   * @returns The hull with a concrete first clipnode.
-   */
-  _asLegacyHull(hull: Hull): LegacyHull {
-    console.assert(typeof hull.firstclipnode === 'number', 'legacy hull requires firstclipnode');
-    return hull as LegacyHull;
-  }
-
-  /**
    * Tests whether a point lies inside a triangle using cross-product winding.
    * @returns True when the point lies inside the triangle.
    */
@@ -650,7 +641,7 @@ export class ServerCollision {
     maxs: Vector,
     end: Vector,
   ): TriangleTraceContext | null {
-    const triangleAdapter = state.createTriangleAdapter(SV.server?.time ?? 0.0);
+    const triangleAdapter = state.createTriangleAdapter(this.sv.server?.time ?? 0.0);
 
     if (triangleAdapter === null || triangleAdapter.triangleCount === 0) {
       return null;
@@ -892,7 +883,7 @@ export class ServerCollision {
     type: Defs.moveTypes,
     passedict: ServerEdict | null,
   ): MoveClip {
-    const worldEdict = SV.server.edicts[0];
+    const worldEdict = this.sv.server.edicts[0];
     const worldState = this._getEntityCollisionState(worldEdict) ?? this._getHullFallbackState(worldEdict);
     const worldTrace = this._clipMoveToEntityWithState(worldState, start, mins, maxs, end);
     console.assert(
@@ -927,9 +918,9 @@ export class ServerCollision {
    * Recursively checks the links in the area node BSP for collision.
    */
   clipToLinks(clip: MoveClip): void {
-    console.assert(SV.area.tree !== null, 'collision area tree must be initialized before clipping to links');
+    console.assert(this.sv.area.tree !== null, 'collision area tree must be initialized before clipping to links');
 
-    for (const touch of SV.area.tree!.queryAABB(clip.boxmins, clip.boxmaxs)) {
+    for (const touch of this.sv.area.tree!.queryAABB(clip.boxmins, clip.boxmaxs)) {
       if (this._shouldSkipTouch(clip, touch)) {
         continue;
       }

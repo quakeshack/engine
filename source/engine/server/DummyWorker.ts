@@ -1,9 +1,7 @@
 import WorkerFramework from '../common/WorkerFramework.ts';
-import { eventBus, getCommonRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 
-await WorkerFramework.Init();
-
-const { Con } = getCommonRegistry();
+const { con: Con } = await WorkerFramework.Init();
 
 eventBus.subscribe('worker.test', (message: string | null) => {
   if (message) {

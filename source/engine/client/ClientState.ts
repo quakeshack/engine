@@ -5,10 +5,13 @@ import * as Def from '../common/Def.ts';
 import Vector from '../../shared/Vector.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import type { BrushModel } from '../common/Mod.ts';
-import type { SerializedParticle } from './R.ts';
+import type { SerializedParticle } from './renderer/effects/Particles.ts';
 import type { ClientGameInterface, ClientSerializableType, SFX } from '../../shared/GameInterfaces.ts';
 import type ClientDemos from './ClientDemos.ts';
-import { EventBus, eventBus, getClientRegistry } from '../registry.ts';
+import type { ServerController } from '../common/ServerController.ts';
+import { type ClientGameEventMap, type GameEventBus, eventBus } from '../common/EventBus.ts';
+import { Scope } from '../common/Scope.ts';
+import { clientGameEventFamilies, clientGameEventNames } from '../../shared/EngineEvents.ts';
 import ClientEntities, { ClientEdict, type SerializedClientEntity } from './ClientEntities.ts';
 import { ClientMessages } from './ClientMessages.ts';
 
@@ -29,12 +32,6 @@ type ClientMoveCommand = {
 
 type ClientLoadData = [string | null, SerializedParticle[] | null, SerializedClientEntity[] | null];
 
-let { CL } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ CL } = getClientRegistry());
-});
-
 /**
  * Create a stats array sized to the numeric legacy stat entries.
  * @returns Fresh zeroed stat slots.
@@ -43,41 +40,26 @@ function createLegacyStatsArray(): number[] {
   return Object.values(Def.stat).filter((value) => typeof value === 'number').map(() => 0);
 }
 
-const clientGameEvents = [
-  'vid.resize',
-  'cvar.changed',
-  'client.paused',
-  'client.unpaused',
-  'client.cdtrack',
-  'client.players.name-changed',
-  'client.players.frags-updated',
-  'client.players.colors-updated',
-  'client.server-info.ready',
-  'client.server-info.updated',
-  'client.damage',
-  'client.chat.message',
-  'client.clientdata.field-changed',
-  'host.alert',
-  'host.quit-requested',
-] as const;
+/** The engine events a client game receives, derived from `engineEventTable` (`shared/EngineEvents.ts`). */
+const clientGameEvents = clientGameEventNames;
 
 /**
- * Forwards `clientGameEvents` from the engine's top-level `eventBus` onto a second bus that lives
- * for the whole game module's lifetime (boot -> a hypothetical future `ClientGameAPI.Shutdown()`)
- * instead of `ClientRuntimeState.eventBus`'s per-connection one (wiped on every disconnect/
- * reconnect, see `clear()` below). Exposed to game code as `ClientEngineAPI.moduleEventBus` (via
- * `CL.moduleEventBus`) -- for listeners that must survive past a single connection, e.g. the menu
- * system's `host.alert`/`host.quit-requested` handlers, which need to keep working even for a
- * connection that's rejected before ever finishing. Deliberately the same event set as the
- * per-connection bus (not a separate list) so a developer doesn't need to remember which bus
- * carries which event -- only whether their own subscription needs to survive a reconnect. Set up
- * once here (unlike the per-connection proxy below) since this bus is never wiped.
+ * The lifetime of the loaded game module (boot -> a hypothetical future `ClientGameAPI.Shutdown()`): its `events` bus
+ * is `ClientEngineAPI.moduleEventBus`, never wiped by a disconnect or a reconnect -- for listeners that must survive
+ * past a single connection, e.g. the menu system's `host.alert`/`host.quit-requested` handlers, which need to keep
+ * working even for a connection that's rejected before ever finishing. It is given the same engine events as the
+ * per-map scope inside it (not a separate list) so a developer doesn't need to remember which bus carries which event
+ * -- only whether their own subscription needs to survive a reconnect.
  */
-const moduleEventBus = new EventBus('client-module');
+const clientModuleScope = new Scope<ClientGameEventMap>('module', {
+  source: eventBus,
+  names: clientGameEvents,
+  families: clientGameEventFamilies,
+});
+clientModuleScope.begin();
 
-for (const event of clientGameEvents) {
-  eventBus.subscribe(event, (...args) => { moduleEventBus.publish(event, ...args); });
-}
+/** `ClientEngineAPI.moduleEventBus`: the module scope's bus. */
+const moduleEventBus = clientModuleScope.events;
 
 class ClientStaticState {
   signon = 0;
@@ -90,6 +72,8 @@ class ClientStaticState {
   serverInfo: Record<string, string> = {};
   lastcmdsent = 0;
   isLocalGame = false;
+  /** Control plane to the server this client hosts locally, installed by the launcher before the engine starts. */
+  serverController: ServerController = null!;
   movearound: ReturnType<typeof setInterval> | null = null;
   #clientDemos: ClientDemos | null = null;
   #runtimeState: ClientRuntimeState | null = null;
@@ -168,13 +152,15 @@ export class ScoreSlot {
   }
 
   get entity(): ClientEdict | null {
-    return CL.state.clientEntities.getEntity(this.index + 1);
+    return clientRuntimeState.clientEntities.getEntity(this.index + 1);
   }
 }
 
 class ClientRuntimeState {
-  clientEntities = new ClientEntities();
-  clientMessages = new ClientMessages();
+  // Created on first use: these classes read the client state themselves, and building them while this module is
+  // still being evaluated would make the order modules load in matter.
+  #clientEntities: ClientEntities | null = null;
+  #clientMessages: ClientMessages | null = null;
   clientEntityFields: Record<string, ClientEntityFieldDefinition> = {};
   clientdata: Record<string, ClientSerializableType> = {};
   movemessages = 0;
@@ -203,7 +189,6 @@ class ClientRuntimeState {
   stats = createLegacyStatsArray();
   items = 0;
   item_gettime = new Array(32).fill(0.0);
-  cshifts = Array.from({ length: 8 }, () => [0.0, 0.0, 0.0, 0.0]);
   faceanimtime = 0.0;
   viewangles = new Vector();
   punchangle = new Vector();
@@ -235,13 +220,10 @@ class ClientRuntimeState {
   nodrift = false;
   gameAPI: ClientGameInterface | null = null;
   paused = false;
-  /** event bus solely for engine-game communication */
-  eventBus = new EventBus('client-game');
-  #proxyEventListeners: Array<() => void> = [];
+  /** The lifetime of one map: from one `svc.serverdata` to the next. Its bus is `ClientEngineAPI.eventBus`. */
+  readonly #mapScope: Scope<ClientGameEventMap>;
   /** stores client-game state waiting for signon 4 */
   loadClientData: ClientLoadData | null = null;
-  #clientGameEvents: readonly string[];
-
   /**
    * @returns Fresh command ring buffer.
    */
@@ -252,8 +234,45 @@ class ClientRuntimeState {
     }));
   }
 
-  constructor({ clientGameEvents }: { clientGameEvents: readonly string[] }) {
-    this.#clientGameEvents = clientGameEvents;
+  constructor({ moduleScope }: { moduleScope: Scope<ClientGameEventMap> }) {
+    this.#mapScope = new Scope<ClientGameEventMap>('map', {
+      parent: moduleScope,
+      source: eventBus,
+      names: clientGameEvents,
+      families: clientGameEventFamilies,
+    });
+  }
+
+  /**
+   * The bus solely for engine-game communication, valid for one map.
+   * @returns The map scope's bus, the same object for every map.
+   */
+  get eventBus(): GameEventBus<ClientGameEventMap> {
+    return this.#mapScope.events;
+  }
+
+  /**
+   * The map scope, for engine code that holds something for as long as the map lives (`onDispose`).
+   * @returns The scope that ends at the next `clear()`.
+   */
+  get mapScope(): Scope<ClientGameEventMap> {
+    return this.#mapScope;
+  }
+
+  get clientEntities(): ClientEntities {
+    return this.#clientEntities ??= new ClientEntities();
+  }
+
+  set clientEntities(clientEntities: ClientEntities) {
+    this.#clientEntities = clientEntities;
+  }
+
+  get clientMessages(): ClientMessages {
+    return this.#clientMessages ??= new ClientMessages();
+  }
+
+  set clientMessages(clientMessages: ClientMessages) {
+    this.#clientMessages = clientMessages;
   }
 
   get playernum(): number {
@@ -293,9 +312,6 @@ class ClientRuntimeState {
     this.stats = createLegacyStatsArray();
     this.items = 0;
     this.item_gettime.fill(0.0);
-    for (const cshift of this.cshifts) {
-      cshift.fill(0.0);
-    }
     this.faceanimtime = 0.0;
     this.viewangles = new Vector();
     this.punchangle = new Vector();
@@ -326,23 +342,13 @@ class ClientRuntimeState {
     for (const key of Object.keys(this.clientEntityFields)) {
       delete this.clientEntityFields[key];
     }
-    this.eventBus.unsubscribeAll();
-    for (const unsubscribe of this.#proxyEventListeners) {
-      unsubscribe();
-    }
-    this.#proxyEventListeners.length = 0;
-    this.#configureProxyEvents();
+    this.#mapScope.restart();
   }
 
-  #configureProxyEvents(): void {
-    for (const event of this.#clientGameEvents) {
-      this.#proxyEventListeners.push(eventBus.subscribe(event, (...args) => { this.eventBus.publish(event, ...args); }));
-    }
-  }
 }
 
 const clientStaticState = new ClientStaticState();
-const clientRuntimeState = new ClientRuntimeState({ clientGameEvents });
+const clientRuntimeState = new ClientRuntimeState({ moduleScope: clientModuleScope });
 clientStaticState.bindRuntimeState(clientRuntimeState);
 
 export {

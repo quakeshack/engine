@@ -1,0 +1,67 @@
+import assert from 'node:assert/strict';
+import { afterEach, describe, test } from 'node:test';
+
+import GL from '../../source/engine/client/GL.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
+import { resolveSkyBloomEmissiveScale, SimpleSkyBox } from '../../source/engine/client/renderer/scene/Sky.ts';
+import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
+
+/**
+ * A stand-in for a WebGL context that creates objects for anything asked of it.
+ * @returns The stand-in.
+ */
+function createFakeContext(): WebGL2RenderingContext {
+  return new Proxy({}, {
+    get: (_target, property) => (typeof property === 'string' && /^[A-Z_0-9]+$/.test(property) ? 0 : () => ({})),
+  }) as unknown as WebGL2RenderingContext;
+}
+
+void describe('Sky shutdown', () => {
+  const previousContext = GL.gl;
+
+  afterEach(() => {
+    GL.gl = previousContext;
+  });
+
+  void test('a skybox with buffers can be shut down after its context is gone, as when the page is closing', (t) => {
+    GL.gl = createFakeContext();
+    t.mock.method(GL, 'CreateVAO', () => ({}) as WebGLVertexArrayObject);
+    publishGlReady();
+
+    const sky = new SimpleSkyBox({ textures: [] } as unknown as BrushModel);
+
+    sky.init();
+
+    // closing the page: the context goes away first, a late disconnect clears the sky afterwards
+    eventBus.publish('gl.shutdown');
+
+    assert.doesNotThrow(() => { sky.shutdown(); });
+  });
+
+  void test('shutting a skybox down twice is harmless', (t) => {
+    GL.gl = createFakeContext();
+    t.mock.method(GL, 'CreateVAO', () => ({}) as WebGLVertexArrayObject);
+    publishGlReady();
+
+    const sky = new SimpleSkyBox({ textures: [] } as unknown as BrushModel);
+
+    sky.init();
+    sky.shutdown();
+
+    assert.doesNotThrow(() => { sky.shutdown(); });
+  });
+});
+
+void describe('resolveSkyBloomEmissiveScale', () => {
+  void test('clamps invalid values to zero', () => {
+    assert.equal(resolveSkyBloomEmissiveScale(-1), 0.0);
+    assert.equal(resolveSkyBloomEmissiveScale(0), 0.0);
+    assert.equal(resolveSkyBloomEmissiveScale(Number.NaN), 0.0);
+  });
+
+  void test('preserves positive sky bloom strengths', () => {
+    assert.equal(resolveSkyBloomEmissiveScale(0.2), 0.2);
+    assert.equal(resolveSkyBloomEmissiveScale(0.75), 0.75);
+  });
+});

@@ -93,8 +93,13 @@ export default defineConfig(({ mode }) => ({
         functions: ['console.log', 'console.debug', 'console.info', 'console.warn', 'console.error', 'console.assert', 'console.trace'],
       })] : [],
       output: {
-        entryFileNames: 'libs/worker-[name]-[hash].js',
+        // A development build writes the server worker as one file under a name of its own, so that the page can start a
+        // new server worker from the bundle the watch build wrote last, past the browser's cache (`server_reload`, see
+        // `bootstrap/createBrowserClient.ts`). It has to be one file: a chunk that imported the entry would load it
+        // a second time under the plain URL, next to the one with the query, and the engine would exist twice.
+        entryFileNames: (chunk) => (mode !== 'production' && chunk.name === 'ServerWorker' ? 'libs/worker-ServerWorker.js' : 'libs/worker-[name]-[hash].js'),
         chunkFileNames: 'libs/worker-[name]-[hash].js',
+        inlineDynamicImports: mode !== 'production',
       },
     },
   },

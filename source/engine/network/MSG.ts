@@ -2,7 +2,6 @@ import type { ClientEventValue, SerializableType } from '../../shared/GameInterf
 import Q from '../../shared/Q.ts';
 import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.ts';
-import { eventBus, getCommonRegistry } from '../registry.ts';
 
 type SerializableVectorLike = ArrayLike<number>;
 type ServerSerializableValue = SerializableType | object;
@@ -11,23 +10,26 @@ type SerializableConstructor<T extends object = object> = abstract new (...args:
 
 type SerializableHandlers<T extends object = object, ServerValue = object, ClientValue = object> = {
   serialize: (sz: SzBuffer, object: T) => void;
-  deserializeOnServer: (sz: SzBuffer) => ServerValue;
-  deserializeOnClient: (sz: SzBuffer) => ClientValue;
+  /** Optional, the server never reads these types from a client yet. */
+  deserializeOnServer?: (sz: SzBuffer) => ServerValue;
+  /** Optional here, a type whose client side lives in client code adds it with `registerClientDeserializer()`. */
+  deserializeOnClient?: (sz: SzBuffer) => ClientValue;
 };
 
 type RegisteredSerializableHandler = {
   id: number;
   constructor: SerializableConstructor;
   serialize: (sz: SzBuffer, object: object) => void;
-  deserializeOnServer: (sz: SzBuffer) => unknown;
+  deserializeOnServer?: (sz: SzBuffer) => unknown;
   deserializeOnClient: (sz: SzBuffer) => unknown;
 };
 
-let { Con } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con } = getCommonRegistry());
-});
+/**
+ * Stand-in until a client registers the reader of a type whose handlers did not bring one.
+ */
+function missingClientDeserializer(): never {
+  throw new Error('MSG: no client deserializer registered for this serializable type');
+}
 
 const serializableHandlers: RegisteredSerializableHandler[] = [];
 
@@ -37,7 +39,7 @@ const serializableHandlers: RegisteredSerializableHandler[] = [];
  * @param root0 serialization handlers
  * @param root0.serialize writes the object into the size buffer
  * @param root0.deserializeOnServer reads the object on the server side
- * @param root0.deserializeOnClient reads the object on the client side
+ * @param root0.deserializeOnClient reads the object on the client side, can be added later with `registerClientDeserializer()`
  */
 export function registerSerializableType<T extends object, ServerValue = T, ClientValue = T>(
   constructor: SerializableConstructor<T>,
@@ -47,9 +49,27 @@ export function registerSerializableType<T extends object, ServerValue = T, Clie
     constructor,
     serialize: serialize as (sz: SzBuffer, object: object) => void,
     deserializeOnServer,
-    deserializeOnClient,
+    deserializeOnClient: (deserializeOnClient ?? missingClientDeserializer) as (sz: SzBuffer) => unknown,
     id: Object.keys(Protocol.serializableTypes).length + serializableHandlers.length,
   });
+}
+
+/**
+ * Adds the client side reader to a type that was registered without one, so a type's server
+ * half and client half can live in code that does not know about each other.
+ * @param constructor constructor the type was registered with
+ * @param deserializeOnClient reads the object on the client side
+ */
+export function registerClientDeserializer<T extends object, ClientValue = T>(
+  constructor: SerializableConstructor<T>,
+  deserializeOnClient: (sz: SzBuffer) => ClientValue,
+): void {
+  const handler = serializableHandlers.find((candidate) => candidate.constructor === constructor);
+  console.assert(handler !== undefined, 'registerClientDeserializer: type must be registered first');
+
+  if (handler !== undefined) {
+    handler.deserializeOnClient = deserializeOnClient;
+  }
 }
 
 export class SzBuffer {
@@ -124,7 +144,7 @@ export class SzBuffer {
       this.overflowed = true;
       this.cursize = 0;
 
-      Con.Print('SzBuffer.allocate: overflow\n');
+      console.warn(`SzBuffer.allocate: overflow of ${this.name}`);
       // eslint-disable-next-line no-debugger
       debugger;
     }

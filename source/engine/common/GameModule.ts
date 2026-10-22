@@ -1,8 +1,9 @@
 import type { GameModuleIdentification, GameModuleInterface } from '../../shared/GameInterfaces.ts';
 
 import { gameCapabilities } from '../../shared/Defs.ts';
-import { ServerEngineAPI } from './GameAPIs.ts';
-import { eventBus, getCommonRegistry } from '../registry.ts';
+import type { ServerEngineAPI } from '../server/ServerEngineAPI.ts';
+import Con from './Console.ts';
+import type COM from './Com.ts';
 
 // The module contract lives in shared/ so game code can check itself against it without importing the engine.
 export type { GameModuleIdentification, GameModuleInterface } from '../../shared/GameInterfaces.ts';
@@ -16,12 +17,6 @@ interface GameModuleContractCandidate {
 type GameModuleLoader = () => Promise<GameModuleInterface>;
 
 const supportedGameModuleCapabilities = new Set<string>(Object.values(gameCapabilities));
-
-let { COM, Con } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con } = getCommonRegistry());
-});
 
 let gameModules: Record<string, GameModuleLoader> = {};
 
@@ -109,23 +104,35 @@ export function requireActiveGameModule(): GameModuleInterface {
 export default class GameModule {
   static active: GameModuleInterface | null = null;
 
+  /** The file system of the realm, which tells which game directory to load and learns the game's version. Set by the composition root before `Init()`. */
+  static com: Pick<COM, 'gamedir' | 'SetGameVersion'> | null = null;
+
   /**
-   * Loads the active game module for the current COM game directory.
+   * Loads the active game module for the current COM game directory and hands its server side the engine API.
+   * @param serverEngineAPI What the game's server side sees of the engine, owned by the server of this realm.
+   *   `null` in a realm without a server, which only needs the client side of the game.
    */
-  static async Init(): Promise<void> {
+  static async Init(serverEngineAPI: ServerEngineAPI | null): Promise<void> {
     GameModule.active = null;
 
-    const gameDirectory = COM.gamedir?.[0] ?? null;
+    const com = GameModule.com!;
+    const gameDirectory = com.gamedir?.[0] ?? null;
 
     if (gameDirectory === null) {
       throw new Error('GameModule.Init: no active game directory configured');
     }
 
     const activeGameModule = validateGameModuleContract(await loadGameModule(gameDirectory.filename));
-    activeGameModule.ServerGameAPI.Init(ServerEngineAPI);
+    if (serverEngineAPI !== null) {
+      activeGameModule.ServerGameAPI.Init(serverEngineAPI);
+    }
+
+    // Init runs once per realm, nothing else assigns this while the module loads.
+    // eslint-disable-next-line require-atomic-updates
     GameModule.active = activeGameModule;
 
     const identification = activeGameModule.identification;
+    await com.SetGameVersion(identification.version.join('.'));
     Con.Print(`GameModule.Init: ${identification.name} v${identification.version.join('.')} by ${identification.author} loaded.\n`);
   }
 }

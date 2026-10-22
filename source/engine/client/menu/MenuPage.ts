@@ -1,8 +1,10 @@
 import { K } from '../../../shared/Keys.ts';
-import { eventBus, getClientRegistry } from '../../registry.ts';
 import type { MenuPic } from '../Menu.ts';
 import { MenuItem } from './MenuItem.ts';
 import { MenuViewport } from './MenuViewport.ts';
+import M from '../Menu.ts';
+import Host from '../../common/Host.ts';
+import S from '../Sound.ts';
 
 interface MenuPageConfig {
   readonly items?: MenuItem[];
@@ -84,14 +86,6 @@ export interface BackButtonAnchor {
   readonly centerX: number;
   readonly y: number;
 }
-
-// Destructure registry modules
-let { Host, M, S } = getClientRegistry();
-
-// Update when registry is frozen
-eventBus.subscribe('registry.frozen', () => {
-  ({ Host, M, S } = getClientRegistry());
-});
 
 /**
  * A menu page containing items with automatic navigation.

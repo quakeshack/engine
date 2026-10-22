@@ -148,7 +148,7 @@ For each persistent entity the engine stores its classname, model name, origin, 
 
 ## Gravity particles
 
-Particles are not client entities, there are far too many of them. The particle types that fall under gravity (`grav`, `slowgrav` and the explosion and blob particles) do collide with the world since this work: a floor-like impact bounces them with the shared clip formula, a wall or ceiling kills them. A cheap point classification gates the world trace, so open air costs next to nothing. `R.collidableParticleTypes` lists which types take part.
+Particles are not client entities, there are far too many of them. The particle types that fall under gravity (`grav`, `slowgrav` and the explosion and blob particles) do collide with the world since this work: a floor-like impact bounces them with the shared clip formula, a wall or ceiling kills them. A cheap point classification gates the world trace, so open air costs next to nothing. `Particles.collidableParticleTypes` (`renderer/effects/Particles.ts`) lists which types take part.
 
 ## Registering handlers
 
