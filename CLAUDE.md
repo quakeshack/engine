@@ -26,7 +26,7 @@ npx eslint --fix <file>
 
 ## Working Agreements
 
-For substantial work (architecture changes, cross-cutting refactors, new subsystems; not bug fixes or single-file edits) follow the `plan-first-workflow` skill: write `plans/<topic>.md` first (`plans/menu-rework.md` is the reference), put real forks (composition vs. subclassing, event-bus boundaries, public API shape, scope) to the developer instead of picking one, implement one phase at a time and stop at each boundary for a go-ahead, and record what shipped in the plan.
+For substantial work (architecture changes, cross-cutting refactors, new subsystems; not bug fixes or single-file edits) follow the `plan-first-workflow` skill: write `plans/<topic>.md` first (`plans/menu-rework.md` is the reference), put real forks (composition vs. subclassing, event-bus boundaries, public API shape, scope) to the developer instead of picking one, implement one phase at a time and stop at each boundary for a go-ahead, update the docs (`docs/`, `README.md`, JSDoc) in the phase that ships the behavior, and record what shipped in the plan.
 
 - **Verify UI-facing changes in a real browser**, not just with unit tests (`browser-ui-verification` skill, `docs/browser-verification.md`). If you couldn't verify something, say so. Headless Chromium here never gets real Pointer Lock, so pointer-lock, mouse-look and hover bugs need a live test.
 - **LLM output gets reviewed.** `LLM.md` explains how this project uses LLMs: output is read, adjusted or rewritten, never taken on faith, and LLMs know Quake engine internals only shallowly. This code has diverged a lot from WinQuake, so check the source instead of trusting recalled engine details.
