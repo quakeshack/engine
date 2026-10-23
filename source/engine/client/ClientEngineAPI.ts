@@ -37,7 +37,9 @@ import Decals from './renderer/effects/Decals.ts';
 import M from './Menu.ts';
 import Host from '../common/Host.ts';
 import ClientHost from './ClientHost.ts';
-import Draw from './Draw.ts';
+import Draw, { type DrawSpriteOptions } from './Draw.ts';
+import SpriteAssets, { type LoadSpriteOptions } from './renderer/sprite/SpriteAssets.ts';
+import type { SpritePlayback } from './renderer/sprite/SpritePlayback.ts';
 import S from './Sound.ts';
 import FirstPersonView from './view/FirstPersonView.ts';
 import viewCvars from './view/ViewCvars.ts';
@@ -266,6 +268,19 @@ export class ClientEngineAPI extends CommonEngineAPI {
   }
 
   /**
+   * Loads an animated image or sprite sheet for the screen (HUD, screen effects): any file a world sprite can be, with
+   * its settings file, sequences and regions. The images are loaded once per file and shared, every call returns a
+   * playback of its own. See [Sprites](docs/sprites.md).
+   * @param filename A GIF, PNG/APNG, WebP, Aseprite, Half-Life or Quake sprite in the game's search path.
+   * @param options Whether to look for the settings file, which clock the playback follows.
+   * @returns A playback of the first sequence, to draw with {@link ClientEngineAPI.DrawSprite}.
+   * @throws when the file does not exist or is no sprite.
+   */
+  LoadSprite(filename: string, options: LoadSpriteOptions = {}): Promise<SpritePlayback> {
+    return SpriteAssets.Load(filename, options);
+  }
+
+  /**
    * Load a fixed-grid bitmap font atlas from a file (e.g. a stylized header font), described by
    * `config`'s charset and glyph/cell metrics.
    * @returns The loaded font.
@@ -298,6 +313,19 @@ export class ClientEngineAPI extends CommonEngineAPI {
    */
   DrawPic(x: number, y: number, pic: GLTexture, scale = 1.0): void {
     Draw.Pic(x, y, pic, scale);
+  }
+
+  /**
+   * Draws what a sprite playback shows now, at screen coordinates like {@link ClientEngineAPI.DrawPic}: the top left
+   * corner of the image (or of the region) is at `x, y`. A full-screen effect is a sprite sized to the screen.
+   * @param x The x position.
+   * @param y The y position.
+   * @param playback From {@link ClientEngineAPI.LoadSprite}.
+   * @param options `scale`, `region` (a name), `tint` (red, green, blue from 0 to 1) and `alpha`.
+   * @throws RangeError when the sprite has no region of the name `options.region` gives.
+   */
+  DrawSprite(x: number, y: number, playback: SpritePlayback, options: DrawSpriteOptions = {}): void {
+    Draw.Sprite(x, y, playback, options);
   }
 
   /**

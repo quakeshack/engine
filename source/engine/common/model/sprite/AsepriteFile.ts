@@ -65,6 +65,9 @@ export interface AsepriteSliceKey {
   readonly frame: number;
   readonly x: number;
   readonly y: number;
+  /** Size of the slice's rectangle, in pixels. */
+  readonly width: number;
+  readonly height: number;
   readonly pivot: readonly [number, number] | null;
 }
 
@@ -385,7 +388,13 @@ class ParseState {
     let offset = end;
 
     for (let index = 0; index < keyCount; index++) {
-      const key = { frame: view.getUint32(offset, true), x: view.getInt32(offset + 4, true), y: view.getInt32(offset + 8, true) };
+      const key = {
+        frame: view.getUint32(offset, true),
+        x: view.getInt32(offset + 4, true),
+        y: view.getInt32(offset + 8, true),
+        width: view.getUint32(offset + 12, true),
+        height: view.getUint32(offset + 16, true),
+      };
 
       offset += 20;
 

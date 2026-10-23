@@ -2,7 +2,7 @@ import { CorruptedResourceError } from '../../Errors.ts';
 import { AsepriteHeader } from './AsepriteHeader.ts';
 import { GifHeader } from './GifHeader.ts';
 import { PngHeader } from './PngHeader.ts';
-import type { SpriteDirection } from './SpriteTypes.ts';
+import type { SpriteDirection, SpriteRegion } from './SpriteTypes.ts';
 import { WebpHeader } from './WebpHeader.ts';
 
 /** A named range of images a file marks as one animation (an Aseprite tag). */
@@ -34,6 +34,8 @@ export interface ImageHeader {
    * per image, `null` when the file does not say.
    */
   readonly origins: ReadonlyArray<readonly [number, number]> | null;
+  /** Named rectangles the file marks (the slices of an Aseprite file), in pixels. */
+  readonly regions: ReadonlyMap<string, SpriteRegion>;
 }
 
 /** The image formats that have a header parser. */

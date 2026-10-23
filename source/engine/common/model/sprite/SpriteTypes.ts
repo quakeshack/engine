@@ -55,10 +55,26 @@ export interface SpriteImage {
   readonly layer: number;
   /** Offset of the lower left corner from the entity's origin, in world units. */
   readonly origin: readonly [number, number];
+  /** Width in world units (the file's pixels times the sidecar's `scale`). */
   readonly width: number;
+  /** Height in world units. */
   readonly height: number;
+  /** Width in the pixels of the file, which a {@link SpriteRegion} is counted in. */
+  readonly pixelWidth: number;
+  /** Height in the pixels of the file. */
+  readonly pixelHeight: number;
   /** Share of the layer the image covers, below 1 where it is padded to the size of the largest image. */
   readonly uvScale: readonly [number, number];
+}
+
+/** A named rectangle of an image, in the pixels of the file, for drawing a part of a sprite sheet. */
+export interface SpriteRegion {
+  /** Pixels from the left edge. */
+  readonly x: number;
+  /** Pixels from the top edge. */
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 /** Images shown one after the other. */

@@ -76,6 +76,52 @@ void describe('SpriteSidecars', () => {
     assert.deepEqual(parse({ colorKey: { color: [255, 0, 255] } }).sidecar.colorKey, { color: [255, 0, 255], tolerance: 0 });
   });
 
+  void describe('regions', () => {
+    void test('reads named rectangles in pixels', () => {
+      const { sidecar, warnings } = parse({ regions: { number_0: [0, 0, 20, 24], number_1: [20, 0, 12, 24] } });
+
+      assert.deepEqual([...sidecar.regions], [
+        ['number_0', { x: 0, y: 0, width: 20, height: 24 }],
+        ['number_1', { x: 20, y: 0, width: 12, height: 24 }],
+      ]);
+      assert.deepEqual(warnings, []);
+    });
+
+    void test('there are none by default', () => {
+      assert.equal(parse({}).sidecar.regions.size, 0);
+      assert.equal(SpriteSidecars.EMPTY.regions.size, 0);
+    });
+
+    void test('leaves out an entry that is not four whole numbers from zero, and says so', () => {
+      const { sidecar, warnings } = parse({ regions: { ok: [1, 2, 3, 4], short: [1, 2, 3], negative: [-1, 0, 4, 4], fraction: [0, 0, 1.5, 4], text: 'a' } });
+
+      assert.deepEqual([...sidecar.regions.keys()], ['ok']);
+      assert.equal(warnings.length, 4);
+    });
+
+    void test('leaves out a region with no area', () => {
+      const { sidecar, warnings } = parse({ regions: { flat: [0, 0, 5, 0], thin: [0, 0, 0, 5] } });
+
+      assert.equal(sidecar.regions.size, 0);
+      assert.equal(warnings.length, 2);
+      assert.match(warnings[0], /region "flat" has no area/);
+    });
+
+    void test('regions that are not an object are ignored', () => {
+      const { sidecar, warnings } = parse({ regions: [[0, 0, 1, 1]] });
+
+      assert.equal(sidecar.regions.size, 0);
+      assert.equal(warnings.length, 1);
+    });
+
+    void test('a region called like a member of Object is just a name', () => {
+      const { sidecar } = parse('{ "regions": { "constructor": [0, 0, 2, 2], "__proto__": [1, 1, 2, 2] } }');
+
+      assert.deepEqual(sidecar.regions.get('constructor'), { x: 0, y: 0, width: 2, height: 2 });
+      assert.equal(sidecar.regions.get('toString'), undefined);
+    });
+  });
+
   void describe('what is wrong is reported and left out, the rest still counts', () => {
     void test('a file that is not JSON', () => {
       const { sidecar, warnings } = parse('{ scale: 2 ');

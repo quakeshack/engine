@@ -595,3 +595,70 @@ void describe('ImageSpriteLoader', () => {
     });
   });
 });
+
+void describe('ImageSpriteLoader, regions and pixel sizes', () => {
+  /**
+   * Loads a file with an optional sidecar on a server.
+   * @returns The model and what the loader reported.
+   */
+  async function load(buffer: ArrayBuffer, name: string, settings: object | null = null): Promise<{ model: SpriteModel, warnings: string[] }> {
+    const warnings: string[] = [];
+    const loader = new ImageSpriteLoader(createModelLoadContext({
+      con: createSilentConsole({ PrintWarning: (text: string) => { warnings.push(text); } }),
+      files: { ...createDirectoryFiles(FIXTURES), LoadOptionalTextFile: () => Promise.resolve(settings === null ? null : JSON.stringify(settings)) },
+    }));
+
+    return { model: await loader.load(buffer, name), warnings };
+  }
+
+  const guy = { width: 16, height: 8, frames: [{}, {}], slices: [{ name: 'digit_0', keys: [{ frame: 0, x: 2, y: 1, width: 5, height: 6 }] }] };
+
+  void test('an image knows its size in the pixels of the file, whatever the scale', async () => {
+    const { model } = await load(encodeAseprite(guy), 'gfx/guy.aseprite', { scale: 0.5 });
+    const image = (model.frames[0] as SpriteSequence).images[0];
+
+    assert.deepEqual([image.width, image.height], [8, 4]);
+    assert.deepEqual([image.pixelWidth, image.pixelHeight], [16, 8]);
+  });
+
+  void test('the slices of an Aseprite file are the regions of the asset', async () => {
+    const { model } = await load(encodeAseprite(guy), 'gfx/guy.aseprite');
+
+    assert.deepEqual([...model.asset!.regions], [['digit_0', { x: 2, y: 1, width: 5, height: 6 }]]);
+  });
+
+  void test('a sprite without regions has none', async () => {
+    const { model } = await load((await createDirectoryFiles(FIXTURES).LoadFile('anim.gif'))!, 'gfx/anim.gif');
+
+    assert.equal(model.asset!.regions.size, 0);
+  });
+
+  void test('the sidecar gives regions to any format', async () => {
+    const { model } = await load((await createDirectoryFiles(FIXTURES).LoadFile('anim.gif'))!, 'gfx/anim.gif', { regions: { left: [0, 0, 4, 4] } });
+
+    assert.deepEqual([...model.asset!.regions], [['left', { x: 0, y: 0, width: 4, height: 4 }]]);
+  });
+
+  void test('the sidecar wins over the file on a name clash, and the others stay', async () => {
+    const { model } = await load(
+      encodeAseprite({ ...guy, slices: [...guy.slices, { name: 'other', keys: [{ frame: 0, x: 0, y: 0, width: 2, height: 2 }] }] }),
+      'gfx/guy.aseprite',
+      { regions: { digit_0: [8, 0, 4, 4] } },
+    );
+
+    assert.deepEqual(model.asset!.regions.get('digit_0'), { x: 8, y: 0, width: 4, height: 4 });
+    assert.deepEqual(model.asset!.regions.get('other'), { x: 0, y: 0, width: 2, height: 2 });
+  });
+
+  void test('leaves out a region that reaches outside the image, and says so', async () => {
+    const { model, warnings } = await load(
+      encodeAseprite(guy),
+      'gfx/guy.aseprite',
+      { regions: { inside: [0, 0, 16, 8], wide: [10, 0, 7, 4], low: [0, 5, 4, 4] } },
+    );
+
+    assert.deepEqual([...model.asset!.regions.keys()].sort(), ['digit_0', 'inside']);
+    assert.equal(warnings.length, 2);
+    assert.match(warnings[0], /region "wide" reaches outside the 16x8 image/);
+  });
+});

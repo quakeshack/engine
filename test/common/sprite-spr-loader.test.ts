@@ -179,6 +179,7 @@ void describe('SpriteSPRLoader', () => {
     assert.deepEqual(single.uvScale, [1, 1]);
     assert.deepEqual(group.images[0].uvScale, [0.5, 0.25]);
     assert.deepEqual(group.images[1].uvScale, [1, 0.5]);
+    assert.deepEqual(group.images.map((image) => [image.pixelWidth, image.pixelHeight]), [[4, 2], [8, 4]], 'the size of the picture, not of its padded layer');
   });
 
   void test('loads without a texture in a realm that does not draw', async () => {

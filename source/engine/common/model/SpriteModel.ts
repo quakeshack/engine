@@ -1,5 +1,4 @@
 import { BaseModel } from './BaseModel.ts';
-import { SpriteAnimator } from './sprite/SpriteAnimator.ts';
 import type { SpriteAsset } from './sprite/SpriteAsset.ts';
 import { SpriteOrientation, SpritePhase, type SpriteFrame } from './sprite/SpriteTypes.ts';
 
@@ -58,9 +57,7 @@ export class SpriteModel extends BaseModel {
    * @returns Seconds, `Infinity` for a sequence that repeats forever, 0 for a single picture (it has nothing to play).
    */
   sequenceDuration(frame: number): number {
-    const entry = this.frames[frame >= 0 && frame < this.frames.length ? frame : 0];
-
-    return entry !== undefined && 'images' in entry ? SpriteAnimator.duration(entry) : 0;
+    return this.asset?.sequenceDuration(frame) ?? 0;
   }
 
   /**
@@ -69,7 +66,7 @@ export class SpriteModel extends BaseModel {
    * @returns The `frame` that selects it, -1 when there is none of that name.
    */
   sequenceIndex(name: string): number {
-    return name === '' ? -1 : this.frames.findIndex((entry) => 'images' in entry && entry.name === name);
+    return this.asset?.sequenceIndex(name) ?? -1;
   }
 
   override reset(): void {

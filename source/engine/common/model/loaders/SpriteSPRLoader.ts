@@ -278,6 +278,8 @@ export class SpriteSPRLoader extends ModelLoader {
           origin: image.origin,
           width: image.width,
           height: image.height,
+          pixelWidth: image.width,
+          pixelHeight: image.height,
           uvScale: [image.width / layerWidth, image.height / layerHeight],
         });
 

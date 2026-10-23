@@ -109,8 +109,23 @@ class GL {
 
     gl.disable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
-    // pictures hold straight alpha; the scene may have left another function behind (sprites blend premultiplied)
+    // the scene may have left another function behind (sprites blend premultiplied)
+    GL.BlendStraightAlpha();
+  }
+
+  /**
+   * Blends what pictures hold: straight alpha. The 2D pass runs on it.
+   */
+  static BlendStraightAlpha(): void {
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+  }
+
+  /**
+   * Blends what sprites hold: premultiplied alpha, where an additive sprite writes an alpha of 0. Whoever sets this in
+   * the 2D pass puts {@link GL.BlendStraightAlpha} back after the flush that draws with it.
+   */
+  static BlendPremultipliedAlpha(): void {
+    gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
   }
 
   /**

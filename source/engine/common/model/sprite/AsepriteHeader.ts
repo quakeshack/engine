@@ -1,5 +1,6 @@
 import { AsepriteFile, type AsepriteData } from './AsepriteFile.ts';
 import type { ImageHeader } from './ImageHeader.ts';
+import type { SpriteRegion } from './SpriteTypes.ts';
 
 /**
  * Header pass for Aseprite files: size, the duration of every frame, the tags (which become named sequences) and the
@@ -35,7 +36,27 @@ export class AsepriteHeader {
       repeat: 0,
       tags: data.tags,
       origins: AsepriteHeader.#pivots(data),
+      regions: AsepriteHeader.#regions(data),
     };
+  }
+
+  /**
+   * Every named slice is a region a game can draw by name. A slice that moves takes the rectangle it has in the first
+   * frame, because a region cuts the same pixels whatever image is showing.
+   * @returns The slices' rectangles by name; a slice with no name or no rectangle is left out.
+   */
+  static #regions(data: AsepriteData): Map<string, SpriteRegion> {
+    const regions = new Map<string, SpriteRegion>();
+
+    for (const slice of data.slices) {
+      const key = slice.keys.toSorted((first, second) => first.frame - second.frame).findLast((candidate) => candidate.frame <= 0) ?? slice.keys[0];
+
+      if (slice.name !== '' && key !== undefined && key.width > 0 && key.height > 0) {
+        regions.set(slice.name, { x: key.x, y: key.y, width: key.width, height: key.height });
+      }
+    }
+
+    return regions;
   }
 
   /**

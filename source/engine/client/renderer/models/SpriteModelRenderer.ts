@@ -4,8 +4,8 @@ import { eventBus } from '../../../common/EventBus.ts';
 import GL, { type GLTextureArray } from '../../GL.ts';
 import Vector from '../../../../shared/Vector.ts';
 import { SpriteModel } from '../../../common/model/SpriteModel.ts';
-import { SpriteAnimator, type SpriteImageBlend } from '../../../common/model/sprite/SpriteAnimator.ts';
-import { SpriteBlend, SpriteOrientation, SpritePhase, type SpriteImage } from '../../../common/model/sprite/SpriteTypes.ts';
+import { SpriteAnimator, SpriteSample } from '../../../common/model/sprite/SpriteAnimator.ts';
+import { SpriteBlend, SpriteOrientation, SpritePhase } from '../../../common/model/sprite/SpriteTypes.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
 import { EntityLighting } from '../lighting/EntityLighting.ts';
 import { SpriteLighting } from '../../../common/model/sprite/SpriteLighting.ts';
@@ -41,11 +41,8 @@ export class SpriteModelRenderer extends ModelRenderer {
   static readonly #light: [number, number, number] = [Number.NaN, 1, 1];
   static readonly #wanted: [number, number, number] = [1, 1, 1];
 
-  /** Layer of the image the sprite being built fades into, and how far (`aBlend` of its vertices). */
-  static #nextLayer = 0;
-  static #fade = 0;
-
-  static readonly #imageBlend: SpriteImageBlend = { index: 0, nextIndex: 0, mix: 0 };
+  /** The image of the sprite being built, with the layer it fades into and how far (`aBlend` of its vertices). */
+  static readonly #sample = new SpriteSample();
 
   /** The values of `uBlendMode` in `sprite.frag`. */
   static readonly #BLEND_MODES: Readonly<Record<SpriteBlend, number>> = {
@@ -143,7 +140,7 @@ export class SpriteModelRenderer extends ModelRenderer {
       SpriteModelRenderer.#blendMode = blendMode;
     }
 
-    const image = SpriteModelRenderer.#selectImage(spriteModel, entity);
+    SpriteModelRenderer.#selectImage(spriteModel, entity);
 
     if (SpriteModelRenderer.#boundTexture !== asset.texture) {
       asset.texture.bind(program.tTexture!, true);
@@ -151,7 +148,7 @@ export class SpriteModelRenderer extends ModelRenderer {
     }
 
     SpriteModelRenderer.#setBasis(spriteModel.orientation, entity);
-    SpriteModelRenderer.#emitQuad(entity.origin, image);
+    SpriteModelRenderer.#emitQuad(entity.origin, SpriteModelRenderer.#sample);
   }
 
   /**
@@ -175,20 +172,12 @@ export class SpriteModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Picks the image an entity shows now: its `frame` selects a frame, a sequence animates on the
-   * clock the model's phase names.
-   * @returns The image to draw.
+   * Picks the image an entity shows now into {@link SpriteModelRenderer.#sample}: its `frame` selects a frame, a
+   * sequence animates on the clock the model's phase names.
    */
-  static #selectImage(spriteModel: SpriteModel, entity: ClientEdict): SpriteImage {
+  static #selectImage(spriteModel: SpriteModel, entity: ClientEdict): void {
     const frames = spriteModel.frames;
     const frame = frames[entity.frame >= 0 && entity.frame < frames.length ? entity.frame : 0];
-
-    if (!('images' in frame)) {
-      SpriteModelRenderer.#nextLayer = frame.layer;
-      SpriteModelRenderer.#fade = 0;
-      return frame;
-    }
-
     let time = clientRuntimeState.time;
 
     switch (spriteModel.phase) {
@@ -202,22 +191,7 @@ export class SpriteModelRenderer extends ModelRenderer {
         break;
     }
 
-    if (spriteModel.asset!.interpolate && rendererCvars.interpolation.value !== 0) {
-      const blend = SpriteModelRenderer.#imageBlend;
-
-      SpriteAnimator.blendAt(frame, time, blend);
-      SpriteModelRenderer.#nextLayer = frame.images[blend.nextIndex].layer;
-      SpriteModelRenderer.#fade = blend.mix;
-
-      return frame.images[blend.index];
-    }
-
-    const image = frame.images[SpriteAnimator.imageIndexAt(frame, time)];
-
-    SpriteModelRenderer.#nextLayer = image.layer;
-    SpriteModelRenderer.#fade = 0;
-
-    return image;
+    SpriteAnimator.sample(frame, time, spriteModel.asset!.interpolate && rendererCvars.interpolation.value !== 0, SpriteModelRenderer.#sample);
   }
 
   /**
@@ -273,10 +247,11 @@ export class SpriteModelRenderer extends ModelRenderer {
   /**
    * Streams the two triangles of a quad on the current basis.
    */
-  static #emitQuad(origin: Vector, image: SpriteImage): void {
+  static #emitQuad(origin: Vector, sample: SpriteSample): void {
     const r = SpriteModelRenderer.#right;
     const u = SpriteModelRenderer.#up;
     const p = origin;
+    const { image } = sample;
     const x1 = image.origin[0];
     const y1 = image.origin[1];
     const x2 = x1 + image.width;
@@ -284,8 +259,8 @@ export class SpriteModelRenderer extends ModelRenderer {
     const uMax = image.uvScale[0];
     const vMax = image.uvScale[1];
     const layer = image.layer;
-    const nextLayer = SpriteModelRenderer.#nextLayer;
-    const fade = SpriteModelRenderer.#fade;
+    const nextLayer = sample.nextLayer;
+    const fade = sample.fade;
 
     GL.StreamGetSpace(6);
 

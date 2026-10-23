@@ -12,7 +12,7 @@ import { SpriteDirection, type SpriteImage, type SpriteSequence } from '../../so
  * @returns The sequence.
  */
 function createSequence(durations: number[], direction = SpriteDirection.forward, repeat = 0): SpriteSequence {
-  const images: SpriteImage[] = durations.map((_duration, layer) => ({ layer, origin: [0, 0], width: 1, height: 1, uvScale: [1, 1] }));
+  const images: SpriteImage[] = durations.map((_duration, layer) => ({ layer, origin: [0, 0], width: 1, height: 1, pixelWidth: 1, pixelHeight: 1, uvScale: [1, 1] }));
   const endTimes = new Float32Array(durations.length);
   let elapsed = 0;
 

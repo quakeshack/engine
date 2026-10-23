@@ -14,7 +14,8 @@ spawn(): void {
 }
 ```
 
-The same works for client-only entities (`ClientEngineAPI.ModForName`, see [Client Entities](client-entities.md)).
+The same works for client-only entities (`ClientEngineAPI.ModForName`, see [Client Entities](client-entities.md)), and the
+same files can be drawn on the screen as HUD elements and screen effects, see [On the screen](#on-the-screen-hud-elements-and-screen-effects).
 
 ## Which format
 
@@ -71,6 +72,7 @@ file too (the scale decides the bounds). A broken file, a wrong value or a setti
 | `repeat` | whole number, 0 = forever | the file's | How often the whole animation plays. A finished sequence holds its last image. |
 | `interpolate` | `true`, `false` | `false` | Crossfades from an image to the next. Needs `r_interpolation 1`, which is the default. |
 | `lit` | `true`, `false` | `false` | Shades the sprite with the light of the map at its origin plus the dynamic lights that reach it (a flat sprite has no surface direction, so this is its brightness only, never above the texture's own). Right for smoke, dust and puffs that should darken in a dark room; leave it off for fire, glow and sparks. A lit sprite is drawn on its own, it does not batch with its neighbors. |
+| `regions` | `{ "name": [x, y, width, height] }`, pixels | none | Named rectangles of the image, counted from its top left corner, for drawing a part of a sprite sheet on the screen (`region` of `DrawSprite`). An Aseprite file's slices are regions as well; the settings file wins on a name clash. A region that reaches outside the image is left out with a console message. It does nothing for a sprite in the world. |
 | `sequences` | list of `{ name, from, to, direction, repeat, fps }` | one sequence over all images | Each entry becomes one `frame` of the entity, in order, so `this.frame = 1` plays the second. `from` and `to` (both included) default to the first and last image, `direction` to `forward` (`reverse`, `pingpong` and `pingpongReverse` exist), `repeat` and `fps` to the settings above. |
 
 How a sequence ends: `forward` holds its last image, `reverse` its first. A `pingpong` goes to the far end and back without
@@ -112,6 +114,71 @@ this.frame = this.engine.GetSpriteSequenceIndex('gfx/imp.gif', 'burst');
 Changing `frame` restarts a sprite that follows its entity's own clock (`phase: spawn`); setting the frame it already has
 does not, so a server repeating it every update leaves a running animation alone.
 
+## On the screen: HUD elements and screen effects
+
+Any sprite file also draws in 2D, from a game's `draw()` (or `drawOverlay()`, which stays visible when `nohud` is set):
+an animated HUD icon, a digit cut out of a sheet, a damage splatter over the whole screen.
+
+```ts
+// once, when the HUD is created
+this.flame = await engine.LoadSprite('gfx/hud/flame.apng');
+this.digits = await engine.LoadSprite('gfx/hud/digits.png'); // gfx/hud/digits.png.json has the regions
+
+// every frame
+engine.DrawSprite(16, 16, this.flame, { scale: 2 });
+engine.DrawSprite(100, 16, this.digits, { region: 'seven', tint: [1, 0.8, 0.2] });
+```
+
+`LoadSprite(filename, options?)` takes the same files as `setModel()` (GIF, PNG/APNG, WebP, Aseprite, Half-Life and Quake
+`.spr`), with their settings file, and returns a **`SpritePlayback`**, one handle per element on the screen. The images are
+loaded once per file and shared; every call gives a playback of its own, so two flames from one file play independently.
+It rejects when the file is missing or is no sprite. `options.sidecar: false` skips the settings file lookup, like the
+precache hint above.
+
+`DrawSprite(x, y, playback, options?)` draws what the playback shows now, with its top left corner at `x, y`, in the
+screen coordinates `DrawPic` uses. Its size is the image's size in pixels times the settings file's `scale` times
+`options.scale`.
+
+| Option | What it does |
+| :--- | :--- |
+| `scale` | Multiplies the size, `1` by default. |
+| `region` | Draws only the region of that name (see `regions` in the settings reference) of the image that is showing. The region's size replaces the image's. A name the sprite does not have throws a `RangeError` that lists the names it has. |
+| `tint` | Red, green and blue from 0 to 1, multiplied with the colors. White by default. |
+| `alpha` | Opacity from 0 to 1, `1` by default. |
+
+The blend mode is the sprite's own (`blend` in its settings): `alpha` blends, `alphaTest` drops pixels below a quarter
+alpha, `additive` adds the color to what is behind, so a glow or a flash brightens the world under it. `filter` and
+`interpolate` (with `r_interpolation`) work as in the world. Cut regions out of a sheet with `"filter": "nearest"`,
+or the smooth filter blends a pixel row of the neighboring cell in at the edge.
+
+**The playback** starts the first sequence and plays it by itself:
+
+| Member | |
+| :--- | :--- |
+| `play(sequence)` | Starts a sequence from its first image, by index or by name (a sidecar sequence, an Aseprite tag). Throws a `RangeError` for one the file does not have. |
+| `pause()`, `resume()`, `paused` | Holds the image that is showing, and goes on from there. |
+| `speed` | How fast it plays, `1` is the file's speed. Changing it keeps what has played. |
+| `duration` | Seconds the sequence takes as far as its repeat count goes, with the speed counted in; `Infinity` for one that repeats forever, `0` for a single picture. |
+| `finished` | The sequence has played as often as it repeats and holds its last image. A sequence that repeats forever never finishes. |
+| `width`, `height` | The size of the image that is showing, for placing it. |
+
+A one-shot effect on the screen plays a sequence that repeats once, and stops drawing when it is `finished`.
+
+**A screen effect** is a sprite drawn over the whole screen from `draw()` or `drawOverlay()`: scale it so that its size
+covers the viewport, give it `additive` for a flash or `alpha` for a splatter, and fade it with `alpha`. Like any overlay
+it is not in a clean screenshot.
+
+**The clock** of a playback is the client's game time, which the sprites in the world follow, unless `LoadSprite` is
+given `{ clock: 'real' }` for the wall clock. Today both run at the same speed, and neither stops while the game is paused.
+
+What a sprite on the screen ignores from its settings, because it has no place in the world: `orientation`, `phase`
+(a playback starts when it is made and when `play()` is called), `lit` and `origin` (the top left corner is the anchor).
+
+**Lifetime.** A loaded sprite lives for the page: it survives map changes and disconnects, and is not part of the model
+cache or the precache list. Its textures are freed when the GL context goes away, and the playbacks made before that are
+dead. Load the sprites of a HUD once, not per frame (a second load of a file that is loaded only makes a new playback).
+Every `DrawSprite` is one draw call, there is no batching of neighbors yet.
+
 ## Making the files
 
 Any tool that writes GIF, APNG or animated WebP works. With `ffmpeg` (the three commands below were tried with ffmpeg 8.0.1-3ubuntu2, on
@@ -146,6 +213,8 @@ An `.aseprite` file is read as it is saved, no export step. What is taken from i
   (0 plays forever). Aseprite counts the legs of a ping-pong ("repeat 2" is forward once and back once), a sequence
   counts its cycles, so the count is halved there. A `sequences` list in the settings file replaces the tags, and its
   top-level `repeat` and `fps` replace theirs.
+- **Slices become regions** for drawing on the screen, named like the slice, with the rectangle the slice has in the first
+  frame (see [On the screen](#on-the-screen-hud-elements-and-screen-effects)).
 - **A slice with a pivot sets the origin.** The first slice that has a pivot decides, a slice that moves from frame to
   frame moves the origin with it. `origin` in the settings file wins.
 - **Not supported:** blend modes other than normal (a layer is drawn as normal, the console says so once), tilemap layers

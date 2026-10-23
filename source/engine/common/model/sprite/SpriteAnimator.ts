@@ -1,10 +1,22 @@
-import { SpriteDirection, type SpriteSequence } from './SpriteTypes.ts';
+import { SpriteDirection, type SpriteFrame, type SpriteImage, type SpriteSequence } from './SpriteTypes.ts';
 
 /** What `SpriteAnimator.blendAt()` fills in. */
 export interface SpriteImageBlend {
   index: number;
   nextIndex: number;
   mix: number;
+}
+
+/**
+ * What {@link SpriteAnimator.sample} fills in: the image to draw and the one it fades into.
+ */
+export class SpriteSample {
+  /** The image showing. */
+  image: SpriteImage = null!;
+  /** Layer of the image it fades into (its own layer when there is no fading). */
+  nextLayer = 0;
+  /** How far to fade into {@link SpriteSample.nextLayer}, 0 shows only {@link SpriteSample.image}. */
+  fade = 0;
 }
 
 /** Where in an image a time falls. */
@@ -92,6 +104,38 @@ export class SpriteAnimator {
     out.nextIndex = SpriteAnimator.imageIndexAt(sequence, Math.max(time, 0) + remaining + SpriteAnimator.#EPSILON);
     out.mix = Math.min(1, Math.max(0, 1 - remaining / duration));
   }
+
+  /**
+   * Picks what to draw of a frame at a time: a single picture as it is, a sequence by its clock.
+   * @param frame What an entity's `frame` or a playback's sequence selects.
+   * @param time Seconds since the sequence started (ignored by a single picture).
+   * @param interpolate Whether to work out the image to fade into, for sprites that crossfade.
+   * @param out Filled in.
+   */
+  static sample(frame: SpriteFrame, time: number, interpolate: boolean, out: SpriteSample): void {
+    if (!('images' in frame)) {
+      out.image = frame;
+      out.nextLayer = frame.layer;
+      out.fade = 0;
+      return;
+    }
+
+    if (interpolate) {
+      const blend = SpriteAnimator.#blend;
+
+      SpriteAnimator.blendAt(frame, time, blend);
+      out.image = frame.images[blend.index];
+      out.nextLayer = frame.images[blend.nextIndex].layer;
+      out.fade = blend.mix;
+      return;
+    }
+
+    out.image = frame.images[SpriteAnimator.imageIndexAt(frame, time)];
+    out.nextLayer = out.image.layer;
+    out.fade = 0;
+  }
+
+  static readonly #blend: SpriteImageBlend = { index: 0, nextIndex: 0, mix: 0 };
 
   /** Nudges a time over the end of an image, past rounding. */
   static readonly #EPSILON = 1e-4;

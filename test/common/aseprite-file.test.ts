@@ -135,7 +135,7 @@ void describe('AsepriteHeader', () => {
   void test('reports durations in milliseconds, plays forever and has no tags or origins by default', () => {
     const header = ImageHeaders.parse(encodeAseprite({ width: 5, height: 3, frames: [{ duration: 40 }, { duration: 60 }] }), 'a.aseprite');
 
-    assert.deepEqual(header, { width: 5, height: 3, frameDurations: [40, 60], repeat: 0, tags: [], origins: null });
+    assert.deepEqual(header, { width: 5, height: 3, frameDurations: [40, 60], repeat: 0, tags: [], origins: null, regions: new Map() });
   });
 
   void test('is found as the Aseprite format', () => {
@@ -188,5 +188,60 @@ void describe('AsepriteHeader', () => {
     }), 'a.aseprite');
 
     assert.deepEqual(header.origins, [[4, 4]]);
+  });
+  void describe('regions', () => {
+    void test('every named slice is a region, with the size of its key', () => {
+      const header = AsepriteHeader.parse(encodeAseprite({
+        width: 32,
+        height: 16,
+        frames: [{}],
+        slices: [
+          { name: 'digit_0', keys: [{ frame: 0, x: 2, y: 3, width: 5, height: 7 }] },
+          { name: 'digit_1', keys: [{ frame: 0, x: 8, y: 3, width: 6, height: 7 }] },
+        ],
+      }), 'a.aseprite');
+
+      assert.deepEqual([...header.regions], [
+        ['digit_0', { x: 2, y: 3, width: 5, height: 7 }],
+        ['digit_1', { x: 8, y: 3, width: 6, height: 7 }],
+      ]);
+    });
+
+    void test('a slice that moves is the rectangle it has in the first frame', () => {
+      const header = AsepriteHeader.parse(encodeAseprite({
+        width: 32,
+        height: 16,
+        frames: [{}, {}],
+        slices: [{ name: 'hand', keys: [{ frame: 1, x: 9, y: 9, width: 3, height: 3 }, { frame: 0, x: 1, y: 1, width: 4, height: 4 }] }],
+      }), 'a.aseprite');
+
+      assert.deepEqual(header.regions.get('hand'), { x: 1, y: 1, width: 4, height: 4 });
+    });
+
+    void test('a slice that begins later takes its first key', () => {
+      const header = AsepriteHeader.parse(encodeAseprite({
+        width: 32,
+        height: 16,
+        frames: [{}, {}, {}],
+        slices: [{ name: 'late', keys: [{ frame: 2, x: 4, y: 5, width: 6, height: 7 }] }],
+      }), 'a.aseprite');
+
+      assert.deepEqual(header.regions.get('late'), { x: 4, y: 5, width: 6, height: 7 });
+    });
+
+    void test('a slice with a pivot is a region as well, a slice without a name or an area is not', () => {
+      const header = AsepriteHeader.parse(encodeAseprite({
+        width: 32,
+        height: 16,
+        frames: [{}],
+        slices: [
+          { name: 'feet', keys: [{ frame: 0, x: 0, y: 0, width: 8, height: 8, pivot: [4, 8] }] },
+          { name: '', keys: [{ frame: 0, x: 0, y: 0, width: 2, height: 2 }] },
+          { name: 'empty', keys: [{ frame: 0, x: 0, y: 0, width: 0, height: 2 }] },
+        ],
+      }), 'a.aseprite');
+
+      assert.deepEqual([...header.regions.keys()], ['feet']);
+    });
   });
 });

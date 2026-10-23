@@ -7,6 +7,10 @@ import W, { WadFileInterface, WadLumpTexture } from '../common/W.ts';
 import { eventBus } from '../common/EventBus.ts';
 import GL, { GLTexture } from './GL.ts';
 import Host from '../common/Host.ts';
+import { SpriteSample } from '../common/model/sprite/SpriteAnimator.ts';
+import { SpriteBlend } from '../common/model/sprite/SpriteTypes.ts';
+import rendererCvars from './renderer/resources/RendererCvars.ts';
+import type { SpritePlayback } from './renderer/sprite/SpritePlayback.ts';
 
 
 let gl: WebGL2RenderingContext = null!;
@@ -20,6 +24,25 @@ eventBus.subscribe('gl.shutdown', () => {
 });
 
 const HIDPI_THRESHOLD = 1.0;
+
+/** The values of `uBlendMode` in `sprite-texel.glsl`. */
+const SPRITE_BLEND_MODES: Readonly<Record<SpriteBlend, number>> = {
+  [SpriteBlend.alphaTest]: 0,
+  [SpriteBlend.alpha]: 1,
+  [SpriteBlend.additive]: 2,
+};
+
+/** How {@link Draw.Sprite} draws a playback. */
+export interface DrawSpriteOptions {
+  /** Size of the image as a multiple of its natural size (the file's pixels times the sidecar's `scale`), 1 by default. */
+  readonly scale?: number;
+  /** Draws only the region of this name (a sidecar's `regions`, an Aseprite file's slices) instead of the whole image. */
+  readonly region?: string;
+  /** Multiplies the colors of the sprite: white (1, 1, 1) by default. The components go from 0 to 1. */
+  readonly tint?: Readonly<ArrayLike<number>>;
+  /** Opacity from 0 to 1, 1 by default. */
+  readonly alpha?: number;
+}
 
 /**
  * Based on the old Draw.CharToConback function but in 32 bit, this function places conchars into the conback texture data.
@@ -52,6 +75,7 @@ export default class Draw {
   static #loading: WadLumpTexture | null = null;
   static #conback: GLTexture | null = null;
   static #loadingCounter = 0;
+  static readonly #sample = new SpriteSample();
 
   /**
    * Generates a GLTexture from a given font string to be used as a replacement for ConChars.
@@ -127,6 +151,10 @@ export default class Draw {
     GL.CreateProgram('pic',
       ['uOrtho', 'uColor'],
       [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
+      ['tTexture']);
+    GL.CreateProgram('pic-sprite',
+      ['uOrtho', 'uColor', 'uAlpha', 'uBlendMode'],
+      [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 3], ['aBlend', gl.FLOAT, 2]],
       ['tTexture']);
     GL.CreateProgram('pic-translate',
       ['uOrtho', 'uTop', 'uBottom'],
@@ -347,6 +375,75 @@ export default class Draw {
     pic.bind(program.tTexture, true);
     GL.StreamDrawTexturedQuad(x, y, pic.width * scale, pic.height * scale, 0.0, 0.0, 1.0, 1.0);
     GL.StreamFlush();
+  }
+
+  /**
+   * Draws what a sprite playback shows now: its current image, or a region of it, with the blend mode the sprite asks
+   * for. Sprites hold premultiplied alpha, so the blend function is switched for this one quad and put back.
+   * @param x The x position of the top left corner.
+   * @param y The y position of the top left corner.
+   * @param playback What to draw.
+   * @param options See {@link DrawSpriteOptions}.
+   * @throws RangeError when `options.region` names a region the sprite does not have.
+   */
+  static Sprite(x: number, y: number, playback: SpritePlayback, options: DrawSpriteOptions = {}): void {
+    const { asset } = playback;
+    const texture = asset.texture;
+
+    if (texture === null) {
+      return;
+    }
+
+    const region = options.region === undefined ? null : asset.regions.get(options.region);
+
+    if (region === undefined) {
+      throw new RangeError(`Draw.Sprite: the sprite has no region "${options.region}" (it has: ${[...asset.regions.keys()].join(', ') || 'none'})`);
+    }
+
+    const sample = Draw.#sample;
+
+    playback.sample(asset.interpolate && rendererCvars.interpolation.value !== 0, sample);
+
+    const { image, nextLayer, fade } = sample;
+    const pixelWidth = region?.width ?? image.pixelWidth;
+    const pixelHeight = region?.height ?? image.pixelHeight;
+    const pixelSize = (image.width / image.pixelWidth) * (options.scale ?? 1.0);
+    // the texture may be smaller than the file's pixels, so the coordinates are shares of the image
+    const u1 = ((region?.x ?? 0) / image.pixelWidth) * image.uvScale[0];
+    const v1 = ((region?.y ?? 0) / image.pixelHeight) * image.uvScale[1];
+    const u2 = (((region?.x ?? 0) + pixelWidth) / image.pixelWidth) * image.uvScale[0];
+    const v2 = (((region?.y ?? 0) + pixelHeight) / image.pixelHeight) * image.uvScale[1];
+    const x2 = x + pixelWidth * pixelSize;
+    const y2 = y + pixelHeight * pixelSize;
+    const tint = options.tint;
+
+    const program = GL.UseProgram('pic-sprite', true)!;
+    gl.uniform3f(program.uColor!, tint?.[0] ?? 1.0, tint?.[1] ?? 1.0, tint?.[2] ?? 1.0);
+    gl.uniform1f(program.uAlpha!, options.alpha ?? 1.0);
+    gl.uniform1f(program.uBlendMode!, SPRITE_BLEND_MODES[asset.blend]);
+    texture.bind(program.tTexture!, true);
+
+    GL.StreamGetSpace(6);
+
+    Draw.#writeSpriteVertex(x, y, u1, v1, image.layer, nextLayer, fade);
+    Draw.#writeSpriteVertex(x, y2, u1, v2, image.layer, nextLayer, fade);
+    Draw.#writeSpriteVertex(x2, y, u2, v1, image.layer, nextLayer, fade);
+    Draw.#writeSpriteVertex(x2, y, u2, v1, image.layer, nextLayer, fade);
+    Draw.#writeSpriteVertex(x, y2, u1, v2, image.layer, nextLayer, fade);
+    Draw.#writeSpriteVertex(x2, y2, u2, v2, image.layer, nextLayer, fade);
+
+    GL.BlendPremultipliedAlpha();
+    GL.StreamFlush();
+    GL.BlendStraightAlpha();
+  }
+
+  /**
+   * Streams one vertex of the `pic-sprite` program: position, texture coordinate and layer, next layer and fade.
+   */
+  static #writeSpriteVertex(x: number, y: number, u: number, v: number, layer: number, nextLayer: number, fade: number): void {
+    GL.StreamWriteFloat2(x, y);
+    GL.StreamWriteFloat3(u, v, layer);
+    GL.StreamWriteFloat2(nextLayer, fade);
   }
 
   /**

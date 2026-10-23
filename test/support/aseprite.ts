@@ -47,7 +47,7 @@ export interface TestAseprite {
   /** Milliseconds, 0 for none (the default speed applies), and the frame's cels. */
   readonly frames: ReadonlyArray<{ readonly duration?: number, readonly cels?: readonly TestAseCel[] }>;
   readonly tags?: ReadonlyArray<{ readonly name: string, readonly from: number, readonly to: number, readonly direction?: number, readonly repeat?: number }>;
-  readonly slices?: ReadonlyArray<{ readonly name: string, readonly keys: ReadonlyArray<{ readonly frame: number, readonly x: number, readonly y: number, readonly pivot?: readonly [number, number] }> }>;
+  readonly slices?: ReadonlyArray<{ readonly name: string, readonly keys: ReadonlyArray<{ readonly frame: number, readonly x: number, readonly y: number, readonly width?: number, readonly height?: number, readonly pivot?: readonly [number, number] }> }>;
 }
 
 /** Collects little endian values. */
@@ -142,7 +142,7 @@ export function encodeAseprite(file: TestAseprite): ArrayBuffer {
         const data = new Writer().u32(slice.keys.length).u32(hasPivot ? 2 : 0).u32(0).string(slice.name);
 
         for (const key of slice.keys) {
-          data.u32(key.frame).u32(key.x).u32(key.y).u32(4).u32(4);
+          data.u32(key.frame).u32(key.x).u32(key.y).u32(key.width ?? 4).u32(key.height ?? 4);
 
           if (hasPivot) {
             data.u32(key.pivot?.[0] ?? 0).u32(key.pivot?.[1] ?? 0);

@@ -73,13 +73,13 @@ export class PngHeader {
     }
 
     if (!animated) {
-      return { width, height, frameDurations: [0], repeat: 1, tags: [], origins: null };
+      return { width, height, frameDurations: [0], repeat: 1, tags: [], origins: null, regions: new Map() };
     }
 
     if (frameDurations.length === 0) {
       throw new CorruptedResourceError(name, `${name} is animated but has no frame control chunk`);
     }
 
-    return { width, height, frameDurations, repeat: plays, tags: [], origins: null };
+    return { width, height, frameDurations, repeat: plays, tags: [], origins: null, regions: new Map() };
   }
 }

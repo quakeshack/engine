@@ -1,5 +1,5 @@
 import type { ConsoleOutput } from '../../Services.ts';
-import { SpriteBlend, SpriteDirection, SpriteFilter, SpriteOrientation, SpritePhase } from './SpriteTypes.ts';
+import { SpriteBlend, SpriteDirection, SpriteFilter, SpriteOrientation, SpritePhase, type SpriteRegion } from './SpriteTypes.ts';
 
 /** A color that makes the pixels matching it transparent. */
 export interface SpriteColorKey {
@@ -45,6 +45,8 @@ export interface SpriteSidecar {
   readonly repeat: number | null;
   readonly colorKey: SpriteColorKey | null;
   readonly sequences: readonly SpriteSidecarSequence[] | null;
+  /** Named rectangles in pixels, for drawing a part of the image in 2D. They win over the file's own (Aseprite slices). */
+  readonly regions: ReadonlyMap<string, SpriteRegion>;
 }
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -57,7 +59,7 @@ const ORIENTATIONS: Readonly<Record<string, SpriteOrientation>> = {
   parallelOriented: SpriteOrientation.parallelOriented,
 };
 
-const SETTINGS = ['version', 'orientation', 'origin', 'scale', 'blend', 'filter', 'phase', 'interpolate', 'lit', 'fps', 'repeat', 'colorKey', 'sequences'];
+const SETTINGS = ['version', 'orientation', 'origin', 'scale', 'blend', 'filter', 'phase', 'interpolate', 'lit', 'fps', 'repeat', 'colorKey', 'sequences', 'regions'];
 const SEQUENCE_SETTINGS = ['name', 'from', 'to', 'direction', 'repeat', 'fps'];
 const COLOR_KEY_SETTINGS = ['color', 'tolerance'];
 
@@ -80,6 +82,7 @@ export class SpriteSidecars {
     repeat: null,
     colorKey: null,
     sequences: null,
+    regions: new Map<string, SpriteRegion>(),
   });
 
   /**
@@ -124,7 +127,40 @@ export class SpriteSidecars {
       repeat: reader.number('repeat', { min: 0, integer: true }),
       colorKey: SpriteSidecars.#readColorKey(reader, name, con),
       sequences: SpriteSidecars.#readSequences(root['sequences'], name, con),
+      regions: SpriteSidecars.#readRegions(reader, name, con),
     };
+  }
+
+  /**
+   * Reads `"regions": { "number_0": [x, y, width, height] }`.
+   * @returns The regions that are valid, by name.
+   */
+  static #readRegions(reader: SettingsReader, name: string, con: ConsoleOutput): Map<string, SpriteRegion> {
+    const regions = new Map<string, SpriteRegion>();
+    const entries = reader.object('regions');
+
+    if (entries === null) {
+      return regions;
+    }
+
+    const entryReader = new SettingsReader(entries, `${name} regions`, con);
+
+    for (const regionName of Object.keys(entries)) {
+      const rectangle = entryReader.numbers(regionName, 4, { min: 0, integer: true });
+
+      if (rectangle === null) {
+        continue;
+      }
+
+      if (rectangle[2] === 0 || rectangle[3] === 0) {
+        con.PrintWarning(`${name}: region "${regionName}" has no area, it is left out\n`);
+        continue;
+      }
+
+      regions.set(regionName, { x: rectangle[0], y: rectangle[1], width: rectangle[2], height: rectangle[3] });
+    }
+
+    return regions;
   }
 
   static #readOrigin(reader: SettingsReader): readonly [number, number] | null {

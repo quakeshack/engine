@@ -11,7 +11,7 @@ import { SpritePixels } from '../sprite/SpritePixels.ts';
 import { SpriteSidecars, type SpriteSidecar, type SpriteSidecarSequence } from '../sprite/SpriteSidecar.ts';
 import {
   SpriteBlend, SpriteDirection, SpriteOrientation, SpritePhase,
-  type SpriteFrame, type SpriteImage, type SpriteSequence,
+  type SpriteFrame, type SpriteImage, type SpriteRegion, type SpriteSequence,
 } from '../sprite/SpriteTypes.ts';
 
 /** Where the images sit relative to the entity, in world units. */
@@ -86,6 +86,7 @@ export class ImageSpriteLoader extends ModelLoader {
       layerWidth: decoded?.width ?? header.width,
       layerHeight: decoded?.height ?? header.height,
       texture: decoded === null ? null : ImageSpriteLoader.#uploadFrames(decoded, frameCount, sidecar),
+      regions: this.#mergeRegions(header, sidecar, name),
     });
     loadmodel.needload = false;
     loadmodel.checksum = CRC16CCITT.Block(new Uint8Array(buffer));
@@ -102,6 +103,28 @@ export class ImageSpriteLoader extends ModelLoader {
     const text = await this.context.files.LoadOptionalTextFile(sidecarName);
 
     return text === null ? SpriteSidecars.EMPTY : SpriteSidecars.parse(text, sidecarName, this.context.con);
+  }
+
+  /**
+   * The file's own regions (Aseprite slices) with the sidecar's on top: the sidecar wins on a name clash. A region
+   * that reaches outside the image would sample the edge pixel over and over, so it is left out.
+   * @returns The regions by name.
+   */
+  #mergeRegions(header: ImageHeader, sidecar: SpriteSidecar, name: string): Map<string, SpriteRegion> {
+    const regions = new Map<string, SpriteRegion>();
+
+    for (const source of [header.regions, sidecar.regions]) {
+      for (const [regionName, region] of source) {
+        if (region.x < 0 || region.y < 0 || region.x + region.width > header.width || region.y + region.height > header.height) {
+          this.context.con.PrintWarning(`${name}: region "${regionName}" reaches outside the ${header.width}x${header.height} image, it is left out\n`);
+          continue;
+        }
+
+        regions.set(regionName, region);
+      }
+    }
+
+    return regions;
   }
 
   /**
@@ -128,6 +151,8 @@ export class ImageSpriteLoader extends ModelLoader {
         origin: [0 - originX * scale, 0 - (header.height - originY) * scale] as [number, number],
         width: header.width * scale,
         height: header.height * scale,
+        pixelWidth: header.width,
+        pixelHeight: header.height,
         uvScale: [1, 1] as [number, number],
       };
     });

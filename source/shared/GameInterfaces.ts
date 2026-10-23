@@ -6,6 +6,7 @@ import type { ClientEdict as ClientEdictValue } from '../engine/client/ClientEnt
 import type { ServerEdict as ServerEdictValue } from '../engine/server/Edict.ts';
 import type { BitmapFont as BitmapFontValue } from '../engine/client/BitmapFont.ts';
 import type { GLTexture as GLTextureValue } from '../engine/client/GL.ts';
+import type { SpritePlayback as SpritePlaybackValue } from '../engine/client/renderer/sprite/SpritePlayback.ts';
 import type { Action as ActionValue, ColorPicker as ColorPickerValue, KeyBindItem as KeyBindItemValue, MenuItem as MenuItemValue, SaveSlotItem as SaveSlotItemValue, Textbox as TextboxValue } from '../engine/client/menu/MenuItem.ts';
 import type { DialogPage as DialogPageValue, ListPage as ListPageValue, MenuPage as MenuPageValue } from '../engine/client/menu/MenuPage.ts';
 import type { BackButtonAnchor as BackButtonAnchorValue } from '../engine/client/menu/MenuPage.ts';
@@ -33,6 +34,9 @@ export type ClientEdict = Readonly<ClientEdictValue>;
 export type ServerEdict = Readonly<ServerEdictValue>;
 
 export type GLTexture = GLTextureValue;
+export type SpritePlayback = SpritePlaybackValue;
+export type { DrawSpriteOptions } from '../engine/client/Draw.ts';
+export type { LoadSpriteOptions } from '../engine/client/renderer/sprite/SpriteAssets.ts';
 export type BitmapFont = BitmapFontValue;
 export type Cvar = Readonly<CvarValue>;
 
