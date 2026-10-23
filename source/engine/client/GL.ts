@@ -109,6 +109,8 @@ class GL {
 
     gl.disable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
+    // pictures hold straight alpha; the scene may have left another function behind (sprites blend premultiplied)
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
   }
 
   /**

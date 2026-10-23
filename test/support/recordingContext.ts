@@ -1,6 +1,9 @@
 /** The WebGL constants a test of the render targets needs, by name. */
 const CONSTANTS: Readonly<Record<string, number>> = {
   NONE: 0,
+  ONE: 1,
+  SRC_ALPHA: 0x0302,
+  ONE_MINUS_SRC_ALPHA: 0x0303,
   FRAMEBUFFER: 0x8D40,
   READ_FRAMEBUFFER: 0x8CA8,
   DRAW_FRAMEBUFFER: 0x8CA9,
@@ -69,8 +72,8 @@ export function createRecordingContext(): RecordingContext {
   const names = new Map<number, string>();
 
   for (const [name, value] of Object.entries(CONSTANTS)) {
-    // NONE is 0, which is a size or an index nearly everywhere; see `noneMethods`
-    if (name !== 'NONE') {
+    // NONE is 0 and ONE is 1, which are sizes or indices nearly everywhere; see `noneMethods`
+    if (name !== 'NONE' && name !== 'ONE') {
       names.set(value, name);
     }
   }
