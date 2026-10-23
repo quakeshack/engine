@@ -20,7 +20,7 @@ export type ServerNetwork = Pick<NET,
   | 'GetListenAddress'>;
 
 /** The model cache the server loads its map and models through. */
-export type ModelCache = Pick<typeof Mod, 'known' | 'ForName' | 'ForNameAsync' | 'ClearAll'>;
+export type ModelCache = Pick<typeof Mod, 'known' | 'ForName' | 'ForNameAsync' | 'ResolveScopedModel' | 'ClearAll'>;
 
 /** What the server needs to know about how a player's view is presented. */
 export interface PlayerView {

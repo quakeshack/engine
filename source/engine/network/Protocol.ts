@@ -1,6 +1,6 @@
 import Vector from '../../shared/Vector.ts';
 
-export const version = 42;
+export const version = 43;
 
 export const update_backup = 64;
 export const update_mask = update_backup - 1;

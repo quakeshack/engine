@@ -48,6 +48,9 @@ export class RendererCvars {
   /** `r_underwater_fog_density`: density exponent of the underwater fog effect, a cheat. */
   underwater_fog_density: Cvar = null!;
 
+  /** `r_sprite_memory`: megabytes of video memory one image sprite may take, bigger ones are reduced in size. */
+  spriteMemory: Cvar = null!;
+
   /** `r_speeds`: show draw call and frame time statistics. */
   speeds: Cvar = null!;
 
@@ -95,6 +98,7 @@ export class RendererCvars {
     this.drawturbulents = new Cvar('r_drawturbulents', '1', Cvar.FLAG.CHEAT);
     this.novis = new Cvar('r_novis', '0', Cvar.FLAG.CHEAT);
     this.speeds = new Cvar('r_speeds', '0');
+    this.spriteMemory = new Cvar('r_sprite_memory', '64', Cvar.FLAG.ARCHIVE, 'Megabytes of video memory one image sprite (GIF, PNG, WebP) may take, mip levels included. Bigger sprites are halved in size until they fit, applies to sprites loaded afterwards.');
     this.polyblend = new Cvar('gl_polyblend', '1');
     this.cshiftpercent = new Cvar('gl_cshiftpercent', '100');
     this.gamma = new Cvar('gamma', '0.8', Cvar.FLAG.ARCHIVE | Cvar.FLAG.CHEAT); // CR: 1 is too dark

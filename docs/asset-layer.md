@@ -13,6 +13,11 @@ the dedicated server reads and writes the file system directly (`server/Com.ts`)
 | Browser storage | Cache Storage, downloaded through `fetch` | IndexedDB (`common/IndexedDbBackend.ts`) |
 | Written by the engine | Never | Yes |
 
+`COM.LoadOptionalFile` and `COM.LoadOptionalTextFile` read a file that may well not exist, such as the settings file of a
+sprite: the same lookup as `LoadFile`, but a miss prints nothing. It still costs a request in the browser (nothing lists
+the files of a game directory), so ask only for what is likely to be there, or let the game say there is none
+(`PrecacheModel(name, { sidecar: false })`).
+
 Both are addressed by the same path, `<game directory>/<file name>`, lower case. `COM.LoadFile` asks the
 user store first, so a file the engine wrote overrides content of the same name, then the asset source.
 

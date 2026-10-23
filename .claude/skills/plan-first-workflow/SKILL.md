@@ -23,6 +23,11 @@ through this loop.
    - `## Design` — lettered subsections (`### A.`, `### B.`, ...), one per moving part, naming
      the files and APIs involved.
    - `## Phasing` — ordered phases, each independently shippable and testable.
+   - `## Documentation` — every doc the change touches, by path: new or updated `docs/` pages
+     (and the table of contents in `docs/README.md`), the feature list in `README.md` for
+     anything a user or modder would notice, a game's `docs/` for game-facing behavior,
+     `docs/events.md` for events, and JSDoc on changed public APIs. Say which phase updates
+     each. "No docs affected" is a valid answer, but write it down.
    - `## Testing` — which tests are added or extended, and what needs a real browser pass.
    - `## Open questions` (or `## Decisions needed from you`) — every fork not yet settled.
 3. **Resolve forks by asking.** A fork is a choice with real architectural consequences:
@@ -32,10 +37,12 @@ through this loop.
    implementation details you can decide yourself.
 4. **Implement one phase at a time.** Stop at each phase boundary and wait for a go-ahead
    before starting the next; don't run the whole plan unprompted. Leave the tests and
-   `npx eslint` green at the end of every phase.
+   `npx eslint` green at the end of every phase. **Docs ship with the phase** that ships the
+   behavior: a phase isn't done until the docs its `## Documentation` entry lists are updated,
+   and no doc or README claims a feature before it works.
 5. **Record what shipped.** When a phase lands, append `### What actually shipped in Phase N`
-   to the plan: what was built, where it deviated from the design, and why. Later readers need
-   that more than the original design.
+   to the plan: what was built, where it deviated from the design, and why, plus which docs
+   were updated. Later readers need that more than the original design.
 6. **Verify for real before calling a phase done.** Run the relevant tests (`npm test` or the
    narrower script). For any UI-facing or rendering change, also do a real browser pass with
    the `browser-ui-verification` skill (recipe in `docs/browser-verification.md`): unit tests

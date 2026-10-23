@@ -1,37 +1,26 @@
-import type { GLTexture } from '../../client/GL.ts';
-
 import { BaseModel } from './BaseModel.ts';
+import type { SpriteAsset } from './sprite/SpriteAsset.ts';
+import { SpriteOrientation, SpritePhase, type SpriteFrame } from './sprite/SpriteTypes.ts';
 
-export interface SpriteFrameImage {
-  readonly interval?: number;
-  readonly origin: [number, number];
-  readonly width: number;
-  readonly height: number;
-  readonly glt: GLTexture;
-}
-
-export interface SpriteSingleFrame {
-  readonly group: false;
-  readonly origin: [number, number];
-  readonly width: number;
-  readonly height: number;
-  readonly glt: GLTexture;
-}
-
-interface SpriteFrameGroup {
-  readonly group: true;
-  readonly frames: SpriteFrameImage[];
-}
-
-export type SpriteFrame = SpriteSingleFrame | SpriteFrameGroup;
+export { SpriteOrientation, SpritePhase } from './sprite/SpriteTypes.ts';
+export type { SpriteFrame, SpriteImage, SpriteSequence } from './sprite/SpriteTypes.ts';
 
 /**
- * Sprite model (.spr), Quake's 2D billboard sprite format.
- * Used for explosions, particles, and other effects that always face the camera.
+ * Sprite model: a 2D picture or animation placed in the world as an entity. Quake's `.spr` format is
+ * one source; the images, their timing and the texture live in a {@link SpriteAsset}.
  */
 export class SpriteModel extends BaseModel {
-  /** Whether sprite orientation is fixed or faces the camera. */
-  oriented = false;
+  /** The images, `null` until the model is loaded. */
+  asset: SpriteAsset | null = null;
+
+  /** How the sprite is turned towards the viewer. */
+  orientation = SpriteOrientation.parallel;
+
+  /** Which clock the animation follows. */
+  phase = SpritePhase.global;
+
+  /** Whether the light of the map at the sprite's origin shades it. */
+  lit = false;
 
   /** Bounding sphere radius. */
   boundingradius = 0;
@@ -42,32 +31,52 @@ export class SpriteModel extends BaseModel {
   /** Sprite height. */
   height = 0;
 
-  /** Number of frames in file, used during loading. */
-  _frames = 0;
-
-  /** Sprite frames, stored as single images or grouped animations. */
-  frames: SpriteFrame[] = [];
-
-  /** True when frame selection should be randomized. */
-  random = false;
-
-  /** Total number of frames. */
-  numframes = 0;
-
   constructor(name: string) {
     super(name);
     this.type = 1;
   }
 
+  /**
+   * @returns The frames an entity's `frame` selects from.
+   */
+  get frames(): readonly SpriteFrame[] {
+    return this.asset?.frames ?? [];
+  }
+
+  /**
+   * @returns The number of frames an entity's `frame` can select.
+   */
+  get numframes(): number {
+    return this.frames.length;
+  }
+
+  /**
+   * How long the sequence an entity's `frame` selects plays, as far as its repeat count goes. A game that spawns an
+   * effect for one play uses it to schedule the removal. A `frame` out of range selects the first, as the renderer does.
+   * @param frame The entity's `frame`.
+   * @returns Seconds, `Infinity` for a sequence that repeats forever, 0 for a single picture (it has nothing to play).
+   */
+  sequenceDuration(frame: number): number {
+    return this.asset?.sequenceDuration(frame) ?? 0;
+  }
+
+  /**
+   * Finds a named sequence (a sequence of the sidecar, later a tag of an Aseprite file).
+   * @param name The name the sidecar gave it.
+   * @returns The `frame` that selects it, -1 when there is none of that name.
+   */
+  sequenceIndex(name: string): number {
+    return this.asset?.sequenceIndex(name) ?? -1;
+  }
+
   override reset(): void {
     super.reset();
-    this.oriented = false;
+    this.asset = null;
+    this.orientation = SpriteOrientation.parallel;
+    this.phase = SpritePhase.global;
+    this.lit = false;
     this.boundingradius = 0;
     this.width = 0;
     this.height = 0;
-    this._frames = 0;
-    this.frames = [];
-    this.random = false;
-    this.numframes = 0;
   }
 }

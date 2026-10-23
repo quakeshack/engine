@@ -27,6 +27,8 @@ import S from './Sound.ts';
 import Viewport from './view/Viewport.ts';
 import FirstPersonView from './view/FirstPersonView.ts';
 import { net } from './PageServices.ts';
+import { ModelPrecacheFlags } from '../../shared/ModelPrecacheFlags.ts';
+import { ModelPrecacheList } from '../network/ModelPrecacheList.ts';
 
 type ClientSignonState = 0 | 1 | 2 | 3 | 4;
 
@@ -127,15 +129,8 @@ function parseServerData() {
   CL.SetConnectingStep(15, 'Received server info');
 
   let str: string;
-  let nummodels: number;
-  const model_precache: string[] = [];
-  for (nummodels = 1; ; nummodels++) {
-    str = net.message.readString();
-    if (str.length === 0) {
-      break;
-    }
-    model_precache[nummodels] = str;
-  }
+  const { names: model_precache, flags: modelPrecacheFlags } = ModelPrecacheList.read(net.message);
+  let nummodels = model_precache.length;
   let numsounds: number;
   const sound_precache: string[] = [];
   for (numsounds = 1; ; numsounds++) {
@@ -215,7 +210,10 @@ function parseServerData() {
 
       CL.SetConnectingStep(25 + (models.length / model_precache.length) * 30, 'Loading models');
       const modelStart = models.length;
-      const loadedModels = await Promise.all(model_precache.slice(modelStart, modelStart + chunksize).map((m) => Mod.ForNameAsync(m, false, ModelScope.client)));
+      const loadedModels = await Promise.all(model_precache.slice(modelStart, modelStart + chunksize).map((m, offset) => Mod.ForNameAsync(m, false, ModelScope.client, {
+        collisionGeometry: false,
+        sidecar: (modelPrecacheFlags[modelStart + offset] & ModelPrecacheFlags.noSidecar) === 0,
+      })));
       storeLoadedSlice(models, modelStart, loadedModels);
 
       CL.SendCmd();

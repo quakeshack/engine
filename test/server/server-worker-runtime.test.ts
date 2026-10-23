@@ -5,6 +5,7 @@ import { HostError } from '../../source/engine/common/Errors.ts';
 import type { ControlFromServer, ServerRequest } from '../../source/engine/common/ServerWorkerProtocol.ts';
 import type { ServerSaveResult, ServerSaveState } from '../../source/engine/common/ServerController.ts';
 import ServerWorkerRuntime, { type ServerWorkerHostControls } from '../../source/engine/server/ServerWorkerRuntime.ts';
+import { eventually } from '../support/assertions.ts';
 
 /** A message of the runtime's, by its kind. */
 type SentOfKind<K extends ControlFromServer['kind']> = Extract<ControlFromServer, { kind: K }>;
@@ -162,7 +163,7 @@ void describe('ServerWorkerRuntime', () => {
 
       request(runtime, 1, { kind: 'start', mapname: 'a' });
       request(runtime, 2, { kind: 'start', mapname: 'b' });
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await eventually(() => { assert.equal(order.length, 4); });
 
       assert.deepEqual(order, ['begin a', 'end a', 'begin b', 'end b']);
       assert.deepEqual(calls.filter((call) => call.startsWith('start')), ['start a', 'start b']);

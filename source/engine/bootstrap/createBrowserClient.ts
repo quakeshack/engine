@@ -2,6 +2,7 @@ import type { BuildConfig, URLs } from '../build-config';
 
 import CL from '../client/CL.ts';
 import Draw from '../client/Draw.ts';
+import SpriteAssets from '../client/renderer/sprite/SpriteAssets.ts';
 import IN from '../client/IN.ts';
 import Key from '../client/Key.ts';
 import M from '../client/Menu.ts';
@@ -180,7 +181,7 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
   }
 
   // The members that verification scripts in a browser reach for, see docs/browser-verification.md.
-  (window as Window & { engine?: object }).engine = { CL, COM: com, Con, ConsoleOverlay, Host, Mod, NET: net, Sys, FirstPersonView, Key, S, Draw, R, Camera, Visibility, RenderStats, PostProcess, Frame, DefaultTextures, Fog, SkyBox, Particles, ParticleType, Decals, M, ScreenFrame, IN, SV: inThreadServer };
+  (window as Window & { engine?: object }).engine = { CL, COM: com, Con, ConsoleOverlay, Host, Mod, NET: net, Sys, FirstPersonView, Key, S, Draw, R, Camera, Visibility, RenderStats, PostProcess, Frame, DefaultTextures, Fog, SkyBox, Particles, ParticleType, Decals, SpriteAssets, M, ScreenFrame, IN, SV: inThreadServer };
 
   await Sys.Init();
 }

@@ -53,6 +53,7 @@ through it, so `ERROR: 2:41: 'x' : undeclared identifier` is reported as
 | `hash.glsl` | `hash2D` | `shadow-alias`, `shadow-brush` (.frag) |
 | `shadow-point.glsl` | `samplePointShadowPCF` (pure) | `brush.frag`, `shadow-entity.glsl` |
 | `shadow-entity.glsl` | entity shadow uniforms, `vWorldPos`, `sampleLocalShadow`, `samplePointShadow` | `alias`, `mesh`, `player` (.frag) |
+| `sprite-texel.glsl` | the sprite array texture and `uBlendMode`, `sampleSpriteTexel(texCoord, blend)` (crossfade of two premultiplied layers, alpha test), `spriteIsAdditive()` | `sprite`, `pic-sprite` (.frag) |
 | `fog-vertex.glsl` | `uFogParams`, `vFog` (out), `computeFog(dist)` | `alias`, `mesh`, `player`, `brush`, `turbulent`, `sprite`, `decal`, `particle` (.vert) |
 | `fog-fragment.glsl` | `vFog` (in), `uFogColor` | the matching fragment shaders and `sky.frag` |
 | `entity-varyings-out.glsl` / `entity-varyings-in.glsl` | the vertex outputs / fragment inputs shared by the lit entity programs | `entity-vertex.glsl` / `entity-lighting.glsl` |

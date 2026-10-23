@@ -518,6 +518,18 @@ export default class COM {
    * @returns binary content, or null if not found
    */
   async LoadFile(filename: string): Promise<ArrayBuffer | null> {
+    return await this.#readFile(filename, false);
+  }
+
+  /**
+   * Load a file that may well not exist. Like `LoadFile()`, but a miss prints nothing.
+   * @returns file content as an ArrayBuffer, or null if not found
+   */
+  async LoadOptionalFile(filename: string): Promise<ArrayBuffer | null> {
+    return await this.#readFile(filename, true);
+  }
+
+  async #readFile(filename: string, optional: boolean): Promise<ArrayBuffer | null> {
     filename = filename.toLowerCase();
 
     eventBus.publish('com.fs.being', filename);
@@ -547,7 +559,10 @@ export default class COM {
     }
 
     // File not found
-    this.sys.Print(`COM.LoadFile: can't find ${filename}\n`);
+    if (!optional) {
+      this.sys.Print(`COM.LoadFile: can't find ${filename}\n`);
+    }
+
     eventBus.publish('com.fs.end', filename);
     return null;
   }
@@ -558,6 +573,18 @@ export default class COM {
    */
   async LoadTextFile(filename: string): Promise<string | null> {
     const buf = await this.LoadFile(filename);
+    if (buf === null) {
+      return null;
+    }
+    return new TextDecoder('iso-8859-1').decode(buf).replaceAll('\r', '');
+  }
+
+  /**
+   * Load a text file that may well not exist, stripping carriage returns, without printing a miss.
+   * @returns file content as a string, or null if not found
+   */
+  async LoadOptionalTextFile(filename: string): Promise<string | null> {
+    const buf = await this.LoadOptionalFile(filename);
     if (buf === null) {
       return null;
     }

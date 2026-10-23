@@ -216,6 +216,9 @@ async function runMapFrames({
         return null;
       }
     },
+    async LoadOptionalTextFile(name: string) {
+      return await this.LoadTextFile(name);
+    },
   };
   const restoreEngineMocks = installEngineMocks({ Con: con, Mod, COM: files });
   Mod.Init({ files, con, loadRenderData: false });

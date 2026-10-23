@@ -63,6 +63,7 @@ gib.spawn({ delay: 0.5 });                        // optional parameters for the
 - **Set the model before `setOrigin()`.** Linking an entity into the BSP needs its bounds.
 - **Always move an entity with `setOrigin()`**, never by writing `origin`. It recomputes the BSP leafs the PVS culling relies on.
 - **Models have to be precached by the server**, otherwise they are not in the client's model list. A handler declares them in `static _precache(engineAPI)`, and the game's handler registry calls that for every handler when the server precaches its resources, the way `BaseEntity._precache()` works for server entities.
+- **`model` and `frame` are accessors.** Assigning looks the same, but a *different* model or frame stamps `animationStartTime` with the client clock, which restarts a sprite's animation that follows its entity's own clock. Writing the value an entity already has changes nothing, so the server repeating a `frame` does not restart a running sequence. A persistent entity that is restored from a save starts its sequence at load time.
 - `SpawnClientEntity(classname, { persistent: false })` is for entities something else regenerates on every connect. Almost everything wants the default.
 
 ### Triggering it from the server

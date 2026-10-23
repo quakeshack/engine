@@ -5,6 +5,7 @@ import { MessageChannel } from 'node:worker_threads';
 import WorkerServerController from '../../source/engine/client/WorkerServerController.ts';
 import type Vector from '../../source/shared/Vector.ts';
 import { HostError } from '../../source/engine/common/Errors.ts';
+import { eventually } from '../support/assertions.ts';
 import { ControlLink, type ControlFromServer, type ControlPortLike, type ControlToServer, type ServerRequest } from '../../source/engine/common/ServerWorkerProtocol.ts';
 import type { ServerWorkerHandle } from '../../source/engine/client/WorkerServerController.ts';
 import type { ServerSaveState, SessionRequest } from '../../source/engine/common/ServerController.ts';
@@ -137,7 +138,9 @@ function createController(): ControllerSetup {
 }
 
 /**
- * @returns settles after the messages that are in flight were delivered
+ * Gives messages in flight a moment, for checks that something did not happen. A check that waits for something to
+ * arrive uses `eventually`: on a busy machine this timer can fire before a message posted earlier is delivered.
+ * @returns settles after a short wait
  */
 function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 40));
@@ -169,10 +172,9 @@ void describe('WorkerServerController', () => {
       assert.equal(ready, false);
 
       setup.far.send({ kind: 'ready', cvars: [], commands: [] });
-      await flush();
 
       try {
-        assert.equal(ready, true);
+        await eventually(() => { assert.equal(ready, true); });
       } finally {
         setup.close();
       }
@@ -222,13 +224,11 @@ void describe('WorkerServerController', () => {
       const setup = createController();
 
       setup.far.send({ kind: 'state', state: { active: true, maxclients: 4, mapname: 'e1m1', paused: true } });
-      await flush();
 
       try {
-        assert.equal(setup.controller.state.active, true);
-        assert.equal(setup.controller.state.maxclients, 4);
-        assert.equal(setup.controller.state.mapname, 'e1m1');
-        assert.equal(setup.controller.state.paused, true);
+        await eventually(() => {
+          assert.deepEqual({ ...setup.controller.state }, { active: true, maxclients: 4, mapname: 'e1m1', paused: true });
+        });
       } finally {
         setup.close();
       }
@@ -240,8 +240,7 @@ void describe('WorkerServerController', () => {
       const setup = createController();
       const started = setup.controller.start('e1m1');
 
-      await flush();
-      assert.deepEqual(setup.received, [{ kind: 'request', id: 1, request: { kind: 'start', mapname: 'e1m1' } }]);
+      await eventually(() => { assert.deepEqual(setup.received, [{ kind: 'request', id: 1, request: { kind: 'start', mapname: 'e1m1' } }]); });
 
       setup.far.send({ kind: 'response', id: 1, ok: true, result: true });
 
@@ -287,10 +286,9 @@ void describe('WorkerServerController', () => {
       const setup = createController();
 
       setup.controller.announceChangelevel('e1m2');
-      await flush();
 
       try {
-        assert.deepEqual(setup.received.map((message) => requestOf(message).kind), ['announce-changelevel']);
+        await eventually(() => { assert.deepEqual(setup.received.map((message) => requestOf(message).kind), ['announce-changelevel']); });
       } finally {
         setup.close();
       }
@@ -300,7 +298,7 @@ void describe('WorkerServerController', () => {
       const setup = createController();
 
       setup.far.send({ kind: 'state', state: { active: true, maxclients: 1, mapname: 'e1m1', paused: false } });
-      await flush();
+      await eventually(() => { assert.equal(setup.controller.state.active, true); });
 
       setup.controller.stop(true);
 
@@ -308,8 +306,7 @@ void describe('WorkerServerController', () => {
         assert.equal(setup.controller.state.active, false);
         assert.equal(setup.controller.state.mapname, null);
 
-        await flush();
-        assert.deepEqual(requestOf(setup.received.at(-1)!), { kind: 'stop', crash: true });
+        await eventually(() => { assert.deepEqual(requestOf(setup.received.at(-1)!), { kind: 'stop', crash: true }); });
       } finally {
         setup.close();
       }
@@ -337,13 +334,14 @@ void describe('WorkerServerController', () => {
       setup.controller.setSimulationAllowed(true);
       setup.controller.setSimulationAllowed(false);
       setup.controller.setSimulationAllowed(false);
-      await flush();
 
       try {
-        assert.deepEqual(setup.received, [
-          { kind: 'simulation-allowed', allowed: true },
-          { kind: 'simulation-allowed', allowed: false },
-        ]);
+        await eventually(() => {
+          assert.deepEqual(setup.received, [
+            { kind: 'simulation-allowed', allowed: true },
+            { kind: 'simulation-allowed', allowed: false },
+          ]);
+        });
       } finally {
         setup.close();
       }
@@ -371,12 +369,12 @@ void describe('WorkerServerController', () => {
         setup.far.send({ kind: 'print', level, text: `${level}\n` });
       }
 
-      await flush();
-
       try {
-        assert.deepEqual(setup.prints, [
-          ['print', 'print\n'], ['success', 'success\n'], ['warning', 'warning\n'], ['error', 'error\n'], ['debug', 'debug\n'],
-        ]);
+        await eventually(() => {
+          assert.deepEqual(setup.prints, [
+            ['print', 'print\n'], ['success', 'success\n'], ['warning', 'warning\n'], ['error', 'error\n'], ['debug', 'debug\n'],
+          ]);
+        });
       } finally {
         setup.close();
       }
@@ -386,10 +384,9 @@ void describe('WorkerServerController', () => {
       const setup = createController();
 
       setup.far.send({ kind: 'event', name: 'server.spawned', args: [{ mapname: 'e1m1' }] });
-      await flush();
 
       try {
-        assert.deepEqual(setup.published, [['server.spawned', { mapname: 'e1m1' }]]);
+        await eventually(() => { assert.deepEqual(setup.published, [['server.spawned', { mapname: 'e1m1' }]]); });
       } finally {
         setup.close();
       }
@@ -399,10 +396,9 @@ void describe('WorkerServerController', () => {
       const setup = createController();
 
       setup.far.send({ kind: 'error', message: 'bad entity' });
-      await flush();
 
       try {
-        assert.deepEqual(setup.errors, ['bad entity']);
+        await eventually(() => { assert.deepEqual(setup.errors, ['bad entity']); });
         assert.deepEqual(setup.crashes, []);
       } finally {
         setup.close();
@@ -413,9 +409,9 @@ void describe('WorkerServerController', () => {
       const setup = createController();
 
       setup.far.send({ kind: 'crash', name: 'TypeError', message: 'boom', stack: 'TypeError: boom\n    at serverFrame (worker.js:1:1)' });
-      await flush();
 
       try {
+        await eventually(() => { assert.equal(setup.crashes.length, 1); });
         assert.match(setup.crashes[0].stack!, /in the server worker:\nTypeError: boom\n {4}at serverFrame/);
       } finally {
         setup.close();
@@ -426,7 +422,7 @@ void describe('WorkerServerController', () => {
       const setup = createController();
 
       setup.far.send({ kind: 'state', state: { active: true, maxclients: 1, mapname: 'e1m1', paused: false } });
-      await flush();
+      await eventually(() => { assert.equal(setup.controller.state.active, true); });
 
       const waiting = setup.controller.changelevel('e1m2');
 
@@ -489,9 +485,9 @@ void describe('WorkerServerController', () => {
       const next = createNext();
       let replaced = false;
 
-      void setup.controller.init();
+      const booting = setup.controller.init();
       setup.far.send({ kind: 'ready', cvars: [], commands: [] });
-      await flush();
+      await booting;
 
       const replacing = setup.controller.replaceWorker({ worker: next.worker, channel: asChannel(next.channel) }).then(() => { replaced = true; });
       await flush();
@@ -516,9 +512,9 @@ void describe('WorkerServerController', () => {
       const setup = createController();
       const next = createNext();
 
-      void setup.controller.init();
+      const booting = setup.controller.init();
       setup.far.send({ kind: 'ready', cvars: [], commands: [] });
-      await flush();
+      await booting;
 
       const waiting = setup.controller.saveState();
       const rejected = assert.rejects(waiting, /being replaced/);
@@ -541,9 +537,9 @@ void describe('WorkerServerController', () => {
       const setup = createController();
       const next = createNext();
 
-      void setup.controller.init();
+      const booting = setup.controller.init();
       setup.far.send({ kind: 'ready', cvars: [], commands: [] });
-      await flush();
+      await booting;
 
       const replacing = setup.controller.replaceWorker({ worker: next.worker, channel: asChannel(next.channel) });
       await flush();
@@ -566,9 +562,9 @@ void describe('WorkerServerController', () => {
       const setup = createController();
       const next = createNext();
 
-      void setup.controller.init();
+      const booting = setup.controller.init();
       setup.far.send({ kind: 'ready', cvars: [], commands: [] });
-      await flush();
+      await booting;
 
       const replacing = setup.controller.replaceWorker({ worker: next.worker, channel: asChannel(next.channel) });
       await flush();
@@ -576,12 +572,11 @@ void describe('WorkerServerController', () => {
       await replacing;
 
       next.far.send({ kind: 'state', state: { active: true, maxclients: 4, mapname: 'e1m2', paused: false } });
-      await flush();
 
       try {
-        assert.equal(setup.controller.state.active, true);
-        assert.equal(setup.controller.state.mapname, 'e1m2');
-        assert.equal(setup.controller.state.maxclients, 4);
+        await eventually(() => {
+          assert.deepEqual({ ...setup.controller.state }, { active: true, maxclients: 4, mapname: 'e1m2', paused: false });
+        });
       } finally {
         setup.close();
         next.close();
@@ -592,23 +587,21 @@ void describe('WorkerServerController', () => {
       const setup = createController();
       const next = createNext();
 
-      void setup.controller.init();
+      const booting = setup.controller.init();
       setup.far.send({ kind: 'ready', cvars: [], commands: [] });
       setup.far.send({ kind: 'state', state: { active: true, maxclients: 1, mapname: 'e1m1', paused: false } });
-      await flush();
+      await booting;
+      await eventually(() => { assert.equal(setup.controller.state.active, true); });
 
       const replacing = setup.controller.replaceWorker({ worker: next.worker, channel: asChannel(next.channel) });
-      await flush();
-
-      const stop = setup.received.find((message) => message.kind === 'request' && message.request.kind === 'stop');
+      const findStop = (): ControlToServer | undefined => setup.received.find((message) => message.kind === 'request' && message.request.kind === 'stop');
 
       try {
-        assert.ok(stop !== undefined, 'the old worker was asked to stop');
+        await eventually(() => { assert.ok(findStop() !== undefined, 'the old worker was asked to stop'); });
         assert.equal(setup.worker.shutdowns, 0, 'it is not ended before it answered');
 
-        setup.far.send({ kind: 'response', id: idOf(stop), ok: true, result: true });
-        await flush();
-        assert.equal(setup.worker.shutdowns, 1);
+        setup.far.send({ kind: 'response', id: idOf(findStop()!), ok: true, result: true });
+        await eventually(() => { assert.equal(setup.worker.shutdowns, 1); });
 
         next.far.send({ kind: 'ready', cvars: [], commands: [] });
         await replacing;
@@ -624,8 +617,7 @@ void describe('WorkerServerController', () => {
       const setup = createController();
       const saving = setup.controller.saveState();
 
-      await flush();
-      assert.deepEqual(setup.received.at(-1), { kind: 'request', id: 1, request: { kind: 'save' } });
+      await eventually(() => { assert.deepEqual(setup.received.at(-1), { kind: 'request', id: 1, request: { kind: 'save' } }); });
 
       setup.far.send({ kind: 'response', id: 1, ok: true, result: { ok: false, reason: 'dead' } });
 
@@ -640,8 +632,7 @@ void describe('WorkerServerController', () => {
       const setup = createController();
       const restoring = setup.controller.restoreState({ mapname: 'e1m1' } as unknown as ServerSaveState, 'quick.json');
 
-      await flush();
-      assert.deepEqual(requestOf(setup.received.at(-1)!), { kind: 'restore', state: { mapname: 'e1m1' }, source: 'quick.json' });
+      await eventually(() => { assert.deepEqual(requestOf(setup.received.at(-1)!), { kind: 'restore', state: { mapname: 'e1m1' }, source: 'quick.json' }); });
 
       setup.far.send({ kind: 'response', id: 1, ok: true, result: true });
 
@@ -681,7 +672,7 @@ void describe('WorkerServerController', () => {
       try {
         assert.deepEqual(await reading, { modelindex: 4, frame: 2 });
         await setting;
-        assert.deepEqual(requestOf(setup.received.at(-1)!), { kind: 'viewthing-frame', frame: 3 });
+        await eventually(() => { assert.deepEqual(requestOf(setup.received.at(-1)!), { kind: 'viewthing-frame', frame: 3 }); });
       } finally {
         setup.close();
       }
@@ -693,10 +684,9 @@ void describe('WorkerServerController', () => {
       const setup = createController();
 
       setup.far.send({ kind: 'noclip-anglehack', enabled: true });
-      await flush();
 
       try {
-        assert.deepEqual(setup.noclip, [true]);
+        await eventually(() => { assert.deepEqual(setup.noclip, [true]); });
       } finally {
         setup.close();
       }
@@ -707,10 +697,9 @@ void describe('WorkerServerController', () => {
 
       setup.far.send({ kind: 'session-request', request: { kind: 'changelevel', mapname: 'e1m2' } });
       setup.far.send({ kind: 'session-request', request: { kind: 'restart' } });
-      await flush();
 
       try {
-        assert.deepEqual(setup.sessionRequests, [{ kind: 'changelevel', mapname: 'e1m2' }, { kind: 'restart' }]);
+        await eventually(() => { assert.deepEqual(setup.sessionRequests, [{ kind: 'changelevel', mapname: 'e1m2' }, { kind: 'restart' }]); });
       } finally {
         setup.close();
       }
@@ -719,10 +708,9 @@ void describe('WorkerServerController', () => {
     void test('a colored line keeps its color', async () => {
       const setup = createController();
       setup.far.send({ kind: 'print', level: 'print', text: 'red\n', color: [1, 0, 0] });
-      await flush();
 
       try {
-        assert.deepEqual(setup.prints, [['print', 'red\n', [1, 0, 0]]]);
+        await eventually(() => { assert.deepEqual(setup.prints, [['print', 'red\n', [1, 0, 0]]]); });
       } finally {
         setup.close();
       }

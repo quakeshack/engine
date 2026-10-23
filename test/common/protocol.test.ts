@@ -5,7 +5,7 @@ import * as Protocol from '../../source/engine/network/Protocol.ts';
 
 void describe('Protocol', () => {
   void test('keeps the expected command and flag bit values', () => {
-    assert.equal(Protocol.version, 42);
+    assert.equal(Protocol.version, 43);
     assert.equal(Protocol.u.classname, 1 << 0);
     assert.equal(Protocol.su.moveack, 1 << 8);
     assert.equal(Protocol.clc.stringcmd, 4);

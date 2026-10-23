@@ -93,6 +93,7 @@ void describe('R.Init', () => {
       'r_drawturbulents',
       'r_novis',
       'r_speeds',
+      'r_sprite_memory',
       'gl_polyblend',
       'gl_cshiftpercent',
       'gamma',
