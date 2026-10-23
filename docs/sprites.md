@@ -63,7 +63,7 @@ file too (the scale decides the bounds). A broken file, a wrong value or a setti
 | :--- | :--- | :--- | :--- |
 | `version` | `1` | `1` | For later changes of the format. |
 | `scale` | number above 0 | `1` | World units per pixel. A 437 x 498 flame at `0.08` is about 35 x 40 units. The bounds scale with it. |
-| `origin` | `[x, y]` pixels | the center | The pixel that sits on the entity's origin, counted from the top left corner of the image. `[width / 2, height]` puts the entity at the bottom center, like a flame on a torch. |
+| `origin` | `[x, y]` pixels | the center | The pixel that sits on the entity's origin, counted from the top left corner of the image. `[width / 2, height]` puts the entity at the bottom center, like a flame on a torch. See [Placing the origin](#placing-the-origin). |
 | `blend` | `alphaTest`, `alpha`, `additive` | `alphaTest` for GIF, `alpha` for the rest | `alphaTest` drops pixels below a quarter alpha and draws the rest. `alpha` blends. `additive` adds the color to what is behind, so black adds nothing (fire, glow, sparks). All three use premultiplied alpha, so edges do not get dark fringes. |
 | `colorKey` | `{ "color": [r, g, b], "tolerance": 0 to 255 }` | none | Makes pixels of that color transparent, in every frame. The edge is hard (a pixel is in or out); for an image with a black background that should blend, `additive` is the soft solution. A GIF's "black" is often not quite black (a flame GIF measured `(4, 2, 4)`), and an additive sprite then shows a faint box; key that color out as well, for example `"blend": "additive", "colorKey": { "color": [0, 0, 0], "tolerance": 16 }`. |
 | `filter` | `linear`, `nearest` | follows `gl_texturemode` | `nearest` keeps hard pixels for pixel art, `linear` is smooth with mip levels. |
@@ -78,6 +78,29 @@ file too (the scale decides the bounds). A broken file, a wrong value or a setti
 
 How a sequence ends: `forward` holds its last image, `reverse` its first. A `pingpong` goes to the far end and back without
 showing either end image twice in a row, and holds the image it started with.
+
+### Placing the origin
+
+`origin` pins one pixel of the image to the entity's origin, and a billboard turns around the vertical line through that
+pixel. With `s` for `scale`, the picture reaches `originX · s` to the left and `(width − originX) · s` to the right,
+`originY · s` up and `(height − originY) · s` down. The bounds follow from the same numbers.
+
+To stand the picture on something `d` units below the entity's origin, find the column it is centered on and the row its
+base is on (the lowest row of the visible picture, not of the image), then:
+
+```
+originX = center column
+originY = base row − d / s
+```
+
+`d` comes from where maps put the entity, not from the image. A mapper places a point entity by its editor box, so one with
+the box `(-8 -8 -8) (8 8 8)` resting on the floor has its origin 8 units up (`d = 8`). A sprite that replaces a model keeps
+the model's offset; for example, Quake's small flame (`progs/flame2.mdl`, frame 0) reaches 12 units below its origin, so a
+replacement uses `d = 12` to sit in the same braziers. A 500 x 500 flame centered on column 253 with its base on row 465
+then gets `originY = 465 − 12 / 0.125 = 369` at `scale` 0.125, so `"origin": [253, 369]`. A new `scale` changes `d / s`,
+so work out `originY` again.
+
+A wrong `originX` does not just shift the picture. It makes the picture swing around the entity as the viewer walks around it.
 
 ## Effects that remove themselves
 
