@@ -5,8 +5,53 @@ import Vector from '../../source/shared/Vector.ts';
 import { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerEdict } from '../../source/engine/server/Edict.ts';
+import { Mod, ModelScope } from '../../source/engine/common/Mod.ts';
 
 import { defaultMockEngine, withMockEngine, mockedSV } from '../support/fixtures.ts';
+import { createDirectoryFiles, createSilentConsole } from '../support/modelContext.ts';
+
+/**
+ * @returns An entity that does nothing, for an edict that only needs something to set a model on.
+ */
+function createTestEntity(): ServerEdict['entity'] {
+  return {
+    classname: 'player',
+    alpha: 1,
+    angles: new Vector(),
+    avelocity: new Vector(),
+    absmax: new Vector(),
+    absmin: new Vector(),
+    assignInitialData() {},
+    clear() {},
+    colormap: 0,
+    effects: 0,
+    flags: 0,
+    frame: 0,
+    free() {},
+    groundentity: null,
+    health: 100,
+    mins: new Vector(),
+    maxs: new Vector(),
+    model: null,
+    modelindex: 0,
+    movetype: 0,
+    origin: new Vector(),
+    punchangle: new Vector(),
+    size: new Vector(),
+    skin: 0,
+    solid: 0,
+    spawn() {},
+    takedamage: 0,
+    team: 0,
+    velocity: new Vector(),
+    view_ofs: new Vector(),
+    v_angle: new Vector(),
+    edictId: 1,
+    equals() { return false; },
+    serialize() { return {}; },
+    deserialize() {},
+  };
+}
 
 void describe('ServerEdict', () => {
   void test('keeps getClient slot mapping separate from isClient semantics', () => {
@@ -49,48 +94,34 @@ void describe('ServerEdict', () => {
       },
     }), () => {
       const edict = new ServerEdict(1, mockedSV());
-      edict.entity = {
-        classname: 'player',
-        alpha: 1,
-        angles: new Vector(),
-        avelocity: new Vector(),
-        absmax: new Vector(),
-        absmin: new Vector(),
-        assignInitialData() {},
-        clear() {},
-        colormap: 0,
-        effects: 0,
-        flags: 0,
-        frame: 0,
-        free() {},
-        groundentity: null,
-        health: 100,
-        mins: new Vector(),
-        maxs: new Vector(),
-        model: null,
-        modelindex: 0,
-        movetype: 0,
-        origin: new Vector(),
-        punchangle: new Vector(),
-        size: new Vector(),
-        skin: 0,
-        solid: 0,
-        spawn() {},
-        takedamage: 0,
-        team: 0,
-        velocity: new Vector(),
-        view_ofs: new Vector(),
-        v_angle: new Vector(),
-        edictId: 1,
-        equals() { return false; },
-        serialize() { return {}; },
-        deserialize() {},
-      };
+      edict.entity = createTestEntity();
 
       edict.setModel('progs/player.mdl', false);
       edict.setMinMaxSize(Vector.origin, Vector.origin, true);
     });
 
     assert.deepEqual(linkCalls, [false, true]);
+  });
+
+  void test('sets the bounds of an image sprite from its file', async () => {
+    const mod = new Mod();
+    mod.Init({ files: createDirectoryFiles(new URL('../fixtures/sprites/', import.meta.url)), con: createSilentConsole(), loadRenderData: false });
+    const flame = await mod.ForNameAsync('anim.gif', true, ModelScope.server);
+
+    withMockEngine(defaultMockEngine({
+      area: { linkEdict() {} },
+      server: {
+        modelPrecache: ['anim.gif'],
+        models: [flame],
+      },
+    }), () => {
+      const edict = new ServerEdict(1, mockedSV());
+      edict.entity = createTestEntity();
+
+      edict.setModel('anim.gif', false);
+
+      assert.deepEqual([...edict.entity!.mins], [-4, -4, -2]);
+      assert.deepEqual([...edict.entity!.maxs], [4, 4, 2]);
+    });
   });
 });

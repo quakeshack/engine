@@ -6,7 +6,10 @@
 results folded into the design below and summarized under "What actually shipped in Phase 0".
 
 ✅ Phase 1 done (2026-10-23, branch `feature/animated-image-sprites`, not committed yet): SPR runs on the
-reshaped `SpriteModel`, see "What actually shipped in Phase 1". Phase 2 waits for a go-ahead.
+reshaped `SpriteModel`, see "What actually shipped in Phase 1".
+
+✅ Phase 2 done (2026-10-23): GIF, PNG/APNG and WebP header parsers and `ImageSpriteLoader`, see "What actually
+shipped in Phase 2". Phase 3 waits for a go-ahead.
 
 ### Decisions so far (2026-10-22, from the maintainer)
 
@@ -578,6 +581,36 @@ SPR sprites run on the new model, renderer and shader; no new file format yet.
   (above). Then the after build alone: `alpha 0.5` entities draw at half brightness, and all four orientation
   types other than `parallel` draw plausibly (upright, facing, entity-angled, rolled). Not checked: Firefox and
   Safari, and a group in an id1 sprite (none of the three shipped SPRs has one; the synthetic group stands in).
+
+### What actually shipped in Phase 2
+
+A server can load GIF, PNG/APNG and WebP files as sprite models; nothing draws them yet (Phase 3).
+
+- **Header parsers** in `source/engine/common/model/sprite/`: `GifHeader.ts`, `PngHeader.ts`, `WebpHeader.ts`, each
+  with the byte layout from "Verified format layouts" in its JSDoc, and `ImageHeader.ts` (`ImageHeader`, `SpriteTag`,
+  `ImageHeaders.detect()/parse()`, `ImageHeaders.frameSeconds()` for the 10 ms clamp). A header is
+  `{ width, height, frameDurations (ms, as written), repeat (plays, 0 = forever), tags }`. A truncated file
+  (`RangeError` from the `DataView`) becomes a `CorruptedResourceError`.
+- **`ImageSpriteLoader`**, registered after `SpriteSPRLoader` in `Mod.Init()`. `canLoad()` is overridden (extension in
+  `.gif .png .apng .webp` plus a signature check, `getMagicNumbers()` returns `[]`). It builds the model without
+  pixels: bounds like an SPR (`±width/2` in x and y, `±height/2` in z), origin at the image's center, one `forward`
+  sequence over all images with the file's repeat count, a still file as a single `SpriteImage`, `phase: spawn`,
+  `alphaTest` for GIF and `alpha` for the rest.
+- **Repeat counts:** GIF with a NETSCAPE loop count N plays N + 1 times (N = 0: forever) and plays once without
+  the block; APNG and WebP play exactly their count. The N + 1 reading is how Chromium's decoder treats a GIF
+  as far as I know, it was not checked against a browser; Phase 3 renders GIFs and can confirm it.
+- **Deviation:** while the pixel pass does not exist, a load in a realm that draws prints a warning and the model's
+  asset has no texture, so the renderer skips it. Phase 3 removes the warning.
+- **Duration query:** `SpriteAnimator.duration()` on the loaded sequence already answers it on the server
+  (tested); `GetSpriteSequenceDuration` as game API is Phase 5.
+- **Fixtures:** 13 real files in `test/fixtures/sprites/` (README there says how they were made). They sit under `test/`,
+  which the Dockerfile copies as a whole, so it needed no change. Cross-checked with Pillow and `ffprobe`
+  (frame counts, sizes, delays, the APNG whose default image is not part of the animation).
+- **Tests added:** `test/common/image-headers.test.ts` (all three parsers, the clamp, broken files),
+  `test/common/image-sprite-loader.test.ts` (`canLoad`, bounds, sequence, durations through the model cache in a
+  server realm, the warning on a drawing realm), and one in `test/physics/server-edict.test.ts` that `setModel()`
+  on a GIF sets the entity's `mins`/`maxs`. 2678 tests, ESLint and typecheck green; the boundary test still holds.
+- **Docs:** none yet, by plan (`docs/sprites.md` is Phase 5); no doc claims the formats.
 
 ## Open questions
 

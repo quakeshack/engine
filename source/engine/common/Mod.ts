@@ -2,6 +2,7 @@ import type { ConsoleOutput } from './Services.ts';
 import { MissingResourceError } from './Errors.ts';
 import { ModelLoaderRegistry } from './model/ModelLoaderRegistry.ts';
 import { AliasMDLLoader } from './model/loaders/AliasMDLLoader.ts';
+import { ImageSpriteLoader } from './model/loaders/ImageSpriteLoader.ts';
 import { SpriteSPRLoader } from './model/loaders/SpriteSPRLoader.ts';
 import { BSP29Loader } from './model/loaders/BSP29Loader.ts';
 import { BSP2Loader } from './model/loaders/BSP2Loader.ts';
@@ -131,6 +132,7 @@ export class Mod {
     this.modelLoaderRegistry.register(new BSP29Loader(context));
     this.modelLoaderRegistry.register(new AliasMDLLoader(context));
     this.modelLoaderRegistry.register(new SpriteSPRLoader(context));
+    this.modelLoaderRegistry.register(new ImageSpriteLoader(context));
     this.modelLoaderRegistry.register(new WavefrontOBJLoader(context));
   }
 
