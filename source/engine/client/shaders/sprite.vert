@@ -7,9 +7,10 @@ uniform mat3 uViewAngles;
 uniform mat4 uPerspective;
 
 in vec3 aPosition;
-in vec2 aTexCoord;
+// xy: texture coordinate, z: layer of the array texture
+in vec3 aTexCoord;
 
-out vec2 vTexCoord;
+out vec3 vTexCoord;
 
 #include "fog-vertex.glsl"
 

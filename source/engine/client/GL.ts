@@ -575,6 +575,10 @@ class GL {
 
     textureCache.clear();
 
+    for (const texture of followingTextureArrays) {
+      texture.free();
+    }
+
     GL.programs.length = 0;
     GL.currentProgram = null;
     GL.currentVAO = null;
@@ -634,6 +638,9 @@ eventBus.subscribe('vid.resize', ({ width, height }: { width: number; height: nu
 });
 
 const textureCache = new Map<string, GLTexture>();
+
+/** Array textures that follow `gl_texturemode`. */
+const followingTextureArrays = new Set<GLTextureArray>();
 
 class TextureListCommand extends ConsoleCommand {
   override run(): void {
@@ -757,9 +764,45 @@ export class GLVolumeTexture {
 /** A 2D array texture (lightmap/deluxemap/fullbright/normal-up banks). */
 export class GLTextureArray {
   #texnum: WebGLTexture;
+  /** Whether `gl_texturemode` changes apply to this array. */
+  #followsTextureMode = false;
 
   constructor() {
     this.#texnum = requireValue(gl.createTexture(), 'Failed to create WebGL texture');
+  }
+
+  /**
+   * Creates an array texture from equally sized RGBA images, one per layer. The array has a full mip
+   * chain, is clamped at its edges and follows `gl_texturemode`.
+   * @param width width of every layer
+   * @param height height of every layer
+   * @param layers premultiplied RGBA pixels of each layer, `width * height * 4` bytes each
+   * @returns the new texture
+   */
+  static FromRGBALayers(width: number, height: number, layers: readonly Uint8Array[]): GLTextureArray {
+    console.assert(layers.length > 0 && layers.length <= gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS), 'layer count within the context limit required');
+
+    const texture = new GLTextureArray();
+    const levels = Math.floor(Math.log2(Math.max(width, height))) + 1;
+
+    texture.bind(0);
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, levels, gl.RGBA8, width, height, layers.length);
+
+    for (let layer = 0; layer < layers.length; layer++) {
+      console.assert(layers[layer].length === width * height * 4, 'layer data length must match width and height');
+      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, width, height, 1, gl.RGBA, gl.UNSIGNED_BYTE, layers[layer]);
+    }
+
+    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    GL.CheckError();
+
+    texture.#followsTextureMode = true;
+    texture.#applyTextureMode(currentTextureMode);
+    followingTextureArrays.add(texture);
+
+    return texture;
   }
 
   /**
@@ -770,12 +813,42 @@ export class GLTextureArray {
     return this.#texnum;
   }
 
-  bind(target = 0): this {
+  /**
+   * Binds the array to a texture unit.
+   * @param target texture unit
+   * @param flushStream flush the stream before binding, for geometry that was streamed with the previous texture
+   * @returns this
+   */
+  bind(target = 0, flushStream = false): this {
+    if (flushStream) {
+      GL.StreamFlush();
+    }
+
     bindTextureToUnit(target, gl.TEXTURE_2D_ARRAY, this.#texnum);
     return this;
   }
 
+  /**
+   * Applies the texture mode the `gl_texturemode` command chose, when the array follows it.
+   * @param name texture mode name
+   */
+  followTextureMode(name: string): void {
+    if (this.#followsTextureMode) {
+      this.#applyTextureMode(name);
+    }
+  }
+
+  #applyTextureMode(name: string): void {
+    const mode = textureModes[name];
+    console.assert(mode !== undefined, 'Valid texture mode required');
+
+    this.bind(0);
+    gl.texParameterf(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, mode.min);
+    gl.texParameterf(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, mode.max);
+  }
+
   free(): void {
+    followingTextureArrays.delete(this);
     gl.deleteTexture(this.#texnum);
   }
 }
@@ -1101,6 +1174,10 @@ class TextureModeCommand extends ConsoleCommand {
 
     // every texture in the cache is alive: `free()` takes it out
     for (const texture of textureCache.values()) {
+      texture.followTextureMode(uppercaseName);
+    }
+
+    for (const texture of followingTextureArrays) {
       texture.followTextureMode(uppercaseName);
     }
 

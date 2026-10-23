@@ -75,7 +75,7 @@ class ShaderPrograms {
       // for rendering sprites (usually effects)
       Promise.resolve(GL.CreateProgram('sprite',
         ['uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uFogColor', 'uFogParams', 'uInterpolation', 'uAlpha', 'uBloomEmissiveScale'],
-          [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 2]],
+          [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 3]],
           ['tTexture'])),
 
       // for rendering decals

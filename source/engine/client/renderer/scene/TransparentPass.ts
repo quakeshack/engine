@@ -374,7 +374,8 @@ class TransparentPass {
         return true;
       case TransparentKind.Sprite:
         gl.enable(gl.CULL_FACE);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        // sprite textures and the sprite shader's output are premultiplied
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         if (spriteRenderer !== null) {
           spriteRenderer.setupRenderState(1);
           return true;

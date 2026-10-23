@@ -1,0 +1,585 @@
+# Image sprites: GIF, (A)PNG, WebP and Aseprite as sprite models
+
+## Status
+
+✅ Phase 0 done (2026-10-23): formats verified against their specs, the code questions answered,
+results folded into the design below and summarized under "What actually shipped in Phase 0".
+
+✅ Phase 1 done (2026-10-23, branch `feature/animated-image-sprites`, not committed yet): SPR runs on the
+reshaped `SpriteModel`, see "What actually shipped in Phase 1". Phase 2 waits for a go-ahead.
+
+### Decisions so far (2026-10-22, from the maintainer)
+
+- **Animation model: auto-play sequences.** A file is one sequence at `frame 0` that plays by
+  itself; more sequences come from the sidecar or Aseprite tags, and `frame` picks the sequence.
+- **Settings: optional sidecar JSON** (`<file>.json`), read by both realms (C).
+- **Architecture: unify.** One reshaped `SpriteModel` and renderer; SPR moves onto it (A, Phase 1).
+- **Formats:** GIF, PNG/APNG, WebP, plus **native `.aseprite`** and **Half-Life SPR v2**.
+  Animated AVIF is out of this pass.
+
+### Decisions from Phase 0 (2026-10-23, derived from the code and specs)
+
+- **Premultiplied alpha for every sprite**, one blend function `ONE, ONE_MINUS_SRC_ALPHA` for
+  `alphaTest`, `alpha` and `additive` (F). No per-sprite GL state change.
+- **`ClientEdict.model` and `frame` become accessors** that stamp `animationStartTime` (E).
+- **Sequence playback uses Aseprite's vocabulary**, `direction` + `repeat`, for every format (A, C).
+- **Files repeat as a browser would play them** unless the sidecar says otherwise (C).
+- **SPR v2 follows v1** for phase: its header carries the same `synctype` (`global`/`random`).
+
+### Decisions after Phase 0 (2026-10-23, from the maintainer)
+
+- **The game hints when there is no sidecar:** `PrecacheModel(name, { sidecar: false })` skips the
+  lookup (C). It replaces the miss cache proposed in Phase 0. The hint has to reach the client,
+  which costs one protocol change (C, Non-goals).
+- **Sequences can be looked up by name:** `GetSpriteSequenceIndex(modelName, name)` next to
+  `GetSpriteSequenceDuration` (E).
+
+### Verified format layouts
+
+Checked 2026-10-23 against the primary sources (downloaded, read, not recalled): GIF89a (W3C
+`spec-gif89a.txt`), PNG Third Edition §11.3.6 (W3C, APNG is part of it), WebP container RFC 9649,
+VP8 RFC 6386 §9.1, Aseprite `docs/ase-file-specs.md` (main branch), and FTE's reader for HL SPR v2
+(`fteqw/engine/client/spritegn.h`, `gl/gl_model.c` `Mod_LoadSpriteModel`). Phase 2 copies these
+into each parser's JSDoc. All integers little-endian except PNG (big-endian).
+
+| Format | Detect | Size | Frames and timing | Repeat | Traps |
+|---|---|---|---|---|---|
+| GIF | `GIF87a`/`GIF89a` at 0 | Logical Screen Descriptor, u16 w/h at 6/8 | one Image Descriptor (`0x2C`) per frame; Graphic Control Extension (`0x21 0xF9`, 4 bytes: packed `disposal = (b >> 2) & 7`, transparent flag bit 0, u16 delay in 1/100 s, transparent index) applies to the next image | NETSCAPE2.0 application extension (`0x21 0xFF`), not in GIF89a; absent = play once | disposal 3 (restore previous) needs a saved copy; interlaced images (4-pass row order); local color tables; frames are sub-rectangles of the screen; skip data sub-blocks by their length bytes |
+| PNG/APNG | `89 50 4E 47 0D 0A 1A 0A` | `IHDR` | `acTL` (u32 `num_frames`, u32 `num_plays`) before `IDAT`; one `fcTL` per frame (seq, w, h, x, y, u16 `delay_num`/`delay_den`, den 0 = 100, `dispose_op`, `blend_op`); `fdAT` = seq + data | `num_plays`, 0 = forever | the default image is frame 0 only when an `fcTL` comes before `IDAT`, otherwise a hidden fallback; first frame's `DISPOSE_OP_PREVIOUS` = `BACKGROUND`; canvas cleared to transparent black each play |
+| WebP | `RIFF` at 0, `WEBP` at 8 | `VP8X` 24-bit w−1/h−1; simple files: `VP8L` (signature `0x2F`, 14-bit w−1, h−1) or `VP8 ` (key-frame start code `9D 01 2A`, then u16 with 14-bit width, 2-bit scale, same for height) | `VP8X` flags bit `0x02` = animated; `ANIM` (BGRA background, u16 loop count); `ANMF` (24-bit x/2, y/2, w−1, h−1, duration in ms, then bits `B` blend, `D` dispose) | loop count, 0 = forever | odd chunk sizes have a pad byte; frame offsets are stored halved |
+| Aseprite | u16 `0xA5E0` at **offset 4** (file size is at 0) | header u16 w/h at 8/10, depth at 12 (32 RGBA, 16 grayscale, 8 indexed) | frame header (u32 bytes, u16 `0xF1FA`, chunk counts, u16 duration in ms); chunks `0x2004` layer, `0x2005` cel, `0x2018` tags, `0x2019` palette, `0x2022` slice | tag `repeat`, 0 = forever (as the editor plays it); tag directions forward, reverse, ping-pong, ping-pong reverse | cel z-index reorders layers per frame; hidden groups hide their children; reference layers (flag 64) are never drawn; layer opacity valid only with header flag 1; tilemap layers (type 2) need the tileset chunk; cels are zlib (`DecompressionStream('deflate')`, not `deflate-raw`) |
+| HL SPR v2 | `IDSP`, version 2 | as v1, with one extra s32 `texFormat` after `type` (40-byte header) | as v1 after the palette: s16 count (must be 256), 256 × RGB | `synctype` as v1 | `texFormat`: 0 normal, 1 additive, 2 index-alpha, 3 alpha-test (index 255 transparent). FTE's own comment says it is "not sure what the values mean", and its index-alpha keeps each entry's RGB with alpha = index. Treat both as leads and check against a real Half-Life sprite in Phase 6 |
+
+**Timing clamp.** Durations of 10 ms or less (GIF delay 0 or 1, APNG numerator 0, WebP 0) play as
+100 ms, as browsers do, so a file times the same in the engine as in a browser tab. The sidecar's
+`fps` overrides it.
+
+**Orientation math** comes from FTE's `R_DrawSpriteModel` (`gl/gl_alias.c`): `VP_PARALLEL_UPRIGHT`
+uses world Z as up and the view's right; `FACING_UPRIGHT` uses world Z as up and the
+perpendicular of (sprite − view) in the XY plane as right; `VP_PARALLEL_ORIENTED` rotates the view
+basis by the entity's roll. FTE computes that roll's `sin` from degrees without converting, so
+copy the intent, not the line.
+
+## Context
+
+### The goal, in game code
+
+```ts
+static precache(engine: ServerEngineAPI): void {
+  engine.PrecacheModel('gfx/torch-flame.gif');
+}
+
+spawn(): void {
+  this.setModel('gfx/torch-flame.gif'); // loops, nothing else to do
+}
+```
+
+The engine picks the loader from the file, works out bounds and frame timing on the server, and
+decodes, uploads and animates it on the client. The same call must work for `ClientEngineAPI.ModForName`
+(client-only effect entities such as id1's `BubbleClientEdictHandler`).
+
+### What exists today (verified in source)
+
+- **Loading.** `Mod.Init()` (`source/engine/common/Mod.ts`) registers the loaders in order;
+  `ModelLoaderRegistry.findLoader()` takes the first whose `canLoad()` passes, which by default
+  needs both a matching extension and a matching 4-byte magic number. `SpriteSPRLoader` is the
+  only sprite loader. It handles version 1 only (Half-Life's version 2 is rejected).
+- **Two realms.** The server (Node dedicated, or the browser's server worker) loads with
+  `ModelLoadContext.loadRenderData = false` and only needs `mins`/`maxs` (`Edict.setModel()` in
+  `source/engine/server/Edict.ts` copies them into the entity). `#loadSpriteFrame` returns `null`
+  there, so frame data is never touched.
+- **Boundary.** `test/common/engine-boundaries.test.ts` allows only a few client files
+  (`client/GL.ts`, `Materials.ts`, `Sky.ts`, ...) in the server worker's import closure. A decoder
+  imported from a `common/` loader would break it.
+- **Model shape.** `SpriteModel` (`source/engine/common/model/SpriteModel.ts`) holds `frames[]`,
+  each either a single image or a group of images with cumulative `interval`s, every image with
+  its own `GLTexture`, size and origin. `oriented` is a boolean (`type === 3`); the other four
+  Quake orientation types (`VP_PARALLEL_UPRIGHT`, `FACING_UPRIGHT`, `VP_PARALLEL`,
+  `VP_PARALLEL_ORIENTED`) are all drawn as `VP_PARALLEL`.
+- **Rendering.** `SpriteModelRenderer` draws in the transparent pass only, binds one texture per
+  sprite and streams a quad. A group animates on `clientRuntimeState.time + entity.syncbase`, so
+  its phase is global (all instances in step) unless the SPR header sets `random`
+  (`ClientServerCommandHandlers.ts:532`). There is no "start when the entity appeared".
+- **Shader.** `sprite.frag` always discards below alpha 0.25 and multiplies by `uAlpha`; no soft
+  edges, no additive blending, no lighting.
+- **Texture helpers.** `GLTexture.FromImageFile()` decodes any still image with
+  `createImageBitmap`. `GLTextureArray` exists (lightmap banks) and is the natural home for
+  sprite frames: one bind per sprite, frame = layer.
+- **Network.** `frame` and `modelindex` are bytes (`Protocol.u.frame`, `u.model`), so 256 frame
+  indices per model. That is the limit for game-selectable frames, not for images inside one
+  auto-playing sequence.
+
+### Browser decoding, the state of play (2026-10)
+
+- **`ImageDecoder` (WebCodecs)** decodes animated GIF, APNG, animated WebP and animated AVIF into
+  composited full frames with durations, on the main thread or in a worker. Chromium since 94,
+  Firefox desktop since 133. **Safari stable does not ship it** (Technology Preview only, per
+  caniuse). So the plan uses it only for the one format we don't decode ourselves (WebP).
+- **`createImageBitmap`** works everywhere but yields only the first frame of an animation. The
+  same is true of `texImage2D` fed an `<img>`: WebGL has no standard way to receive an animation,
+  so frames become texture layers in our code (D).
+- **What we can decode ourselves cheaply:** GIF (LZW plus disposal, a few hundred lines) and APNG
+  (split into one still PNG per frame, decode each with `createImageBitmap`, composite with
+  `dispose_op`/`blend_op`). Animated WebP and AVIF need a VP8/AV1 decoder: not worth it, Safari
+  falls back to the first frame with a console warning.
+
+### Format pick, for artists
+
+| Format | Alpha | Colors | Size | Tooling | Everywhere |
+|---|---|---|---|---|---|
+| GIF | 1-bit | 256 per frame | big | everything | yes (own decoder) |
+| APNG | 8-bit | true color | medium (lossless) | Aseprite, ffmpeg, apngasm, browsers | yes (own decoder) |
+| animated WebP | 8-bit | true color | small (lossy or lossless) | ffmpeg, img2webp, Aseprite | Chromium, Firefox; Safari first frame |
+| animated AVIF | 8-bit | HDR capable | smallest | ffmpeg, avifenc | Chromium, Firefox; Safari first frame |
+| Aseprite `.aseprite` | 8-bit | true color | small | the pixel-art standard | yes (own parser, zlib via `DecompressionStream`) |
+
+Recommendation: **APNG is the house format** (true alpha, lossless, decodable everywhere), GIF for
+compatibility, WebP/AVIF for big effects where size matters and a Safari still frame is acceptable.
+Aseprite is the cool one: its tags become named sequences and its slice pivot becomes the sprite
+origin, so an artist's file drops in without an export step.
+
+## Goals
+
+- `setModel('<path>.gif|.png|.apng|.webp|.aseprite')` and Half-Life `.spr` (version 2) work on
+  the server (bounds, frame count, durations) and the client (decode, upload, animate) with no
+  other game code.
+- Animations auto-play from the moment the model is set on the entity, loop or play once.
+- Per-sprite settings without code: orientation, origin, scale, blend mode, filtering, repeat, phase,
+  named sequences, frame crossfade.
+- One `SpriteModel` shape and one renderer path for SPR and image sprites.
+- The decoded animation (`SpriteAsset`) is independent of the world model, so the 2D side can use
+  it later (G, Phase 8): HUD elements, Half-Life-style HUD sheets, screen effects.
+- SPR keeps drawing exactly as today (browser-checked), and gains the four orientation types it
+  silently ignores.
+
+## Non-goals (this pass)
+
+- Video (WebM/MP4 with alpha through `<video>` textures). Different lifetime (streaming, audio,
+  autoplay policy); a separate plan if wanted.
+- Animated AVIF (decided 2026-10-22). `ImageDecoder` would decode it for free; what it costs is the
+  ISOBMFF header parse the server needs. Easy to add later as one more header parser.
+- Our own WebP decoder for Safari.
+- Sprite sheets packed into an atlas across models; each model gets its own array texture.
+- Changing id1's existing `.spr` effects to image sprites (game change, raise separately).
+- Protocol changes beyond one: per-model precache flags in `serverdata` (C), a version bump.
+  Animation fits into today's `frame`/`modelindex` bytes.
+- Building the 2D side (G). It is designed so Phase 1 shapes the data for it; the code waits for
+  Phase 8 and its own go-ahead.
+
+## Design
+
+### A. Data model: `SpriteAsset` inside one `SpriteModel`
+
+The decoded images, their timing and the array texture form a `SpriteAsset`
+(`source/engine/common/model/sprite/SpriteAsset.ts`) that knows nothing about entities, bounds or
+the model cache. `SpriteModel` (a `BaseModel`) owns one and adds what only a world sprite needs:
+`orientation`, `phase`, `lit`, `mins`/`maxs`. The split costs nothing in Phase 1 and lets the 2D
+side reuse the same asset later (G) without going through precache, networking or the per-map
+model cache.
+
+`SpriteModel` keeps `frames[]` with Quake's semantics (the entity's `frame` picks an entry, a
+group animates by time), but frames reference layers of one texture instead of owning textures:
+
+```ts
+export interface SpriteImage {
+  readonly layer: number;                 // layer in SpriteModel.texture
+  readonly origin: [number, number];      // in world units, after scale
+  readonly width: number;
+  readonly height: number;
+  readonly uvScale: [number, number];     // < 1 when padded into a larger layer (SPR frames)
+}
+
+export interface SpriteSequence {
+  readonly name: string;                  // '' for SPR groups and untagged images
+  readonly images: SpriteImage[];
+  readonly endTimes: Float32Array;        // cumulative seconds, like SPR intervals
+  readonly direction: SpriteDirection;    // forward | reverse | pingpong | pingpongReverse
+  readonly repeat: number;                // plays, 0 = forever; ends on the last image shown
+}
+
+export type SpriteFrame = SpriteImage | SpriteSequence;
+```
+
+On the asset: `frames`, `blend: SpriteBlend` (`alphaTest` | `alpha` | `additive`),
+`interpolate: boolean`, `filter: 'linear' | 'nearest' | null` (null follows `gl_texturemode`),
+`regions` (named sub-rectangles, G; empty until then) and `texture: GLTextureArray | null` (null
+on the server). On the model: `orientation: SpriteOrientation` (the five Quake types as an enum,
+replacing the `oriented` boolean), `phase: SpritePhase` (`global` | `random` | `spawn`) and
+`lit: boolean` (Phase 7).
+
+The server needs `frames.length`, every sequence's `endTimes`, `direction` and `repeat` (for the
+duration query in E) and `mins`/`maxs`; it never sees a texture. `SpriteSPRLoader` is rewritten onto this shape:
+frames padded into the largest frame's size, `uvScale` set per image, `phase` = `random` when the
+SPR header says so and `global` otherwise, so SPR timing does not change.
+
+### B. Loaders: header parsing in `common/`, pixels through a hook
+
+`source/engine/common/model/loaders/ImageSpriteLoader.ts`, registered after `SpriteSPRLoader`.
+It overrides `canLoad()` because two signatures are not one 4-byte magic at offset 0
+(`RIFF....WEBP`; Aseprite's `0xA5E0` at offset 4) and because PNG is both static and animated.
+
+1. **Header pass, both realms** (`source/engine/common/model/sprite/`, GL-free, Node-testable):
+   `GifHeader.ts`, `PngHeader.ts` (IHDR, `acTL`, every `fcTL`), `WebpHeader.ts` (`VP8X`, `ANIM`,
+   `ANMF`), `AsepriteHeader.ts` (header, frame durations, tags, slice pivot; cel data skipped).
+   Each returns
+   `{ width, height, frameDurations: number[], tags: SpriteTag[] }` without touching pixel data
+   (GIF: walk the blocks and skip the LZW sub-blocks). This builds the whole model except
+   textures, and is all the server does.
+2. **Sidecar** (C) is read and merged.
+3. **Pixel pass, render realm only.** `ModelLoadContext` gains
+   `readonly spriteImages: SpriteImageDecoding | null`, filled by `createBrowserClient` and `null`
+   on the server, the same "hook" pattern as `Cmd.files`. The loader stays out of `client/`, so
+   the boundary test holds.
+
+### C. Optional sidecar `<file>.json`
+
+`gfx/torch-flame.gif` reads `gfx/torch-flame.gif.json` if it exists, in both realms (it can change
+repeat and sequences, so the server needs it too). Every field is optional:
+
+```json
+{
+  "version": 1,
+  "orientation": "parallelUpright",
+  "origin": [16, 4],
+  "scale": 0.5,
+  "blend": "additive",
+  "filter": "nearest",
+  "phase": "random",
+  "interpolate": true,
+  "fps": 12,
+  "repeat": 0,
+  "sequences": [
+    { "name": "idle", "from": 0, "to": 7, "direction": "pingpong" },
+    { "name": "burst", "from": 8, "to": 15, "repeat": 1 }
+  ]
+}
+```
+
+Defaults: `parallel`, origin at the image center, scale 1 (one pixel per unit, as SPR), blend
+`alphaTest` for GIF and `alpha` for the rest, phase `spawn`, the file's own frame timing after
+the clamp (`fps` overrides it), one `forward` sequence over all images that repeats as the file
+says (GIF without a NETSCAPE block, or APNG/WebP with a count: that many plays; otherwise
+forever). A top-level `repeat` overrides the file's count. With `sequences`, each becomes one
+`frame` index, in order. Aseprite tags fill `sequences` when there is no sidecar.
+
+**A missing sidecar costs a request** (checked in Phase 0). `COM.LoadFile` has no file list: in
+the browser every miss is a `fetch` that 404s, and `CachedFetchAssetSource` stores only `ok`
+responses, so the miss repeats in each realm (client and server worker) on every load, and
+`COM.LoadFile` prints `can't find` each time.
+
+**So the game says when there is none** (maintainer's decision):
+
+```ts
+engine.PrecacheModel('gfx/torch-flame.gif', { sidecar: false });
+```
+
+- `PrecacheModelOptions` (`ServerEngineAPI.ts`) gains `sidecar?: boolean`, default `true`.
+  `ModelLoadOptions` gains `readonly sidecar: boolean` (default `true` in
+  `DEFAULT_MODEL_LOAD_OPTIONS`), and `ImageSpriteLoader` reads the sidecar only when it is set.
+  Leaving the option out keeps "drop in a sidecar and it works"; the hint is an optimization.
+- **The client needs the hint too.** It loads every world model from the name list in
+  `serverdata` (`ServerMessages.ts`, read in `ClientServerCommandHandlers.ts`), and
+  `ClientEngineAPI.ModForName` only looks up precached models, so a server-only option would
+  leave the client still checking. `serverdata` therefore writes one flags byte after each model
+  name: a `ModelPrecacheFlags` bit enum in `source/shared/` (`noSidecar = 1`, room for more hints).
+  `meshCollision` stays server-only and is not sent. That is a protocol bump, 42 → 43; the
+  Half-Life studio model plan also plans a bump, and whichever lands first takes 43.
+- **Precaching the same model twice:** like `meshCollision`, a later precache that wants the
+  sidecar after an earlier one said `false` reloads the model with it; the other way round
+  changes nothing.
+- The check is quiet: a missing sidecar is expected, so it goes through a `LoadFile` variant that
+  doesn't print `can't find`.
+
+### D. Client decoding: `SpriteImageDecoding` strategies
+
+**The engine turns every animation into textures itself.** No web standard hands WebGL the frames
+of an animated image: `texImage2D` with an `<img>`, `ImageBitmap` or canvas uploads the first
+frame only, and an `<img>` playing a GIF can't be sampled at a given time. The only thing that is
+standard and available everywhere is decoding a *still* image (`createImageBitmap` on PNG, JPEG,
+WebP bytes, as `GLTexture.FromImageFile` already does). So every path ends the same way: the
+engine composites frame *n* into RGBA and uploads it with `texSubImage3D` into layer *n* of the
+model's `GLTextureArray`. What differs is only who turns bytes into pixels for one frame.
+
+Our own decoders come first, so GIF, APNG and Aseprite look and time the same in every browser
+and are testable in Node; `ImageDecoder` is used only where we have no decoder of our own (WebP).
+
+`source/engine/client/renderer/sprite/` (strategy pattern, registry lookup, one strategy per
+format, chosen by the header pass):
+
+- `GifSpriteDecoder`: own LZW decoder plus disposal compositing into a reused RGBA buffer. No
+  browser API at all.
+- `ApngSpriteDecoder`: rebuilds one still PNG stream per frame (`IHDR` + the shared chunks +
+  `fdAT` rewritten to `IDAT`, fresh CRCs), decodes it with `createImageBitmap` (still-image
+  decoding, universal), composites with `dispose_op`/`blend_op` on an `OffscreenCanvas`, reads
+  back or uploads the canvas. A static PNG is the one-frame case.
+- `WebCodecsSpriteDecoder` (animated WebP only): `ImageDecoder` when
+  `ImageDecoder.isTypeSupported('image/webp')`; uploads each composited `VideoFrame` into its
+  layer with `texSubImage3D`, then `close()`s it.
+- `AsepriteSpriteDecoder`: inflates cels with `DecompressionStream('deflate')` (browsers and
+  Node), composites visible layers per frame in z-index order (opacity, normal blend; other blend
+  modes warn and fall back to normal), skips reference layers and the children of hidden groups,
+  handles RGBA, grayscale and indexed color modes and linked cels. Tilemap layers warn and are
+  skipped in Phase 6.
+- `StillSpriteDecoder`: `createImageBitmap`, first frame only, the last resort (warns for an
+  animation it cannot play).
+
+Half-Life SPR v2 needs no decoder strategy: `SpriteSPRLoader` gains a version 2 branch (the
+40-byte header and the palette in the table above, `texFormat` mapped onto `blend`: additive →
+`additive`, alpha-test → `alphaTest` with index 255 transparent, index-alpha → `alpha` with the
+palette index as alpha, normal → opaque `alphaTest`), pixels translated in the loader as for
+version 1.
+
+The order is the format's own decoder, then `ImageDecoder` (WebP), then still. Decoding runs on the main
+thread inside the async model load. Moving it into a worker (`docs/workers.md`) is the Phase 7
+option if big sprites hitch at map load.
+
+**Memory guard.** `frames × width × height × 4` bytes, plus mips. Above a budget (a cvar,
+default 64 MB per model) the loader halves the resolution and warns. Width and height are capped
+at `MAX_TEXTURE_SIZE`, layers at `MAX_ARRAY_TEXTURE_LAYERS` (WebGL 2 guarantees 2048 and 256).
+
+### E. Animation timing and the game API
+
+- `ClientEdict` gains `animationStartTime`. `model` and `frame` are plain fields today, written
+  in five engine places (`u.model`/`u.frame` in `ClientServerCommandHandlers.ts`, static
+  entities, baselines, save-game restore in `ClientEntities.ts`) and by game code
+  (`bubble.model = engine.ModForName(...)` in id1's `Bubbles.ts`, `Gibs.ts`, the view model). So
+  both become accessors on `ClientEdict` that stamp `animationStartTime = clientRuntimeState.time`
+  when the value changes; no caller has to remember it. Assignment syntax stays the same for the
+  games. A `frame` write with an unchanged value (every `u.frame` update) does not restart the
+  sequence. A restored persistent client entity starts its sequence at load time.
+- `SpriteAnimator` (`source/engine/common/model/sprite/SpriteAnimator.ts`, pure, tested) answers
+  "which image(s) and what blend factor at time t" for a sequence, honoring `direction` and
+  `repeat` (a finished sequence holds the image it ended on). The renderer and the duration query
+  share it.
+- Phase picks `t`: `global` = `cl.time` (today's SPR), `random` = `cl.time + syncbase`,
+  `spawn` = `cl.time - animationStartTime`.
+- **One-shot effects** need the game to know how long a sequence runs. `ServerEngineAPI` and
+  `ClientEngineAPI` gain `GetSpriteSequenceDuration(modelName, frame): number` (0 for a model
+  that is not a sprite), so an explosion is:
+
+  ```ts
+  this.setModel('gfx/explosion.webp'); // the file (or sidecar) says repeat: 1
+  this._scheduleThink(this.game.time + this.engine.GetSpriteSequenceDuration('gfx/explosion.webp', 0), function (this: ExplosionEntity) {
+    this.remove();
+  });
+  ```
+
+- **Sequences by name** (maintainer's decision): both APIs also gain
+  `GetSpriteSequenceIndex(modelName, name): number` (−1 when absent), so a game writes
+  `this.frame = this.engine.GetSpriteSequenceIndex('gfx/imp.aseprite', 'burst')` instead of
+  relying on the order of the sequences in a sidecar or Aseprite file.
+
+  All of it goes into `source/shared/GameInterfaces.ts` and `docs/game-module-contract.md`.
+- A client that joins mid-animation starts it from the beginning. Acceptable for effects; a
+  game that needs exact sync keeps driving `frame` itself.
+
+### F. Rendering
+
+- `SpriteModelRenderer` binds `model.texture` once per sprite and streams the quad with a layer
+  attribute (and a second layer plus mix factor when `interpolate`). Sprites with the same model
+  can then share one stream flush.
+- The five orientation types get their real basis vectors (math under "Verified format
+  layouts"). The transparent pass enables `CULL_FACE` for sprites, so `oriented` sprites stay
+  one-sided as today.
+- **Blending, as checked in Phase 0.** `TransparentPass.#beginKind` sets the blend function once
+  per run of same-kind items and keeps `depthMask(false)` for the whole pass, so sprites never
+  write depth already. A per-sprite blend function would mean a flush and a state change inside
+  a run. Premultiplied alpha avoids both: textures are uploaded premultiplied
+  (`UNPACK_PREMULTIPLY_ALPHA_WEBGL`), the sprite run uses `blendFunc(ONE, ONE_MINUS_SRC_ALPHA)`,
+  and the shader picks the mode by what it writes: `alpha` writes `(rgb·a, a)`, `additive` writes
+  `(rgb·a, 0)`, `alphaTest` discards below 0.25 as today. Sprites of every mode batch in one run,
+  and premultiplying also removes the dark fringes straight alpha gets from linear filtering and
+  mipmaps. `uAlpha` scales all four channels. Fog mixes towards `uFogColor·a` for `alpha` and
+  towards black for `additive`. The emissive attachment is blended with the same function.
+- `sprite.frag` switches to `sampler2DArray` and selects the mode with a uniform, branchless, per
+  the `shader-chunks` style rules.
+- Fullbright and bloom emissive stay as they are.
+
+### G. Later: the same sprites in 2D (HUD, screen effects)
+
+Not built in this pass. A–F are shaped so it is an addition, not a rework.
+
+- **Today** a HUD draws a `GLTexture` with `engine.DrawPic()` (`Draw.Pic`, `pic` program,
+  `sampler2D`), loaded once with `engine.LoadPicFromFile()`. Nothing animates, there are no
+  sub-rectangles, no tint, no additive blending.
+- **Loading.** `ClientEngineAPI.LoadSprite(filename): Promise<SpriteAsset>` runs the same header
+  pass, sidecar and decoder strategies as the model loader, but caches by file name for the
+  lifetime of the page, like `GLTexture`'s cache. A HUD isn't networked or precached and must
+  survive map changes, so it must not sit in `Mod`'s per-map scopes.
+- **Playback.** A small `SpritePlayback` handle (sequence, start time, speed, paused) wraps the
+  shared `SpriteAnimator`, so a HUD writes `flash.play('burst')` and does not track time itself.
+  World sprites keep using the entity's `frame` and `animationStartTime`; both end in the same
+  animator.
+- **Drawing.** `ClientEngineAPI.DrawSprite(x, y, playback, options)` with `scale`, `region`,
+  `tint` (RGB) and `alpha`, honoring the asset's `blend`. `Draw` gets a `pic` variant on
+  `sampler2DArray` (one chunk shared with `pic`, per `shader-chunks`). A full-screen
+  `DrawSprite` with `additive` or `alpha` covers screen effects (damage splatter, visor rain,
+  a teleport flash).
+- **Half-Life-style HUD.** GoldSrc draws its HUD from sprite sheets (`640hud1.spr`, ...) cut into
+  named regions by `sprites/hud.txt` (name, resolution, sheet, x, y, w, h), additive and tinted
+  per game (the orange numbers). That maps onto `regions` + `tint` + `additive`: regions come from
+  the sidecar (`"regions": { "number_0": [0, 0, 20, 24] }`), from Aseprite slices, or from a
+  `hud.txt` reader. The 320/640 pick fits the virtual-resolution work in
+  [menu-virtual-resolution.md](menu-virtual-resolution.md).
+- **Animated decals** (`PlaceDecal` taking a sprite) use the same asset. Listed as an option, not
+  designed.
+- The game-facing API shape (`LoadSprite`/`DrawSprite`/`SpritePlayback`) is a fork to settle with
+  the maintainer when this phase starts.
+
+## Phasing
+
+Every phase from 1 on also updates the docs listed under "Documentation" for what it ships, as
+part of its exit.
+
+0. ✅ **Settle the forks**, verify the format layouts against the specs, check `TransparentPass`
+   blend-state handling and how `COM.LoadFile` misses.
+1. **Reshape `SpriteModel`, SPR on the new path.** A (with the `SpriteAsset` split), F (array texture, orientations, shader
+   `sampler2DArray`), `SpriteAnimator`, `animationStartTime`. No new formats. Exit: id1's
+   `s_explod.spr`, `s_light.spr`, `s_bubble.spr` look and animate exactly as before in a browser.
+2. **Header parsers and the server side.** B.1, `ImageSpriteLoader` without pixels. Exit:
+   `setModel('gfx/x.gif')` on the dedicated server sets correct bounds; duration query works
+   server-side.
+3. **Client decoding.** D: GIF and APNG decoders, the WebP `ImageDecoder` path, still fallback,
+   memory guard. Exit: GIF, APNG,
+   static PNG and WebP sprites animate in Chromium and Firefox; GIF and APNG in Safari (or a
+   WebKit build, if available here; otherwise say so).
+4. **Sidecar and blend modes.** C, the `alpha`/`additive` shader paths, `filter`, `fps`,
+   sequences, `interpolate`, `phase`, the `sidecar: false` precache hint with its `serverdata`
+   flags byte (protocol 43) and the quiet `LoadFile` variant.
+5. **Game API and docs.** E's duration and name queries, the README bullet (formats shipped so
+   far: GIF, PNG/APNG, WebP), the complete `docs/sprites.md` page on authoring image sprites (formats,
+   sidecar reference, ffmpeg/Aseprite export one-liners), JSDoc.
+6. **Aseprite and Half-Life SPR v2.** `AsepriteHeader` + `AsepriteSpriteDecoder` (tags →
+   sequences with direction and repeat, slice pivot → per-image origin), SPR v2 branch with its
+   render modes. Their sections in `docs/sprites.md`; the README bullet gains Aseprite and
+   Half-Life sprites.
+7. **Extras, each optional:** lit sprites (sample the lightgrid at the origin), decoding in a
+   worker, AVIF.
+8. **Later, its own go-ahead: 2D sprites (G).** `LoadSprite`, `SpritePlayback`, `DrawSprite`,
+   regions, tint, the array `pic` program, optionally a `hud.txt` reader. Browser check of a HUD
+   element and a full-screen effect.
+
+## Documentation
+
+Docs ship with the phase that ships the feature, never later; a phase isn't done until its docs
+are. Nothing claims a format before it loads.
+
+- **New `docs/sprites.md`**, linked from the table of contents in `docs/README.md`. The guide for
+  artists and game programmers:
+  - the formats, what each is good for (the "Format pick" table) and where each animates
+    (WebP shows only its first frame in Safari);
+  - the minimal use (`PrecacheModel` + `setModel`) and what happens without any configuration;
+  - the sidecar reference: every field, its values and default, and which realm reads it;
+  - timing: the 10 ms clamp, `fps`, `direction` and `repeat`, `phase`, when a sequence restarts
+    (model or frame change);
+  - blend modes and premultiplied alpha, the five orientation types, `scale` and `origin`;
+  - Aseprite: tags become sequences, the pivot slice becomes the origin, what isn't supported
+    (non-normal layer blend modes, tilemaps);
+  - Half-Life SPR v2 and how its texture formats map onto blend modes;
+  - the `sidecar: false` precache hint, and the sequence queries with a one-shot explosion example;
+  - the memory guard and its cvar;
+  - export one-liners (ffmpeg to APNG and WebP, Aseprite's CLI).
+- **`docs/game-module-contract.md`**: the `sidecar` option next to the existing `meshCollision`
+  paragraph about `PrecacheModel`, and `GetSpriteSequenceDuration`/`GetSpriteSequenceIndex` on both
+  engine APIs.
+- **`docs/client-entities.md`**: `model` and `frame` are accessors now, and changing either
+  restarts a sprite's animation.
+- **`docs/asset-layer.md`**: the quiet `LoadFile` variant for optional files.
+- **`docs/shader-chunks.md`**: its list of chunks, if the sprite or `pic` shaders get a new one.
+- **JSDoc**: every format parser carries its byte layout from "Verified format layouts"; the
+  `serverdata` writer and reader document the flags byte and protocol 43.
+- **`README.md`**: one bullet in the feature list, linking `docs/sprites.md`, for example:
+  "**Modern Sprites**: animated sprites from GIF, PNG/APNG, WebP and Aseprite files, plus
+  Half-Life sprites, with blend modes, named sequences and optional per-sprite settings."
+- Phase 8 (2D) adds a HUD and screen-effects section to `docs/sprites.md` and extends the README
+  bullet.
+
+## Testing
+
+- **Unit (Node):** each header parser against tiny fixtures (a 2-frame GIF with two disposal
+  modes, an interlaced GIF, a GIF without a NETSCAPE block, a static PNG, a 3-frame APNG whose
+  default image is part of the animation and one where it is not, an animated WebP plus a simple
+  `VP8 ` and a `VP8L` file, a 2-layer tagged `.aseprite` with a pivot slice, a small HL v2 `.spr`
+  per render mode), checked-in under `data/` and added to the Dockerfile
+  (`dockerfile-fixture-sync`). GIF LZW decode to RGBA (pure). APNG frame splitting (byte-level, no
+  `createImageBitmap`). Sidecar merge and defaults. The 10 ms timing clamp. `SpriteAnimator`
+  directions / repeat / phase. `ClientEdict` accessors stamp `animationStartTime` only on a
+  change. SPR loader onto the new shape (padding, `uvScale`). `ImageSpriteLoader` with
+  `loadRenderData = false` (bounds, durations, no decoder call). Boundary test stays green.
+- **Browser (`browser-ui-verification`):** after Phase 1 the three SPR effects side by side with
+  `main`; after Phase 3/4 a test entity per format and blend mode, in Chromium and Firefox. Safari
+  can't be run here; I'll say so rather than claim it.
+
+### What actually shipped in Phase 0
+
+No code. Everything below changed the plan, not the engine:
+
+- **Specs verified** from the downloaded primary sources; the results are the "Verified format
+  layouts" table. Corrections to the first draft: Aseprite's magic is at offset 4, so `canLoad()`
+  can't use the 4-byte-at-0 default; an APNG's default image is not always frame 0; static WebP
+  keeps its size in the VP8/VP8L bitstream header; GIF's loop count lives in a de-facto extension
+  that isn't in the GIF89a spec, and when it is missing the file plays once.
+- **Transparent pass:** blend function per run of same-kind items, depth writes already off for
+  the whole pass. That led to the premultiplied-alpha decision (F) instead of switching blend
+  state per sprite.
+- **Missing files:** no file list; every miss is a network round trip per realm and a console line
+  (C). I proposed a miss cache; the maintainer chose a precache hint carried to the client
+  instead (C, decided 2026-10-23).
+- **Client model writes** are spread over engine and game code, which led to the accessor decision (E).
+- **Loop vocabulary** changed from `loop | once | pingpong` to Aseprite's `direction` + `repeat`,
+  which every format maps onto without loss.
+- **SPR v2 phase** follows v1: its header has the same `synctype`.
+
+### What actually shipped in Phase 1
+
+SPR sprites run on the new model, renderer and shader; no new file format yet.
+
+- **Data model (A).** `source/engine/common/model/sprite/` holds `SpriteTypes.ts` (the `SpriteOrientation`,
+  `SpriteBlend`, `SpriteDirection`, `SpritePhase` enums, `SpriteImage`, `SpriteSequence`),
+  `SpriteAsset.ts` (frames, blend, layer size, array texture), `SpriteAnimator.ts` and `SpritePixels.ts`
+  (pads an image into a larger layer). `SpriteModel` owns an `asset` and has `orientation` and `phase` instead of
+  `oriented`; `frames` and `numframes` are getters. `model.random` stays, set from `phase`, because the client
+  derives `syncbase` from it.
+- **SPR loader.** Rewritten onto that shape. It now reads the frames in both realms (the old one skipped them on the
+  server), so the server has `endTimes` and image sizes. Only `loadRenderData` builds the texture. An unknown
+  header `type` falls back to `parallel` with a warning instead of being drawn as one by accident.
+- **Array texture.** `GLTextureArray.FromRGBALayers()` (full mip chain, clamped, follows `gl_texturemode` like
+  `GLTexture`), `bind(unit, flushStream)`. `GL.Shutdown()` frees the arrays.
+- **Rendering (F).** `sprite.vert/.frag` use a `vec3` texture coordinate and `sampler2DArray`; the shader takes
+  the color out of the premultiplied texel (`rgb / a`) for gamma and fog and writes premultiplied output;
+  `TransparentPass` blends sprites with `ONE, ONE_MINUS_SRC_ALPHA`. All five orientation types have their basis
+  (`parallelUpright`, `facingUpright`, `oriented`, `parallelOriented`, `parallel`). Only the `alphaTest` path is in
+  the shader; the `alpha`/`additive` uniform waits for Phase 4.
+- **Timing (E).** `ClientEdict.model` and `.frame` are accessors that stamp the new `animationStartTime`;
+  `phase` picks `global`, `random` (`+ syncbase`) or `spawn` (`- animationStartTime`).
+  `SpriteAnimator` has `imageIndexAt()`, `cycleDuration()` and `duration()`. A finished ping-pong sequence holds
+  the image its cycle started with; the other directions hold the last image they showed.
+- **Deviations from the design.**
+  - `SpriteAnimator` returns an image index only. The blend factor for `interpolate` comes with Phase 4.
+  - `SpriteAsset` has no `regions` (G) and `SpriteModel` no `lit` yet; they land with their phases.
+  - **Fixed a latent bug on the way:** sprites are streamed and drawn at the next flush, but `uAlpha` and
+    `uBloomEmissiveScale` were set per sprite, so every sprite of a run was drawn with the last sprite's values.
+    The renderer now flushes when either changes. An entity with `alpha 0.5` next to others was drawn opaque
+    before; the browser pass showed it.
+  - Sprites that share an array texture are batched into one flush; a different texture, alpha or emissive scale
+    flushes.
+- **Visible change (deliberate).** The premultiplied path removes the dark fringe on a sprite's silhouette: the
+  one-pixel edge of `s_explod`, `s_light` and a synthetic group differs from `main` by at most a few dozen levels
+  per pixel (summed over RGB); everything inside the silhouette is identical.
+- **Docs updated:** `docs/client-entities.md` (the accessors). `docs/sprites.md`, the README bullet and
+  `docs/game-module-contract.md` wait for the phases that ship what they describe.
+- **Tests added:** `test/common/sprite-animator.test.ts` (every direction, repeat, holds),
+  `test/common/sprite-spr-loader.test.ts` (header, orientation, phase, groups, layers, `uvScale`, server realm,
+  padding), `test/client/client-edict-animation.test.ts` (accessors stamp only on a change). All 2644 tests,
+  ESLint and `npm run typecheck` are green; the shader library test links `sprite` with `glslangValidator`.
+- **Browser check** (Chromium on software GL, `browser-ui-verification` recipe, before = `HEAD`, after = working
+  tree): `s_explod`, `s_light`, `s_bubble` and a synthetic three-image group of different sizes (padding and
+  `uvScale`) with the clock pinned. Same image at every time in both builds, only the silhouette edge differs
+  (above). Then the after build alone: `alpha 0.5` entities draw at half brightness, and all four orientation
+  types other than `parallel` draw plausibly (upright, facing, entity-angled, rolled). Not checked: Firefox and
+  Safari, and a group in an id1 sprite (none of the three shipped SPRs has one; the synthetic group stands in).
+
+## Open questions
+
+None open. The two that came out of Phase 0 were settled by the maintainer on 2026-10-23 (Status).
+The G fork (2D API shape) waits for Phase 8.
