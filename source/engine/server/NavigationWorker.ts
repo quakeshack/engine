@@ -17,10 +17,10 @@ eventBus.subscribe('nav.load', async (mapname: string, checksum: number | null) 
 
     Con.DPrint('Navigation: navigation graph loaded on worker thread!\n');
   } catch (error) {
-    // unusable navmesh, trigger a rebuild
+    // unusable navmesh, have the server thread rebuild it; its save publishes nav.load again
     if (error instanceof NavMeshOutOfDateException) {
-      // WorkerFramework.Publish('nav.build');
-      Con.PrintWarning('Navigation: navmesh is out of date, needs to be rebuilt\n');
+      Con.PrintWarning(`Navigation: navmesh is out of date (${error.reason}), rebuilding\n`);
+      WorkerFramework.Publish('nav.build');
     }
   }
 });

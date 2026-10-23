@@ -1,23 +1,29 @@
-# Files: Content, User Files and Caches
+# Files: Content, User Files, Generated Files and Caches
 
 Where the engine gets its files from and where it keeps what it writes. This is the layer under
-`COM.LoadFile`, `COM.LoadTextFile`, `COM.WriteFile` and `COM.WriteTextFile`. It exists in the browser;
-the dedicated server reads and writes the file system directly (`server/Com.ts`) and does not use it.
+`COM.LoadFile`, `COM.LoadTextFile`, `COM.WriteFile`, `COM.WriteTextFile` and `COM.WriteGeneratedFile`. It
+exists in the browser; the dedicated server reads and writes the file system directly (`server/Com.ts`)
+and does not use it.
 
-## Two kinds of files
+## Three kinds of files
 
-| | Content | User files |
-| :--- | :--- | :--- |
-| What | Maps, models, textures, sounds, `.cfg` files that ship with the game | Saves, `config.cfg`, demos, generated `.nav` meshes |
-| Read through | `AssetSource` (`common/AssetSource.ts`) | `UserStore` (`common/UserStore.ts`) |
-| Browser storage | Cache Storage, downloaded through `fetch` | IndexedDB (`common/IndexedDbBackend.ts`) |
-| Written by the engine | Never | Yes |
+| | Content | User files | Generated files |
+| :--- | :--- | :--- | :--- |
+| What | Maps, models, textures, sounds, `.cfg` files that ship with the game | Saves, `config.cfg`, demos | Files the engine derives from content: `.nav` meshes |
+| Read through | `AssetSource` (`common/AssetSource.ts`) | `UserStore` (`common/UserStore.ts`) | `GeneratedFileStore` (`common/GeneratedFileStore.ts`) |
+| Browser storage | Cache Storage, downloaded through `fetch` | IndexedDB `quakeshack` (`common/IndexedDbBackend.ts`) | IndexedDB `quakeshack-generated` |
+| Written by the engine | Never | `COM.WriteFile`, `COM.WriteTextFile` | `COM.WriteGeneratedFile` |
+| Kept | For the running build and game version | Forever | For the running build and game version |
 
-Both are addressed by the same path, `<game directory>/<file name>`, lower case. `COM.LoadFile` asks the
-user store first, so a file the engine wrote overrides content of the same name, then the asset source.
+All are addressed by the same path, `<game directory>/<file name>`, lower case. `COM.LoadFile` asks the
+user store first, then the generated files of the running build and game version, then the asset source.
+A user file overrides everything of the same name. A generated file overrides content, because one only
+exists when the content file was missing or out of date for this very build.
 
-Both storages exist inside workers as well (the old `localStorage` did not), so a server running in a
-worker can read content and write saves like the main thread.
+All storages exist inside workers as well (the old `localStorage` did not), so a server running in a
+worker can read content and write saves like the main thread. A worker is told the build and game version
+of the realm that spawned it (`worker.framework.init`), so it names the same asset cache and finds the same
+generated files.
 
 ## Content: `CachedFetchAssetSource`
 
@@ -50,12 +56,15 @@ because it is simple and safe; addressing files by content hash would remove the
 
 ## User files: `BackendUserStore`
 
-A user store sits on a small key-value backend (`get`, `put`, `delete`). `IndexedDbBackend` is the real
-one (database `quakeshack`, object store `files`, a write settles when its transaction completes).
+A user store sits on a small key-value backend (`get`, `put`, `delete`, `keys`). `IndexedDbBackend` is the
+real one (database `quakeshack`, object store `files`, a write settles when its transaction completes).
 `MemoryBackend` is used by tests and as the fallback when IndexedDB is unavailable or blocked: the game
 runs, but files are not kept after a reload, and the console says so.
 
 The store never throws: a failing database makes `write` return `false` and `read` return `null`.
+
+Nothing in it is ever deleted by a deploy or a version change. Only what the player owns belongs here;
+whatever the engine can rebuild from content is a generated file.
 
 ### Migration from `localStorage`
 
@@ -65,11 +74,37 @@ once (`BackendUserStore.migrateFromLocalStorage`): each file is removed from `lo
 was stored, and a marker is written last, so an interrupted run finishes on the next start. Other
 `localStorage` keys are left alone.
 
+### Navigation meshes of older versions
+
+Older versions wrote `.nav` meshes into the user store, without a version, where they overrode the meshes
+that ship with the game for good. `COM.InitStorage()` removes every key of the form
+`<game directory>/maps/<map>.nav` once, in every realm before its first read
+(`BackendUserStore.removeLegacyNavigationMeshes`, marker `meta/navigation-meshes-removed`). Everything
+else is left alone.
+
+## Generated files: `GeneratedFileStore`
+
+The engine writes a file it derived from content with `COM.WriteGeneratedFile`. Today that is a
+navigation mesh the server rebuilt because the map ships none, or ships one that is out of date
+(`Navigation.rebuildOutdated`, see `nav.build` in [events.md](events.md)).
+
+- **Its own database**, `quakeshack-generated`, so adding it needed no schema upgrade of the user files.
+  Pages of an older build that are still open would have blocked that upgrade.
+- **Namespaced like the asset cache.** Keys are `<asset cache name>/<file name>`, so a file belongs to one
+  engine build, game directory and game version. Once the game version is known, `COM.SetGameVersion()`
+  deletes the files of every other namespace, next to the asset caches. A new deploy therefore rebuilds a
+  mesh rather than reading one an older generator made.
+- **Never throws**, like the user store; `MemoryBackend` is the fallback, and then a mesh is rebuilt after
+  every reload.
+
+The dedicated server has no such store: `COM.WriteGeneratedFile` writes next to the content on disk and
+replaces the outdated file there.
+
 ## Writes are asynchronous
 
-`COM.WriteFile` and `COM.WriteTextFile` return a promise (they used to write `localStorage`
-synchronously). Callers `await` them: `Host.WriteConfiguration`, `ClientHost.Savegame_f`, `ClientDemos`,
-`Navigation`. A write started while the page is being closed (the configuration is written once more at
+`COM.WriteFile`, `COM.WriteTextFile` and `COM.WriteGeneratedFile` return a promise (the first two used to
+write `localStorage` synchronously). Callers `await` them: `Host.WriteConfiguration`, `ClientHost.Savegame_f`,
+`ClientDemos`, `Navigation`. A write started while the page is being closed (the configuration is written once more at
 shutdown) may not finish; archived cvar changes are written five seconds after they happen, so only the
 last moments are at risk.
 
@@ -79,7 +114,8 @@ answers from a snapshot of the slots' metadata that `SaveSlots.refresh()` takes 
 
 ## Testing
 
-`test/common/asset-source.test.ts`, `user-store.test.ts` and `com-storage.test.ts` run the logic
-against fakes for `fetch`, Cache Storage, Web Locks and the key-value backend. The real browser parts
-(`IndexedDbBackend`, real Cache Storage and locks, the migration) need a browser: see
+`test/common/asset-source.test.ts`, `user-store.test.ts`, `generated-file-store.test.ts` and
+`com-storage.test.ts` run the logic against fakes for `fetch`, Cache Storage, Web Locks and the key-value
+backend. The real browser parts (`IndexedDbBackend`, real Cache Storage and locks, the migration and the
+removal of old meshes) need a browser: see
 [browser-verification.md](browser-verification.md).

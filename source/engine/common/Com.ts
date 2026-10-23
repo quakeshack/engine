@@ -4,6 +4,7 @@ import { eventBus } from './EventBus.ts';
 
 import { AssetCaches, CachedFetchAssetSource, type AssetSource } from './AssetSource.ts';
 import { BackendUserStore, MemoryBackend, type UserStore } from './UserStore.ts';
+import { GeneratedFileStore } from './GeneratedFileStore.ts';
 import { IndexedDbBackend } from './IndexedDbBackend.ts';
 
 import Q from '../../shared/Q.ts';
@@ -107,10 +108,16 @@ export default class COM {
    */
   userStore: UserStore | null = null;
 
+  /**
+   * Where the files the engine derives from content live, in the namespace of the running build and
+   * game version. Set by {@link COM#InitStorage}. The dedicated server does not use it.
+   */
+  generatedStore: GeneratedFileStore | null = null;
+
   /** Version of the loaded game module, `null` until it is loaded. Part of the asset cache name. */
   gameVersion: string | null = null;
 
-  /** Settles when the user store is open, file reads and writes wait for it. */
+  /** Settles when the user store and the generated file store are open, file reads and writes wait for it. */
   #storageReady: Promise<void> = Promise.resolve();
 
   /**
@@ -346,11 +353,11 @@ export default class COM {
 
   /**
    * Sets up where files are read from and written to in the browser: content comes through the
-   * Cache Storage of the origin, files the engine writes go to IndexedDB, and files an older version
-   * kept in `localStorage` are moved over once.
+   * Cache Storage of the origin, user files and generated files go to two IndexedDB databases, and
+   * files an older version kept in `localStorage` are moved over once.
    *
-   * Both work the same inside a worker, which is what lets a server in a worker share the files and
-   * the saves of the client.
+   * All of them work the same inside a worker, which is what lets a server in a worker share the
+   * files and the saves of the client.
    */
   async InitStorage(): Promise<void> {
     this.assetSource = new CachedFetchAssetSource({
@@ -367,8 +374,9 @@ export default class COM {
       revalidate: this.getBuildConfig()?.mode === 'development',
     });
 
-    this.#storageReady = this.#openUserStore().then((store) => {
-      this.userStore = store;
+    this.#storageReady = Promise.all([this.#openUserStore(), this.#openGeneratedStore()]).then(([userStore, generatedStore]) => {
+      this.userStore = userStore;
+      this.generatedStore = generatedStore;
     });
 
     await this.#storageReady;
@@ -378,7 +386,7 @@ export default class COM {
     let store: BackendUserStore;
 
     try {
-      store = new BackendUserStore(await IndexedDbBackend.open(globalThis.indexedDB));
+      store = new BackendUserStore(await IndexedDbBackend.open(globalThis.indexedDB, IndexedDbBackend.USER_FILES));
     } catch (error) {
       this.sys.Print(`COM.InitStorage: IndexedDB is unavailable (${(error as Error).message}), files are not kept after a reload\n`);
       return new BackendUserStore(new MemoryBackend());
@@ -393,7 +401,23 @@ export default class COM {
       }
     }
 
+    // Every realm cleans up before its first read, so none of them is served a stale mesh.
+    const removed = await store.removeLegacyNavigationMeshes();
+
+    if (removed > 0) {
+      this.sys.Print(`COM.InitStorage: removed ${removed} outdated navigation mesh(es) from the user files\n`);
+    }
+
     return store;
+  }
+
+  async #openGeneratedStore(): Promise<GeneratedFileStore> {
+    try {
+      return new GeneratedFileStore(await IndexedDbBackend.open(globalThis.indexedDB, IndexedDbBackend.GENERATED_FILES));
+    } catch (error) {
+      this.sys.Print(`COM.InitStorage: IndexedDB is unavailable (${(error as Error).message}), generated files are rebuilt after a reload\n`);
+      return new GeneratedFileStore(new MemoryBackend());
+    }
   }
 
   /**
@@ -416,12 +440,18 @@ export default class COM {
   }
 
   /**
-   * Tells the file layer which game version is running. From then on content is cached for that
-   * version, and the caches of every other build and version are deleted.
+   * Tells the file layer which game version is running. From then on content is cached and files
+   * are generated for that version, and the caches and generated files of every other build and
+   * version are deleted.
    */
   async SetGameVersion(version: string): Promise<void> {
     this.gameVersion = version;
 
+    await this.#pruneAssetCaches();
+    await this.#pruneGeneratedFiles();
+  }
+
+  async #pruneAssetCaches(): Promise<void> {
     if (this.assetSource === null) {
       return;
     }
@@ -436,6 +466,40 @@ export default class COM {
     } catch (error) {
       this.con.DPrint(`COM.SetGameVersion: could not clean up asset caches (${(error as Error).message})\n`);
     }
+  }
+
+  async #pruneGeneratedFiles(): Promise<void> {
+    await this.#storageReady;
+
+    if (this.generatedStore === null) {
+      return;
+    }
+
+    const deleted = await this.generatedStore.prune(this.GetAssetCacheName());
+
+    if (deleted > 0) {
+      this.con.DPrint(`COM.SetGameVersion: removed ${deleted} outdated generated file(s)\n`);
+    }
+  }
+
+  /**
+   * Writes a file the engine derived from content, such as a navigation mesh. It is kept for the
+   * running build and game version only and read back by {@link COM#LoadFile} before content, so a
+   * rebuilt file replaces an outdated one that ships with the game until the next deploy.
+   * @returns whether the file was stored
+   */
+  async WriteGeneratedFile(filename: string, data: Uint8Array): Promise<boolean> {
+    await this.#storageReady;
+
+    filename = filename.toLowerCase();
+
+    if (this.generatedStore === null || !await this.generatedStore.write(this.GetAssetCacheName(), filename, data)) {
+      this.sys.Print(`COM.WriteGeneratedFile: failed on ${filename}\n`);
+      return false;
+    }
+
+    this.sys.Print(`COM.WriteGeneratedFile: ${filename}\n`);
+    return true;
   }
 
   /**
@@ -514,7 +578,8 @@ export default class COM {
 
   /**
    * Load a file from the virtual filesystem.
-   * Files the engine wrote override content, which is read through the asset cache.
+   * User files override generated files of the running version, and both override content, which
+   * is read through the asset cache.
    * @returns binary content, or null if not found
    */
   async LoadFile(filename: string): Promise<ArrayBuffer | null> {
@@ -526,7 +591,7 @@ export default class COM {
     const gameDir = this.GetGamedir();
     const path = `${gameDir}/${filename}`;
 
-    // 1) Files the engine wrote (saves, configuration, ...) come first.
+    // 1) Files the player owns (saves, configuration, ...) come first.
     await this.#storageReady;
 
     const userData = await this.userStore?.read(path) ?? null;
@@ -537,7 +602,17 @@ export default class COM {
       return userData;
     }
 
-    // 2) Content from the pre-merged filesystem (all PAKs and priorities resolved at build time).
+    // 2) Files generated by this very build and game version. One only exists because the content
+    // file was missing or outdated, so it is the better one.
+    const generatedData = await this.generatedStore?.read(this.GetAssetCacheName(), filename) ?? null;
+
+    if (generatedData !== null) {
+      this.sys.Print(`COM.LoadFile: ${path} (generated)\n`);
+      eventBus.publish('com.fs.end', filename);
+      return generatedData;
+    }
+
+    // 3) Content from the pre-merged filesystem (all PAKs and priorities resolved at build time).
     const data = await this.assetSource?.read(path) ?? null;
 
     if (data !== null) {

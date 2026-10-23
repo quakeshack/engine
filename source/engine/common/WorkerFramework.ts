@@ -1,4 +1,4 @@
-import type { URLs } from '../build-config';
+import type { BuildConfig, URLs } from '../build-config';
 import type { ConsoleOutput } from './Services.ts';
 
 import Con from './Console.ts';
@@ -105,13 +105,14 @@ export default class WorkerFramework {
   static async Init(): Promise<WorkerServices> {
     let workerCom: COM;
 
-    // The URLs are sent by the main thread once the worker is up, see `worker.framework.init`.
+    // The URLs and the build are sent by the main thread once the worker is up, see `worker.framework.init`.
     const urls = {} as URLs;
+    let buildConfig: BuildConfig | undefined;
 
     const comDependencies: ComDependencies = {
       con: WorkerConsole,
       sys: WorkerSys,
-      buildConfig: () => undefined,
+      buildConfig: () => buildConfig,
       urls: () => urls,
     };
 
@@ -144,14 +145,14 @@ export default class WorkerFramework {
     this.#InitModules(workerCom);
 
     eventBus.subscribe('worker.framework.init', (comParams: WorkerFrameworkInitPayload, receivedUrls: URLs | undefined) => {
-      workerCom.searchpaths = comParams[0];
-      workerCom.gamedir = comParams[1];
-      workerCom.game = comParams[2];
-
-      // Inside a browser worker this opens the same Cache Storage and IndexedDB as the main thread.
-      void workerCom.InitStorage();
-
+      [workerCom.searchpaths, workerCom.gamedir, workerCom.game, buildConfig] = comParams;
+      // Only the realm that loads the game module cleans up after other versions, see `COM.SetGameVersion`.
+      workerCom.gameVersion = comParams[4];
       Object.assign(urls, receivedUrls ?? {});
+
+      // Inside a browser worker this opens the same Cache Storage and IndexedDB as the main thread,
+      // and with the build and game version above it names the same asset cache and generated files.
+      void workerCom.InitStorage();
     });
 
     console.debug('Worker Framework initialized.');

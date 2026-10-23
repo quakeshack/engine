@@ -1,8 +1,9 @@
 import Q from '../../shared/Q.ts';
 
 /**
- * Where the files the engine writes live: saves, the configuration, demos, generated navigation
- * meshes. A file here overrides the content file of the same path. Paths are addressed like in
+ * Where the files the player owns live: saves, the configuration, demos. A file here overrides the
+ * content file of the same path and survives every deploy. Files the engine derives from content
+ * (navigation meshes) go to the `GeneratedFileStore` instead. Paths are addressed like in
  * `AssetSource` (see `AssetSource.ts`): `<game directory>/<file name>`, lower case.
  */
 export interface UserStore {
@@ -30,6 +31,8 @@ export interface KeyValueBackend {
   get(key: string): Promise<ArrayBuffer | null>;
   put(key: string, value: ArrayBuffer): Promise<void>;
   delete(key: string): Promise<void>;
+  /** Every key in the database, for cleaning up. */
+  keys(): Promise<string[]>;
 }
 
 /** The subset of `localStorage` the migration reads and cleans up. */
@@ -60,6 +63,11 @@ export class MemoryBackend implements KeyValueBackend {
   async delete(key: string): Promise<void> {
     this.#entries.delete(key);
   }
+
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async keys(): Promise<string[]> {
+    return [...this.#entries.keys()];
+  }
 }
 
 /**
@@ -72,6 +80,12 @@ export class BackendUserStore implements UserStore {
 
   /** Prefix `Host`/`COM` used for the keys of the legacy `localStorage` files. */
   static readonly LEGACY_PREFIX = 'Quake.';
+
+  /** Key of the marker that records that the navigation meshes older versions kept here were removed. */
+  static readonly NAVIGATION_MESHES_MARKER = 'meta/navigation-meshes-removed';
+
+  /** What a navigation mesh older versions wrote into this store looks like: `<game directory>/maps/<map>.nav`. */
+  static readonly LEGACY_NAVIGATION_MESH = /^[^/]+\/maps\/[^/]+\.nav$/;
 
   readonly #backend: KeyValueBackend;
 
@@ -159,5 +173,47 @@ export class BackendUserStore implements UserStore {
     await this.write(BackendUserStore.MIGRATION_MARKER, new Uint8Array([1]));
 
     return moved;
+  }
+
+  /**
+   * Removes the navigation meshes older versions wrote into this store, once. They were stored
+   * without a version and overrode the meshes that ship with the game, so none of them can be
+   * trusted; a mesh that is needed again is rebuilt into the `GeneratedFileStore`.
+   *
+   * Everything else (saves, the configuration, demos, markers) is left alone. Like the migration,
+   * it is safe to be interrupted: the marker is set last.
+   * @returns The number of files that were removed.
+   */
+  async removeLegacyNavigationMeshes(): Promise<number> {
+    if (await this.read(BackendUserStore.NAVIGATION_MESHES_MARKER) !== null) {
+      return 0;
+    }
+
+    let keys: string[];
+
+    try {
+      keys = await this.#backend.keys();
+    } catch (error) {
+      console.warn('UserStore: could not list the files', error);
+      return 0;
+    }
+
+    let removed = 0;
+
+    for (const key of keys) {
+      if (!BackendUserStore.LEGACY_NAVIGATION_MESH.test(key)) {
+        continue;
+      }
+
+      if (!await this.remove(key)) {
+        return removed;
+      }
+
+      removed++;
+    }
+
+    await this.write(BackendUserStore.NAVIGATION_MESHES_MARKER, new Uint8Array([1]));
+
+    return removed;
   }
 }
