@@ -93,7 +93,7 @@ export class GifHeader {
       throw new CorruptedResourceError(name, `${name} has no images`);
     }
 
-    return { width, height, frameDurations, repeat, tags: [] };
+    return { width, height, frameDurations, repeat, tags: [], origins: null };
   }
 
   /**

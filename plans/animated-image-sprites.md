@@ -19,7 +19,10 @@ Phase 3". Chromium checked, Firefox not.
 Phase 5 waits for a go-ahead.
 
 ✅ Phase 5 done (2026-10-23): the game API queries, the README bullet and the complete `docs/sprites.md`, see "What
-actually shipped in Phase 5". Phase 6 (Aseprite, Half-Life SPR v2) waits for a go-ahead.
+actually shipped in Phase 5".
+
+✅ Phase 6 done (2026-10-23): native Aseprite files and Half-Life SPR v2, see "What actually shipped in Phase 6".
+Phases 7 (extras) and 8 (2D sprites) are optional and each wait for their own go-ahead.
 
 ### Decisions so far (2026-10-22, from the maintainer)
 
@@ -746,8 +749,49 @@ Image sprites are decoded and drawn in the client: GIF, APNG, static PNG, animat
   lookup by name, unknown and empty names, not precached) and `SpriteModel` ping-pong counting.
 - **Not changed:** the README does not promise Aseprite or Half-Life sprites yet.
 
+### What actually shipped in Phase 6
+
+- **Aseprite file reader.** `common/model/sprite/AsepriteFile.ts` takes a file apart (header, frames, chunks `0x2004`
+  layer, `0x2005` cel, `0x2018` tags, `0x2019` and the old `0x0004`/`0x0011` palettes, `0x2022` slice; everything else is
+  skipped by its size) without decompressing, and `AsepriteHeader.ts` turns it into the `ImageHeader` of the header pass
+  (durations, tags, pivots). Both realms use it. `ImageHeader` gained `origins` (one pixel per image or `null`), `ImageFormat`
+  gained `aseprite`, detection looks for `0xA5E0` at offset 4 (so an Adobe `.ase` swatch file, which shares the
+  extension, is not taken). A frame without a duration takes the header's speed, as the spec says.
+- **Pixel decoder.** `client/renderer/sprite/AsepriteSpriteDecoder.ts`: inflates with `DecompressionStream('deflate')`,
+  converts RGBA, grayscale and indexed pixels (palette alpha; the transparent index is transparent except in the
+  background layer), skips hidden layers, layers in hidden groups, reference layers, tilemap layers (reported once) and
+  groups, orders cels by `layer + z-index` then `z-index` (spec NOTE.5), applies layer opacity (when the header says it is
+  valid) and cel opacity, follows linked cels, composites in float premultiplied and rounds once. Non-normal blend modes
+  are drawn as normal and reported once.
+- **Tags and pivots in the loader.** With no `sequences` in the sidecar the tags become the sequences, in order, with
+  their direction and repeat; the sidecar's `repeat` and `fps` replace theirs. Aseprite counts the legs of a ping-pong in
+  `repeat`, a sequence counts cycles, so a ping-pong tag's count is halved (rounded, at least 1): this is the one
+  place where the file cannot be followed exactly (an odd count like "3 legs" has no equivalent). The first slice with a
+  pivot sets `origin` per image (a moving slice moves it), the sidecar's `origin` wins, and the bounds are the union.
+- **Half-Life SPR v2** in `SpriteSPRLoader`: the 40 byte header, the 256 color palette, `texFormat` 0 normal (opaque),
+  1 additive (`blend: additive`), 2 index-alpha (`blend: alpha`, alpha = index, color from the entry, premultiplied), 3
+  alpha test (index 255 transparent); an unknown value is alpha test with a warning. The values are FTE's and no real
+  Half-Life sprite was available: **unverified**, and the docs say so. A `.spr` does not read a sidecar.
+- **Checked against the real thing (once, by hand, files not committed because of Aseprite's license):** the 18 test
+  files of the Aseprite repository (made by the real editor) all parse and decode; layer names, hidden layers and groups,
+  tag names, directions and repeats, slice keys, the transparent index and the palettes agree with the README of those
+  files, and the decoded frames look right (text sprites, letters on four layers, linked cels, the empty second frame
+  of `1empty3`). No file had a slice pivot, and there is no ground-truth image to compare pixels against.
+- **Tests added** (2863 in all, ESLint and typecheck clean): `test/support/aseprite.ts` is an Aseprite encoder written
+  from the spec; `aseprite-file` (parsing, durations and speed, unknown chunks, damaged files, layer visibility, palettes,
+  tags, pivots), `sprite-aseprite-decoder` (every color mode, order and z-index, opacity, hidden and reference layers,
+  tilemap and blend-mode warnings, links), the loader's Aseprite tests (tags to sequences, repeat conversion, sidecar
+  overrides, pivots and bounds, upload), and the Half-Life cases of `sprite-spr-loader`.
+- **Browser check** (Chromium, the same ten-sprite scene): editor-made `abcd`, `1empty3` (sequences by `frame`), `tags3`
+  (the three tags animating at once, each in its own direction), `link`, and a synthetic file with a pivot against the
+  same file with `origin: [8, 8]`; all drawn from the real client path (zlib in the browser, array texture). Not checked:
+  Firefox, a Half-Life sprite, a pivot from a real file.
+- **Docs.** `docs/sprites.md` (an Aseprite section, a Half-Life section with the unverified caveat, the format table),
+  the README bullet names Aseprite and Half-Life sprites.
+
 ## Open questions
 
+- **Half-Life sprites need a real file** to confirm the meaning of `texFormat` and of index-alpha colors.
 - **Luminance alpha.** Not built, see above.
 - **Black to alpha (Phase 4), shape of the setting (settled, see Phase 4).** My proposal for the sidecar, to settle when Phase 4 starts:
   `"blend": "additive"` for fire and glow (black adds nothing, no key needed); for an alpha-blended sprite with a

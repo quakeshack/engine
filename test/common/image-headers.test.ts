@@ -33,7 +33,7 @@ void describe('ImageHeaders.detect', () => {
 void describe('GIF header', () => {
   void test('reads size, delays and a loop count of 0 as forever', () => {
     assert.deepEqual(ImageHeaders.parse(readFixture('anim.gif'), 'anim.gif'), {
-      width: 8, height: 4, frameDurations: [50, 100, 200], repeat: 0, tags: [],
+      width: 8, height: 4, frameDurations: [50, 100, 200], repeat: 0, tags: [], origins: null,
     });
   });
 
@@ -73,13 +73,13 @@ void describe('GIF header', () => {
 void describe('PNG header', () => {
   void test('a plain PNG is one image', () => {
     assert.deepEqual(ImageHeaders.parse(readFixture('static.png'), 'static.png'), {
-      width: 8, height: 4, frameDurations: [0], repeat: 1, tags: [],
+      width: 8, height: 4, frameDurations: [0], repeat: 1, tags: [], origins: null,
     });
   });
 
   void test('reads an APNG whose default image is its first frame', () => {
     assert.deepEqual(ImageHeaders.parse(readFixture('anim.apng'), 'anim.apng'), {
-      width: 8, height: 4, frameDurations: [50, 100, 200], repeat: 0, tags: [],
+      width: 8, height: 4, frameDurations: [50, 100, 200], repeat: 0, tags: [], origins: null,
     });
   });
 
@@ -102,7 +102,7 @@ void describe('PNG header', () => {
 void describe('WebP header', () => {
   void test('reads an animated file', () => {
     assert.deepEqual(ImageHeaders.parse(readFixture('anim.webp'), 'anim.webp'), {
-      width: 8, height: 4, frameDurations: [50, 100, 200], repeat: 0, tags: [],
+      width: 8, height: 4, frameDurations: [50, 100, 200], repeat: 0, tags: [], origins: null,
     });
   });
 
@@ -112,7 +112,7 @@ void describe('WebP header', () => {
 
   void test('takes the size of a simple lossless file from its bitstream header', () => {
     assert.deepEqual(ImageHeaders.parse(readFixture('static-lossless.webp'), 'static-lossless.webp'), {
-      width: 8, height: 4, frameDurations: [0], repeat: 1, tags: [],
+      width: 8, height: 4, frameDurations: [0], repeat: 1, tags: [], origins: null,
     });
   });
 

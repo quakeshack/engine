@@ -4,7 +4,7 @@ import { CRC16CCITT } from '../../CRC.ts';
 import { ModelLoader } from '../ModelLoader.ts';
 import { DEFAULT_MODEL_LOAD_OPTIONS, type ModelLoadOptions } from '../ModelLoadContext.ts';
 import { SpriteModel } from '../SpriteModel.ts';
-import { ImageFormat, ImageHeaders, type ImageHeader } from '../sprite/ImageHeader.ts';
+import { ImageFormat, ImageHeaders, type ImageHeader, type SpriteTag } from '../sprite/ImageHeader.ts';
 import { SpriteAsset } from '../sprite/SpriteAsset.ts';
 import type { DecodedSpriteImages } from '../sprite/SpriteImageDecoding.ts';
 import { SpritePixels } from '../sprite/SpritePixels.ts';
@@ -16,7 +16,8 @@ import {
 
 /** Where the images sit relative to the entity, in world units. */
 interface SpriteGeometry {
-  readonly image: Omit<SpriteImage, 'layer'>;
+  /** Each image of the file, without its layer. */
+  readonly images: ReadonlyArray<Omit<SpriteImage, 'layer'>>;
   readonly mins: Vector;
   readonly maxs: Vector;
   readonly radius: number;
@@ -40,7 +41,7 @@ export class ImageSpriteLoader extends ModelLoader {
   }
 
   override getExtensions(): string[] {
-    return ['.gif', '.png', '.apng', '.webp'];
+    return ['.gif', '.png', '.apng', '.webp', '.aseprite', '.ase'];
   }
 
   override getName(): string {
@@ -63,8 +64,8 @@ export class ImageSpriteLoader extends ModelLoader {
     loadmodel.orientation = sidecar.orientation ?? SpriteOrientation.parallel;
     loadmodel.phase = sidecar.phase ?? SpritePhase.spawn;
     loadmodel.random = loadmodel.phase === SpritePhase.random;
-    loadmodel.width = geometry.image.width;
-    loadmodel.height = geometry.image.height;
+    loadmodel.width = geometry.images[0].width;
+    loadmodel.height = geometry.images[0].height;
     loadmodel.boundingradius = geometry.radius;
     loadmodel.mins = geometry.mins;
     loadmodel.maxs = geometry.maxs;
@@ -104,24 +105,34 @@ export class ImageSpriteLoader extends ModelLoader {
 
   /**
    * Works out the size of the images in world units, where the entity's origin sits in them and the bounds that
-   * follow. The origin is a pixel of the image counted from its top left corner and defaults to the center. A
-   * billboard turns around the origin, so the bounds reach as far as the farthest side in every horizontal direction.
-   * @returns The picture's size and place, the bounds and the bounding radius.
+   * follow. The origin is a pixel of the image counted from its top left corner: the sidecar's, else the pivot of an
+   * Aseprite slice (which may differ from image to image), else the center. A billboard turns around the origin, so
+   * the bounds reach as far as the farthest side in every horizontal direction.
+   * @returns The pictures' size and place, the bounds and the bounding radius.
    */
   static #placeImages(header: ImageHeader, sidecar: SpriteSidecar): SpriteGeometry {
     const { scale } = sidecar;
-    const [originX, originY] = sidecar.origin ?? [header.width / 2, header.height / 2];
-    const reach = Math.max(originX, header.width - originX) * scale;
-    const below = (header.height - originY) * scale;
-    const above = originY * scale;
+    let reach = 0;
+    let above = 0;
+    let below = 0;
 
-    return {
-      image: {
-        origin: [0 - originX * scale, 0 - below],
+    const images = header.frameDurations.map((_duration, index) => {
+      const [originX, originY] = sidecar.origin ?? header.origins?.[index] ?? [header.width / 2, header.height / 2];
+
+      reach = Math.max(reach, Math.max(originX, header.width - originX) * scale);
+      above = Math.max(above, originY * scale);
+      below = Math.max(below, (header.height - originY) * scale);
+
+      return {
+        origin: [0 - originX * scale, 0 - (header.height - originY) * scale] as [number, number],
         width: header.width * scale,
         height: header.height * scale,
-        uvScale: [1, 1],
-      },
+        uvScale: [1, 1] as [number, number],
+      };
+    });
+
+    return {
+      images,
       mins: new Vector(0 - reach, 0 - reach, 0 - below),
       maxs: new Vector(reach, reach, above),
       radius: Math.hypot(reach, Math.max(above, below)),
@@ -150,15 +161,37 @@ export class ImageSpriteLoader extends ModelLoader {
    * or one sequence over the images of an animation.
    */
   #buildFrames(header: ImageHeader, frameCount: number, geometry: SpriteGeometry, sidecar: SpriteSidecar, name: string): SpriteFrame[] {
-    const images: SpriteImage[] = Array.from({ length: frameCount }, (_value, layer) => ({ layer, ...geometry.image }));
+    const images: SpriteImage[] = Array.from({ length: frameCount }, (_value, layer) => ({ layer, ...geometry.images[layer] }));
     const seconds = header.frameDurations.slice(0, frameCount).map((milliseconds) => (sidecar.fps !== null ? 1 / sidecar.fps : ImageHeaders.frameSeconds(milliseconds)));
     const repeat = sidecar.repeat ?? header.repeat;
 
-    if (sidecar.sequences === null) {
+    // an Aseprite file names its animations with tags, unless the sidecar says otherwise
+    const sequences = sidecar.sequences ?? (header.tags.length > 0 ? header.tags.map((tag) => ImageSpriteLoader.#sequenceOfTag(tag, sidecar.repeat)) : null);
+
+    if (sequences === null) {
       return [images.length === 1 ? images[0] : ImageSpriteLoader.#buildSequence('', images, seconds, SpriteDirection.forward, repeat)];
     }
 
-    return sidecar.sequences.map((entry) => this.#buildNamedSequence(entry, images, seconds, repeat, name));
+    return sequences.map((entry) => this.#buildNamedSequence(entry, images, seconds, repeat, name));
+  }
+
+  /**
+   * Aseprite counts the legs of a ping-pong ("repeat 2" is forward once and back once), a sequence counts its
+   * cycles, so the count is halved there (rounded, at least one cycle).
+   * @param repeatOverride What the sidecar says for all sequences, `null` to take the tag's.
+   * @returns The tag as a sidecar sequence entry.
+   */
+  static #sequenceOfTag(tag: SpriteTag, repeatOverride: number | null): SpriteSidecarSequence {
+    const pingpong = tag.direction === SpriteDirection.pingpong || tag.direction === SpriteDirection.pingpongReverse;
+
+    return {
+      name: tag.name,
+      from: tag.from,
+      to: tag.to,
+      direction: tag.direction,
+      repeat: repeatOverride ?? (pingpong && tag.repeat > 0 ? Math.max(1, Math.round(tag.repeat / 2)) : tag.repeat),
+      fps: null,
+    };
   }
 
   #buildNamedSequence(entry: SpriteSidecarSequence, images: readonly SpriteImage[], seconds: readonly number[], repeat: number, name: string): SpriteSequence {

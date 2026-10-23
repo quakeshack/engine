@@ -88,14 +88,14 @@ export class WebpHeader {
     }
 
     if (!animated) {
-      return { width, height, frameDurations: [0], repeat: 1, tags: [] };
+      return { width, height, frameDurations: [0], repeat: 1, tags: [], origins: null };
     }
 
     if (frameDurations.length === 0) {
       throw new CorruptedResourceError(name, `${name} is animated but has no frames`);
     }
 
-    return { width, height, frameDurations, repeat: loopCount, tags: [] };
+    return { width, height, frameDurations, repeat: loopCount, tags: [], origins: null };
   }
 
   static #uint24(view: DataView, offset: number): number {

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { describe, mock, test } from 'node:test';
 
+import { GLTextureArray } from '../../source/engine/client/GL.ts';
+import { SpriteModel } from '../../source/engine/common/model/SpriteModel.ts';
 import { SpriteSPRLoader } from '../../source/engine/common/model/loaders/SpriteSPRLoader.ts';
 import { SpritePixels } from '../../source/engine/common/model/sprite/SpritePixels.ts';
 import {
@@ -20,6 +22,12 @@ type TestFrame = TestImage | { readonly endTimes: number[]; readonly images: Tes
 interface TestSprite {
   readonly type?: number;
   readonly version?: number;
+  /** Half-Life's texture format, written in a version 2 file. */
+  readonly textureFormat?: number;
+  /** The palette of a version 2 file, RGB triples (256 of them, zeros when left out). */
+  readonly palette?: readonly number[];
+  /** The palette index every pixel gets, 7 by default. */
+  readonly pixel?: number;
   readonly syncType?: number;
   readonly width: number;
   readonly height: number;
@@ -43,18 +51,28 @@ function createSprite(sprite: TestSprite): ArrayBuffer {
     u32(entry.originY);
     u32(entry.width);
     u32(entry.height);
-    bytes.push(...new Array<number>(entry.width * entry.height).fill(7));
+    bytes.push(...new Array<number>(entry.width * entry.height).fill(sprite.pixel ?? 7));
   };
 
   u32(0x50534449);
   u32(sprite.version ?? 1);
   u32(sprite.type ?? 2);
+
+  if (sprite.version === 2) {
+    u32(sprite.textureFormat ?? 3);
+  }
+
   f32(10);
   u32(sprite.width);
   u32(sprite.height);
   u32(sprite.frames.length);
   f32(0);
   u32(sprite.syncType ?? 0);
+
+  if (sprite.version === 2) {
+    bytes.push(0, 1); // 256 colors
+    bytes.push(...Array.from({ length: 768 }, (_value, index) => sprite.palette?.[index] ?? 0));
+  }
 
   for (const frame of sprite.frames) {
     if ('images' in frame) {
@@ -176,9 +194,109 @@ void describe('SpriteSPRLoader', () => {
   void test('rejects other versions, empty files and non-positive intervals', () => {
     const frame = { originX: 0, originY: 0, width: 1, height: 1 };
 
-    assert.throws(() => createServerLoader().load(createSprite({ version: 2, width: 1, height: 1, frames: [frame] }), 'a.spr'), /wrong version/);
+    assert.throws(() => createServerLoader().load(createSprite({ version: 3, width: 1, height: 1, frames: [frame] }), 'a.spr'), /wrong version/);
     assert.throws(() => createServerLoader().load(createSprite({ width: 1, height: 1, frames: [] }), 'a.spr'), /no frames/);
     assert.throws(() => createServerLoader().load(createSprite({ width: 1, height: 1, frames: [{ endTimes: [0], images: [frame] }] }), 'a.spr'), /interval/);
+  });
+});
+
+void describe('SpriteSPRLoader, Half-Life sprites (version 2)', () => {
+  const frame = { originX: -1, originY: 1, width: 2, height: 2 };
+  const palette = Array.from({ length: 256 }, (_value, index) => [index === 7 ? 200 : 0, index === 7 ? 100 : 0, index === 7 ? 50 : 0]).flat();
+
+  /**
+   * Loads a version 2 file with every pixel at index 7 and the palette above, with the pixels' texture upload spied on.
+   * @returns The model and the layers handed to the texture.
+   */
+  async function load(sprite: Partial<TestSprite> & { textureFormat: number }): Promise<{ model: SpriteModel, layers: Uint8Array[] }> {
+    const layers: Uint8Array[] = [];
+
+    mock.method(GLTextureArray, 'FromRGBALayers', (_width: number, _height: number, uploaded: readonly Uint8Array[]) => {
+      layers.push(...uploaded);
+
+      return { texture: 'array texture' } as unknown as GLTextureArray;
+    });
+
+    try {
+      const loader = new SpriteSPRLoader(createModelLoadContext({ loadRenderData: true }));
+      const model = await loader.load(createSprite({ version: 2, width: 2, height: 2, frames: [frame], palette, ...sprite }), 'sprites/half-life.spr');
+
+      return { model, layers };
+    } finally {
+      mock.restoreAll();
+    }
+  }
+
+  void test('reads the header with its extra field, and the palette before the frames', async () => {
+    const { model } = await load({ textureFormat: 3, type: 1, syncType: 1 });
+
+    assert.equal(model.orientation, SpriteOrientation.facingUpright);
+    assert.equal(model.phase, SpritePhase.random);
+    assert.equal(model.boundingradius, 10);
+    assert.deepEqual([model.width, model.height], [2, 2]);
+    assert.deepEqual([...(model.frames[0] as SpriteImage).origin], [-1, -1]);
+  });
+
+  void test('loads on a server without touching the palette or the pixels', async () => {
+    const model = await createServerLoader().load(createSprite({ version: 2, textureFormat: 1, width: 2, height: 2, frames: [frame] }), 'sprites/half-life.spr');
+
+    assert.equal(model.asset?.texture, null);
+    assert.equal(model.asset?.blend, SpriteBlend.additive);
+  });
+
+  void test('alpha test: the color comes from the file\'s palette and index 255 is transparent', async () => {
+    const { model, layers } = await load({ textureFormat: 3, pixel: 7 });
+    const transparent = await load({ textureFormat: 3, pixel: 255 });
+
+    assert.equal(model.asset?.blend, SpriteBlend.alphaTest);
+    assert.deepEqual([...layers[0].subarray(0, 4)], [200, 100, 50, 255]);
+    assert.deepEqual([...transparent.layers[0].subarray(0, 4)], [0, 0, 0, 0]);
+  });
+
+  void test('normal: opaque, index 255 is just a color', async () => {
+    const { model, layers } = await load({ textureFormat: 0, pixel: 255 });
+
+    assert.equal(model.asset?.blend, SpriteBlend.alphaTest);
+    assert.equal(layers[0][3], 255);
+  });
+
+  void test('additive: opaque colors that are added to the scene', async () => {
+    const { model, layers } = await load({ textureFormat: 1, pixel: 255 });
+
+    assert.equal(model.asset?.blend, SpriteBlend.additive);
+    assert.equal(layers[0][3], 255);
+  });
+
+  void test('index alpha: the palette index is the alpha, and the color is premultiplied with it', async () => {
+    const { model, layers } = await load({ textureFormat: 2, pixel: 7 });
+
+    assert.equal(model.asset?.blend, SpriteBlend.alpha);
+    assert.deepEqual([...layers[0].subarray(0, 4)], [Math.round(200 * 7 / 255), Math.round(100 * 7 / 255), Math.round(50 * 7 / 255), 7]);
+  });
+
+  void test('an unknown texture format is alpha tested, and says so', async () => {
+    const warnings: string[] = [];
+    const loader = new SpriteSPRLoader(createModelLoadContext({ con: createSilentConsole({ PrintWarning: (text: string) => { warnings.push(text); } }) }));
+
+    const model = await loader.load(createSprite({ version: 2, textureFormat: 9, width: 2, height: 2, frames: [frame] }), 'sprites/half-life.spr');
+
+    assert.equal(model.asset?.blend, SpriteBlend.alphaTest);
+    assert.equal(warnings.length, 1);
+  });
+
+  void test('rejects a palette that does not have 256 colors', () => {
+    const file = new Uint8Array(createSprite({ version: 2, textureFormat: 3, width: 2, height: 2, frames: [frame] }));
+
+    file[40] = 16;
+    file[41] = 0;
+
+    assert.throws(() => createServerLoader().load(file.buffer, 'a.spr'), /palette colors/);
+  });
+
+  void test('quake sprites are still drawn from Quake\'s palette, alpha tested', async () => {
+    const model = await createServerLoader().load(createSprite({ width: 2, height: 2, frames: [frame] }), 'sprites/quake.spr');
+
+    assert.equal(model.asset?.blend, SpriteBlend.alphaTest);
   });
 });
 

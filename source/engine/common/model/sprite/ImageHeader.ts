@@ -1,4 +1,5 @@
 import { CorruptedResourceError } from '../../Errors.ts';
+import { AsepriteHeader } from './AsepriteHeader.ts';
 import { GifHeader } from './GifHeader.ts';
 import { PngHeader } from './PngHeader.ts';
 import type { SpriteDirection } from './SpriteTypes.ts';
@@ -28,6 +29,11 @@ export interface ImageHeader {
   /** How often the file plays through, 0 for forever. */
   readonly repeat: number;
   readonly tags: readonly SpriteTag[];
+  /**
+   * The pixel each image has its origin at, counted from the top left corner (an Aseprite slice's pivot), one entry
+   * per image, `null` when the file does not say.
+   */
+  readonly origins: ReadonlyArray<readonly [number, number]> | null;
 }
 
 /** The image formats that have a header parser. */
@@ -35,12 +41,14 @@ export enum ImageFormat {
   gif = 'gif',
   png = 'png',
   webp = 'webp',
+  aseprite = 'aseprite',
 }
 
 const HEADER_PARSERS: Record<ImageFormat, (buffer: ArrayBuffer, name: string) => ImageHeader> = {
   [ImageFormat.gif]: (buffer, name) => GifHeader.parse(buffer, name),
   [ImageFormat.png]: (buffer, name) => PngHeader.parse(buffer, name),
   [ImageFormat.webp]: (buffer, name) => WebpHeader.parse(buffer, name),
+  [ImageFormat.aseprite]: (buffer, name) => AsepriteHeader.parse(buffer, name),
 };
 
 /**
@@ -63,6 +71,10 @@ export class ImageHeaders {
       return ImageFormat.webp;
     }
 
+    if (AsepriteHeader.matches(buffer)) {
+      return ImageFormat.aseprite;
+    }
+
     return null;
   }
 
@@ -77,7 +89,7 @@ export class ImageHeaders {
     const format = ImageHeaders.detect(buffer);
 
     if (format === null) {
-      throw new CorruptedResourceError(name, `${name} is not a GIF, PNG or WebP image`);
+      throw new CorruptedResourceError(name, `${name} is not a GIF, PNG, WebP or Aseprite image`);
     }
 
     try {

@@ -10,6 +10,7 @@ import {
 } from '../../source/engine/common/model/sprite/SpriteTypes.ts';
 import { GLTextureArray } from '../../source/engine/client/GL.ts';
 import type { SpriteImageDecoding } from '../../source/engine/common/model/sprite/SpriteImageDecoding.ts';
+import { encodeAseprite } from '../support/aseprite.ts';
 import { createDirectoryFiles, createModelLoadContext, createSilentConsole } from '../support/modelContext.ts';
 
 const FIXTURES = new URL('../fixtures/sprites/', import.meta.url);
@@ -442,6 +443,153 @@ void describe('ImageSpriteLoader', () => {
 
       assert.equal(uploads[0].filter, null);
       assert.deepEqual([...uploads[0].layers[0]], [0, 0, 0, 255, 255, 255, 255, 255, 255, 0, 0, 255]);
+    });
+  });
+
+  void describe('Aseprite files', () => {
+    const tagged = {
+      width: 16,
+      height: 8,
+      frames: [{ duration: 100 }, { duration: 200 }, { duration: 100 }, { duration: 100 }, { duration: 50 }, { duration: 50 }],
+      tags: [
+        { name: 'walk', from: 0, to: 2 },
+        { name: 'hit', from: 3, to: 3, repeat: 1 },
+        { name: 'bounce', from: 4, to: 5, direction: 2, repeat: 4 },
+        { name: 'backwards', from: 0, to: 2, direction: 1, repeat: 3 },
+      ],
+    };
+
+    /**
+     * Loads a file made by the test encoder on a server.
+     * @returns The model.
+     */
+    async function loadAseprite(file: Parameters<typeof encodeAseprite>[0], settings: object | null = null, name = 'gfx/guy.aseprite'): Promise<SpriteModel> {
+      const loader = new ImageSpriteLoader(createModelLoadContext({
+        files: { ...createDirectoryFiles(FIXTURES), LoadOptionalTextFile: () => Promise.resolve(settings === null ? null : JSON.stringify(settings)) },
+      }));
+
+      return await loader.load(encodeAseprite(file), name);
+    }
+
+    void test('is taken for its extensions, and only when it is an Aseprite file', () => {
+      const loader = new ImageSpriteLoader(createModelLoadContext());
+      const file = encodeAseprite({ width: 1, height: 1, frames: [{}] });
+
+      assert.equal(loader.canLoad(file, 'gfx/a.aseprite'), true);
+      assert.equal(loader.canLoad(file, 'gfx/a.ase'), true);
+      assert.equal(loader.canLoad(new ArrayBuffer(300), 'gfx/a.aseprite'), false);
+    });
+
+    void test('a file without tags plays all frames forever, with the durations of the file', async () => {
+      const model = await loadAseprite({ width: 4, height: 4, frames: [{ duration: 100 }, { duration: 300 }] });
+      const sequence = model.frames[0] as SpriteSequence;
+
+      assert.equal(model.numframes, 1);
+      assert.deepEqual(Array.from(sequence.endTimes).map((time) => Math.round(time * 1000)), [100, 400]);
+      assert.equal(sequence.repeat, 0);
+      assert.equal(model.asset?.blend, SpriteBlend.alpha);
+    });
+
+    void test('tags become the named sequences an entity selects, in order', async () => {
+      const model = await loadAseprite(tagged);
+      const sequences = model.frames as SpriteSequence[];
+
+      assert.deepEqual(sequences.map((sequence) => sequence.name), ['walk', 'hit', 'bounce', 'backwards']);
+      assert.deepEqual(sequences.map((sequence) => sequence.images.map((image) => image.layer)), [[0, 1, 2], [3], [4, 5], [0, 1, 2]]);
+      assert.deepEqual(Array.from(sequences[0].endTimes).map((time) => Math.round(time * 1000)), [100, 300, 400]);
+      assert.equal(model.sequenceIndex('hit'), 1);
+    });
+
+    void test('the direction of a tag is kept', async () => {
+      const sequences = (await loadAseprite(tagged)).frames as SpriteSequence[];
+
+      assert.deepEqual(sequences.map((sequence) => sequence.direction), [SpriteDirection.forward, SpriteDirection.forward, SpriteDirection.pingpong, SpriteDirection.reverse]);
+    });
+
+    void test('a repeat of 0 plays forever, a count plays that often', async () => {
+      const sequences = (await loadAseprite(tagged)).frames as SpriteSequence[];
+
+      assert.equal(sequences[0].repeat, 0);
+      assert.equal(sequences[1].repeat, 1);
+      assert.equal(sequences[3].repeat, 3);
+    });
+
+    void test('a ping-pong counts its legs in Aseprite and its cycles here, so the count is halved', async () => {
+      const sequences = (await loadAseprite(tagged)).frames as SpriteSequence[];
+
+      assert.equal(sequences[2].repeat, 2, '4 legs are two cycles');
+
+      const once = (await loadAseprite({ ...tagged, tags: [{ name: 'p', from: 0, to: 1, direction: 2, repeat: 1 }] })).frames as SpriteSequence[];
+
+      assert.equal(once[0].repeat, 1, 'one leg is at least one cycle');
+    });
+
+    void test('the sidecar replaces the tags with its own sequences', async () => {
+      const model = await loadAseprite(tagged, { sequences: [{ name: 'all' }] });
+
+      assert.deepEqual((model.frames as SpriteSequence[]).map((sequence) => sequence.name), ['all']);
+      assert.equal(model.numframes, 1);
+    });
+
+    void test('the repeat of the sidecar replaces the one of every tag', async () => {
+      const sequences = (await loadAseprite(tagged, { repeat: 7 })).frames as SpriteSequence[];
+
+      assert.deepEqual(sequences.map((sequence) => sequence.repeat), [7, 7, 7, 7]);
+    });
+
+    void test('fps of the sidecar replaces the durations in the tags too', async () => {
+      const sequences = (await loadAseprite(tagged, { fps: 10 })).frames as SpriteSequence[];
+
+      assert.deepEqual(Array.from(sequences[0].endTimes).map((time) => Math.round(time * 1000)), [100, 200, 300]);
+    });
+
+    void test('a slice pivot is the origin of the images and the bounds follow it', async () => {
+      const model = await loadAseprite({
+        width: 16,
+        height: 8,
+        frames: [{}, {}],
+        slices: [{ name: 'pivot', keys: [{ frame: 0, x: 0, y: 0, pivot: [8, 8] }, { frame: 1, x: 0, y: 0, pivot: [4, 6] }] }],
+      });
+      const images = (model.frames[0] as SpriteSequence).images;
+
+      assert.deepEqual([...images[0].origin], [-8, 0], 'the bottom center of the first image');
+      assert.deepEqual([...images[1].origin], [-4, -2], 'the pivot moved in the second');
+      assert.deepEqual([...model.mins], [-12, -12, -2], 'as far as the farthest side of any image');
+      assert.deepEqual([...model.maxs], [12, 12, 8]);
+    });
+
+    void test('the origin of the sidecar wins over the pivot', async () => {
+      const model = await loadAseprite({
+        width: 16,
+        height: 8,
+        frames: [{}, {}],
+        slices: [{ name: 'pivot', keys: [{ frame: 0, x: 0, y: 0, pivot: [8, 8] }] }],
+      }, { origin: [0, 0] });
+
+      assert.deepEqual([...(model.frames[0] as SpriteSequence).images[0].origin], [0, -8]);
+    });
+
+    void test('draws the decoded layers of the file, one upload for all frames', async () => {
+      const uploads: number[] = [];
+
+      mock.method(GLTextureArray, 'FromRGBALayers', (_width: number, _height: number, layers: readonly Uint8Array[]) => {
+        uploads.push(layers.length);
+
+        return { texture: 'array texture' } as unknown as GLTextureArray;
+      });
+
+      try {
+        const loader = new ImageSpriteLoader(createModelLoadContext({
+          loadRenderData: true,
+          spriteImages: { decode: () => Promise.resolve({ width: 4, height: 4, frames: [new Uint8Array(64), new Uint8Array(64)] }) },
+        }));
+
+        await loader.load(encodeAseprite({ width: 4, height: 4, frames: [{}, {}] }), 'gfx/a.aseprite');
+      } finally {
+        mock.restoreAll();
+      }
+
+      assert.deepEqual(uploads, [2]);
     });
   });
 });

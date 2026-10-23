@@ -9,7 +9,7 @@ import { ImageFormat, type ImageHeader } from '../../source/engine/common/model/
 import type { DecodedSpriteImages } from '../../source/engine/common/model/sprite/SpriteImageDecoding.ts';
 import { createSilentConsole } from '../support/modelContext.ts';
 
-const HEADER: ImageHeader = { width: 2, height: 2, frameDurations: [100, 100, 100], repeat: 0, tags: [] };
+const HEADER: ImageHeader = { width: 2, height: 2, frameDurations: [100, 100, 100], repeat: 0, tags: [], origins: null };
 const ROOMY: SpriteImageLimitValues = { maxTextureSize: 4096, maxLayers: 256, maxBytes: 64 * 1048576 };
 
 /**

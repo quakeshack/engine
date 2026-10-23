@@ -1,8 +1,8 @@
 # Sprites: Images as Models
 
 A sprite is a flat picture or animation that is placed in the world as an entity and turns towards the viewer. Besides
-Quake's `.spr` files the engine takes GIF, PNG/APNG and WebP images directly, and an optional settings file next to the
-image changes how it is drawn. No other game code is needed:
+Quake's `.spr` files (and Half-Life's) the engine takes GIF, PNG/APNG, WebP and Aseprite files directly, and an optional
+settings file next to the image changes how it is drawn. No other game code is needed:
 
 ```ts
 static precache(engine: ServerEngineAPI): void {
@@ -15,7 +15,6 @@ spawn(): void {
 ```
 
 The same works for client-only entities (`ClientEngineAPI.ModForName`, see [Client Entities](client-entities.md)).
-Aseprite files and Half-Life sprites are planned and not loaded yet.
 
 ## Which format
 
@@ -23,6 +22,7 @@ Aseprite files and Half-Life sprites are planned and not loaded yet.
 | :--- | :--- | :--- | :--- | :--- |
 | GIF | on or off | 256 per frame | big | Decoded by the engine, looks the same in every browser. Drawn alpha tested. |
 | APNG (`.png`, `.apng`) | 8 bit | true color | medium, lossless | Decoded by the engine. The house format. A plain PNG is a one-image sprite. |
+| Aseprite (`.aseprite`, `.ase`) | 8 bit | true color, indexed, grayscale | small | The pixel art standard. An artist's file drops in without an export: its tags become named sequences and a slice's pivot becomes the origin, see below. |
 | WebP | 8 bit | true color | small | Animated files need `ImageDecoder` (WebCodecs: Chromium 94+, Firefox 133+ on the desktop); without it only the first image is shown, with a console warning. |
 
 Without a settings file an image is drawn at one pixel per world unit, around its center, as a billboard that
@@ -130,6 +130,43 @@ Frames of an animation that glows or burns are best made on a black background a
 needs no transparency at all; a GIF's "black" is often a few levels off, see `colorKey` above. For pixel art draw at the size
 the sprite has on screen and set `"filter": "nearest"`.
 
+## Aseprite files
+
+An `.aseprite` file is read as it is saved, no export step. What is taken from it:
+
+- **Frames and timing:** every frame is an image, each with its own duration (a frame without one takes the file's speed).
+  The file plays forever by default, like in the editor.
+- **Layers:** what the editor shows is what is drawn. Hidden layers, layers inside a hidden group and reference layers are
+  left out. Layers are ordered as in the editor, including a cel's z-index. Layer opacity and cel opacity count. Indexed
+  files use their palette; the transparent index is transparent in every layer but the background. Linked cels work.
+- **Tags become sequences,** in the order of the tag list, named like the tag, so `GetSpriteSequenceIndex(model, 'walk')`
+  finds the tag "walk". A tag keeps its direction (forward, reverse, ping-pong, ping-pong reverse) and its repeat count
+  (0 plays forever). Aseprite counts the legs of a ping-pong ("repeat 2" is forward once and back once), a sequence
+  counts its cycles, so the count is halved there. A `sequences` list in the settings file replaces the tags, and its
+  top-level `repeat` and `fps` replace theirs.
+- **A slice with a pivot sets the origin.** The first slice that has a pivot decides, a slice that moves from frame to
+  frame moves the origin with it. `origin` in the settings file wins.
+- **Not supported:** blend modes other than normal (a layer is drawn as normal, the console says so once), tilemap layers
+  (skipped, with a console message), a group's own opacity and blend mode.
+
+For pixel art draw at the size the sprite has on screen and set `"filter": "nearest"`.
+
+## Half-Life sprites
+
+Half-Life's `.spr` files (version 2) load like Quake's, with their own 256 color palette. The texture format in the header
+decides how a sprite is drawn:
+
+| Format | Meaning | Drawn as |
+| :--- | :--- | :--- |
+| 0, normal | opaque | alpha tested, every pixel opaque |
+| 1, additive | the color is added to what is behind | `additive` |
+| 2, index alpha | the palette index is the alpha | `alpha`, color from the palette entry, alpha is the index |
+| 3, alpha test | palette index 255 is transparent | alpha tested |
+
+These meanings come from the source of another engine (FTE), which says it is not sure about them, and **no Half-Life
+sprite has been compared against them yet**: if an additive or index-alpha sprite looks wrong, that is the first suspect.
+A `.spr` does not read a settings file: its header says how it is drawn.
+
 ## Memory
 
 All images of a sprite are uploaded as the layers of one texture. A sprite may take `r_sprite_memory` megabytes of video
@@ -153,4 +190,5 @@ the file after all.
 ## Sprites from Quake's `.spr` files
 
 `.spr` files (version 1) draw as they always did, on the same renderer: groups animate on the global clock, or on a random
-offset when the file says so, and all five orientation types of the header are honored.
+offset when the file says so, and all five orientation types of the header are honored. Only image files read the settings
+file: a `.spr` is configured by its header.

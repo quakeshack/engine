@@ -3,6 +3,7 @@ import type { ConsoleOutput } from '../../../common/Services.ts';
 import type { ImageFormat, ImageHeader } from '../../../common/model/sprite/ImageHeader.ts';
 import type { DecodedSpriteImages, SpriteImageDecoding as SpriteImageDecodingContract } from '../../../common/model/sprite/SpriteImageDecoding.ts';
 import { ApngSpriteDecoder } from './ApngSpriteDecoder.ts';
+import { AsepriteSpriteDecoder } from './AsepriteSpriteDecoder.ts';
 import { GifSpriteDecoder } from './GifSpriteDecoder.ts';
 import type { SpriteImageDecoder } from './SpriteImageDecoder.ts';
 import { SpriteImageLimits, type SpriteImageLimitValues } from './SpriteImageLimits.ts';
@@ -11,7 +12,7 @@ import { WebCodecsSpriteDecoder } from './WebCodecsSpriteDecoder.ts';
 
 /**
  * Decodes image sprites: picks the first decoder that takes the file (our own for GIF and APNG, WebCodecs for
- * animated WebP, the browser's still image decoding for everything else), and keeps the result within the
+ * animated WebP, the browser's still image decoding for PNG and WebP), and keeps the result within the
  * limits of the hardware and the memory budget. A decoder that fails hands over to the next one.
  */
 export class SpriteImageDecoding implements SpriteImageDecodingContract {
@@ -27,7 +28,13 @@ export class SpriteImageDecoding implements SpriteImageDecodingContract {
   constructor(
     con: ConsoleOutput,
     limits: () => SpriteImageLimitValues,
-    decoders: readonly SpriteImageDecoder[] = [new GifSpriteDecoder(), new ApngSpriteDecoder(), new WebCodecsSpriteDecoder(), new StillSpriteDecoder()],
+    decoders: readonly SpriteImageDecoder[] = [
+      new GifSpriteDecoder(),
+      new ApngSpriteDecoder(),
+      new AsepriteSpriteDecoder((text) => { con.PrintWarning(text); }),
+      new WebCodecsSpriteDecoder(),
+      new StillSpriteDecoder(),
+    ],
   ) {
     this.#con = con;
     this.#limits = limits;

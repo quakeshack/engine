@@ -28,15 +28,34 @@ interface SPRFrame {
 }
 
 const SPR_HEADER_SIZE = 36;
+/** Half-Life's version 2 has one more field in its header and a palette after it. */
+const SPR_V2_HEADER_SIZE = 40;
+const PALETTE_ENTRIES = 256;
+
+/** How a Half-Life sprite (version 2) wants its pixels read, the `texFormat` of its header. */
+enum HalfLifeTextureFormat {
+  /** No transparency. */
+  normal = 0,
+  /** The color is added to what is behind. */
+  additive = 1,
+  /** The palette index is the alpha. */
+  indexAlpha = 2,
+  /** Palette index 255 is transparent. */
+  alphaTest = 3,
+}
 
 /**
- * Loader for Quake Sprite format (.spr), version 1.
+ * Loader for Quake Sprite format (.spr), version 1, and Half-Life's version 2.
  *
- * Header (little endian): magic `IDSP`, u32 version, u32 type (the {@link SpriteOrientation}), f32
- * bounding radius, u32 width, u32 height, u32 frame count, f32 beam length, u32 sync type (1 = random
- * phase). Then each frame: u32 group flag; a single image follows directly, a group has u32 image
- * count, one f32 end time per image, then the images. An image is s32 x, s32 y, u32 width, u32 height
- * and `width * height` palette indices, 255 being transparent.
+ * Header (little endian): magic `IDSP`, u32 version, u32 type (the {@link SpriteOrientation}), version 2 only: u32
+ * `texFormat` ({@link HalfLifeTextureFormat}), f32 bounding radius, u32 width, u32 height, u32 frame count, f32 beam
+ * length, u32 sync type (1 = random phase). Version 2 then has its own palette: s16 colors (256) and that many RGB
+ * triples; version 1 uses Quake's palette. Then each frame: u32 group flag; a single image follows directly, a group has
+ * u32 image count, one f32 end time per image, then the images. An image is s32 x, s32 y, u32 width, u32 height and
+ * `width * height` palette indices, 255 being transparent in Quake's sprites.
+ *
+ * The values of `texFormat` are taken from FTE's reader (`SPRHL_*`), which says it is not sure what they mean; no
+ * Half-Life sprite has been checked against this, so the render modes are the least certain part.
  */
 export class SpriteSPRLoader extends ModelLoader {
   override getMagicNumbers(): number[] {
@@ -56,10 +75,13 @@ export class SpriteSPRLoader extends ModelLoader {
     const view = new DataView(buffer);
     const version = view.getUint32(4, true);
 
-    if (version !== 1) {
-      throw new CorruptedResourceError(name, `${name} has wrong version number (${version} should be 1)`);
+    if (version !== 1 && version !== 2) {
+      throw new CorruptedResourceError(name, `${name} has wrong version number (${version} should be 1 or 2)`);
     }
 
+    // version 2 has the texture format after the type, which moves everything behind it by 4 bytes
+    const shift = version === 2 ? 4 : 0;
+    const textureFormat = version === 2 ? view.getUint32(12, true) : HalfLifeTextureFormat.alphaTest;
     const type = view.getUint32(8, true);
 
     if (SpriteOrientation[type] === undefined) {
@@ -68,17 +90,17 @@ export class SpriteSPRLoader extends ModelLoader {
     } else {
       loadmodel.orientation = type as SpriteOrientation;
     }
-    loadmodel.boundingradius = view.getFloat32(12, true);
-    loadmodel.width = view.getUint32(16, true);
-    loadmodel.height = view.getUint32(20, true);
+    loadmodel.boundingradius = view.getFloat32(12 + shift, true);
+    loadmodel.width = view.getUint32(16 + shift, true);
+    loadmodel.height = view.getUint32(20 + shift, true);
 
-    const frameCount = view.getUint32(24, true);
+    const frameCount = view.getUint32(24 + shift, true);
 
     if (frameCount === 0) {
       throw new CorruptedResourceError(name, `model ${name} has no frames`);
     }
 
-    loadmodel.phase = view.getUint32(32, true) === 1 ? SpritePhase.random : SpritePhase.global;
+    loadmodel.phase = view.getUint32(32 + shift, true) === 1 ? SpritePhase.random : SpritePhase.global;
     // the client derives an entity's `syncbase` from this flag
     loadmodel.random = loadmodel.phase === SpritePhase.random;
     loadmodel.mins = new Vector(
@@ -92,16 +114,39 @@ export class SpriteSPRLoader extends ModelLoader {
       loadmodel.height * 0.5,
     );
 
-    loadmodel.asset = this.#buildAsset(this.#readFrames(name, view, buffer, frameCount));
+    const palette = version === 2 ? SpriteSPRLoader.#readPalette(view, buffer, name) : null;
+
+    if (version === 2 && HalfLifeTextureFormat[textureFormat] === undefined) {
+      this.context.con.PrintWarning(`${name} has an unknown texture format (${textureFormat}), drawing it alpha tested\n`);
+    }
+
+    loadmodel.asset = this.#buildAsset(
+      this.#readFrames(name, view, buffer, frameCount, palette === null ? SPR_HEADER_SIZE : SPR_V2_HEADER_SIZE + 2 + PALETTE_ENTRIES * 3),
+      palette,
+      HalfLifeTextureFormat[textureFormat] === undefined ? HalfLifeTextureFormat.alphaTest : textureFormat,
+    );
     loadmodel.needload = false;
     loadmodel.checksum = CRC16CCITT.Block(new Uint8Array(buffer));
 
     return Promise.resolve(loadmodel);
   }
 
-  #readFrames(name: string, view: DataView, buffer: ArrayBuffer, frameCount: number): SPRFrame[] {
+  /**
+   * @returns The palette of a Half-Life sprite as 256 RGB triples.
+   */
+  static #readPalette(view: DataView, buffer: ArrayBuffer, name: string): Uint8Array {
+    const count = view.getInt16(SPR_V2_HEADER_SIZE, true);
+
+    if (count !== PALETTE_ENTRIES) {
+      throw new CorruptedResourceError(name, `${name} has ${count} palette colors, only ${PALETTE_ENTRIES} are supported`);
+    }
+
+    return new Uint8Array(buffer, SPR_V2_HEADER_SIZE + 2, PALETTE_ENTRIES * 3);
+  }
+
+  #readFrames(name: string, view: DataView, buffer: ArrayBuffer, frameCount: number, firstFrame: number): SPRFrame[] {
     const frames: SPRFrame[] = [];
-    let offset = SPR_HEADER_SIZE;
+    let offset = firstFrame;
 
     for (let i = 0; i < frameCount; i++) {
       const isGroup = view.getUint32(offset, true) !== 0;
@@ -148,6 +193,50 @@ export class SpriteSPRLoader extends ModelLoader {
     return frames;
   }
 
+  /**
+   * @returns How the sprite is drawn: only an additive or an index-alpha Half-Life sprite is not alpha tested.
+   */
+  static #blendOf(textureFormat: HalfLifeTextureFormat): SpriteBlend {
+    switch (textureFormat) {
+      case HalfLifeTextureFormat.additive:
+        return SpriteBlend.additive;
+      case HalfLifeTextureFormat.indexAlpha:
+        return SpriteBlend.alpha;
+      default:
+        return SpriteBlend.alphaTest;
+    }
+  }
+
+  /**
+   * Turns palette indices into premultiplied RGBA the way the texture format says.
+   * @param palette RGB triples
+   * @returns The pixels.
+   */
+  static #toRgba(image: SPRImage, palette: Uint8Array, textureFormat: HalfLifeTextureFormat): Uint8Array {
+    switch (textureFormat) {
+      case HalfLifeTextureFormat.normal:
+      case HalfLifeTextureFormat.additive:
+        return translateIndexToRGBA(image.pixels, image.width, image.height, palette, null);
+      case HalfLifeTextureFormat.indexAlpha: {
+        const rgba = new Uint8Array(image.pixels.length * 4);
+
+        for (let pixel = 0; pixel < image.pixels.length; pixel++) {
+          const index = image.pixels[pixel];
+
+          // premultiplied: the color is scaled by the alpha, which is the index
+          rgba[pixel * 4] = Math.round(palette[index * 3] * index / 255);
+          rgba[pixel * 4 + 1] = Math.round(palette[index * 3 + 1] * index / 255);
+          rgba[pixel * 4 + 2] = Math.round(palette[index * 3 + 2] * index / 255);
+          rgba[pixel * 4 + 3] = index;
+        }
+
+        return rgba;
+      }
+      default:
+        return translateIndexToRGBA(image.pixels, image.width, image.height, palette, 255);
+    }
+  }
+
   static #readImage(view: DataView, buffer: ArrayBuffer, offset: number): SPRImage {
     const width = view.getUint32(offset + 8, true);
     const height = view.getUint32(offset + 12, true);
@@ -165,7 +254,7 @@ export class SpriteSPRLoader extends ModelLoader {
    * The images are padded to the size of the largest one, `uvScale` keeps them from showing the padding.
    * @returns The sprite's images and timing.
    */
-  #buildAsset(sprFrames: readonly SPRFrame[]): SpriteAsset {
+  #buildAsset(sprFrames: readonly SPRFrame[], palette: Uint8Array | null, textureFormat: HalfLifeTextureFormat): SpriteAsset {
     let layerWidth = 0;
     let layerHeight = 0;
 
@@ -193,7 +282,7 @@ export class SpriteSPRLoader extends ModelLoader {
         });
 
         if (this.context.loadRenderData) {
-          const rgba = translateIndexToRGBA(image.pixels, image.width, image.height, W.d_8to24table_u8, 255);
+          const rgba = SpriteSPRLoader.#toRgba(image, palette ?? W.d_8to24table_u8, textureFormat);
           layers.push(SpritePixels.padToLayer(rgba, image.width, image.height, layerWidth, layerHeight));
         }
       }
@@ -215,7 +304,7 @@ export class SpriteSPRLoader extends ModelLoader {
 
     return new SpriteAsset({
       frames,
-      blend: SpriteBlend.alphaTest,
+      blend: SpriteSPRLoader.#blendOf(textureFormat),
       layerWidth,
       layerHeight,
       texture: this.context.loadRenderData ? GLTextureArray.FromRGBALayers(layerWidth, layerHeight, layers) : null,
