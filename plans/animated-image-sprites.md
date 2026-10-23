@@ -9,7 +9,10 @@ results folded into the design below and summarized under "What actually shipped
 reshaped `SpriteModel`, see "What actually shipped in Phase 1".
 
 ✅ Phase 2 done (2026-10-23): GIF, PNG/APNG and WebP header parsers and `ImageSpriteLoader`, see "What actually
-shipped in Phase 2". Phase 3 waits for a go-ahead.
+shipped in Phase 2".
+
+✅ Phase 3 done (2026-10-23): client decoding for GIF, APNG, static PNG and WebP, see "What actually shipped in
+Phase 3". Chromium checked, Firefox not. Phase 4 waits for a go-ahead.
 
 ### Decisions so far (2026-10-22, from the maintainer)
 
@@ -36,6 +39,15 @@ shipped in Phase 2". Phase 3 waits for a go-ahead.
   which costs one protocol change (C, Non-goals).
 - **Sequences can be looked up by name:** `GetSpriteSequenceIndex(modelName, name)` next to
   `GetSpriteSequenceDuration` (E).
+
+### Requests from the maintainer while testing Phase 3 (2026-10-23)
+
+A GIF sprite works in the engine but is drawn at one pixel per world unit, far too big for a torch flame, and its
+black background shows as a black rectangle. Both belong in the sidecar (C), Phase 4, and both come first there:
+
+- **`scale`** (already planned) is the first sidecar field to implement.
+- **Black to alpha.** `blend: additive` already makes black vanish (it adds nothing), which is the usual fix for
+  fire. For an alpha-blended look a key is needed too; the shape is proposed under "Open questions".
 
 ### Verified format layouts
 
@@ -612,7 +624,57 @@ A server can load GIF, PNG/APNG and WebP files as sprite models; nothing draws t
   on a GIF sets the entity's `mins`/`maxs`. 2678 tests, ESLint and typecheck green; the boundary test still holds.
 - **Docs:** none yet, by plan (`docs/sprites.md` is Phase 5); no doc claims the formats.
 
+### What actually shipped in Phase 3
+
+Image sprites are decoded and drawn in the client: GIF, APNG, static PNG, animated and static WebP.
+
+- **Contract.** `ModelLoadContext.spriteImages: SpriteImageDecoding | null` (interface in
+  `common/model/sprite/SpriteImageDecoding.ts`, `null` on a server), passed by `Mod.Init({ spriteImages })` from
+  `ClientHost`. A decoder answers with `{ width, height, frames }`: every frame composited onto the full canvas as
+  premultiplied RGBA. `ImageSpriteLoader.load()` is async now: with a decoder it uploads the frames through
+  `GLTextureArray.FromRGBALayers()` and builds the sequence from as many frames as there are pixels for, so a
+  browser that only shows the first frame of a WebP gives a still sprite, with a warning.
+- **Strategies** in `client/renderer/sprite/`, tried in order by `SpriteImageDecoding`, a failing one hands
+  over to the next with a warning: `GifSpriteDecoder` (own LZW, color tables, transparency, sub-rectangles,
+  interlacing, disposal 0 to 3), `ApngSpriteDecoder` (rebuilds each frame as a standalone PNG with fresh CRCs
+  (`CRC32` in `common/CRC.ts`), the browser decodes it as a still image, the compositing with `dispose_op` and
+  `blend_op` is plain code on premultiplied pixels), `WebCodecsSpriteDecoder` (animated WebP through `ImageDecoder`),
+  `StillSpriteDecoder` (`createImageBitmap`, first frame; also the path of plain PNG and static WebP).
+  `BrowserImagePixels` is the only place that touches `createImageBitmap`, `OffscreenCanvas` and `getImageData`.
+- **Limits.** `SpriteImageLimits`: frames over `MAX_ARRAY_TEXTURE_LAYERS` are dropped, images are halved (box filter
+  on premultiplied pixels) until they fit `MAX_TEXTURE_SIZE` and the budget, and the loader warns. The budget is the
+  new archived cvar `r_sprite_memory` (megabytes, default 64, mip chain counted, read at each load). The sprite
+  keeps its world size, only the texture gets smaller. `GL.maxArrayTextureLayers` is new.
+- **Deviations from the design.** The decoders hand out pixel arrays and never touch GL, so the plan's
+  "`WebCodecsSpriteDecoder` uploads each `VideoFrame` with `texSubImage3D`" became "reads each frame back and
+  premultiplies it on the CPU"; one upload path, and everything but the browser calls is testable in Node.
+  Premultiplying after `getImageData` costs a rounding step on half transparent pixels.
+- **Timing check postponed.** The N + 1 plays of a GIF loop count (Phase 2) was not compared with a browser; the
+  fixture is too fast to count. It needs a GIF with a visible counter in each browser.
+- **Test support.** `test/support/spriteImages.ts` has a small GIF encoder (LZW, interlacing, disposal, local
+  palettes), an APNG encoder and a PNG decoder, so the decoders run in Node on shapes the fixtures lack.
+  `progressive.gif` (Pillow, not interlaced) joins the fixtures.
+- **Tests added** (2735 in all, ESLint and typecheck clean): `sprite-gif-decoder` (a Pillow file against known
+  pixels, interlaced against progressive, all disposal methods, transparency, local palettes, LZW growth to 12
+  bits and dictionary reset, clipping, broken files), `sprite-apng-decoder` (splitting with and without a default
+  image frame, rebuilt PNGs, blend over/source, dispose none/background/previous, premultiplied rounding),
+  `sprite-image-decoding` (order, fallback on failure, short frame counts, limits), `sprite-pixels` (premultiply,
+  halve, CRC32), and the loader's client path (what it asks the texture for, size of the sprite vs the texture,
+  fewer frames than the file, no decoder, none on a server).
+- **Browser check** (Chromium on software GL, clock pinned, 64x64 four-frame test images with transparency):
+  `t.gif`, `t.apng` and animated `t.webp` show the same frame at the same time at the four 250 ms steps and again a
+  cycle later; a GIF without a loop block plays once and holds its last frame; static PNG and static WebP draw;
+  half transparent pixels blend in APNG and WebP and are on/off in GIF; `r_sprite_memory 0.02` makes a 64x64 sprite
+  load as 16x16 with a warning and draw at the same world size. **Not checked:** Firefox (needs `ImageDecoder`
+  there for animated WebP, version 133 or later), Safari, and the sidecar-less size problem (Phase 4).
+- **Docs:** none yet, by plan; `r_sprite_memory` is described in the cvar's own help text.
+
 ## Open questions
 
-None open. The two that came out of Phase 0 were settled by the maintainer on 2026-10-23 (Status).
+- **Black to alpha (Phase 4), shape of the setting.** My proposal for the sidecar, to settle when Phase 4 starts:
+  `"blend": "additive"` for fire and glow (black adds nothing, no key needed); for an alpha-blended sprite with a
+  black background `"colorKey": { "color": [0, 0, 0], "tolerance": 16 }` that makes matching pixels transparent
+  (a hard key, fine for pixel art); and `"alphaFrom": "luminance"` that takes the alpha from the brightness of the
+  pixel and keeps its color (soft, for smoke and glow drawn on black). Do you want all three, or does `additive`
+  plus the key cover it? The two that came out of Phase 0 were settled by the maintainer on 2026-10-23 (Status).
 The G fork (2D API shape) waits for Phase 8.

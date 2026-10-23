@@ -77,6 +77,8 @@ class GL {
   static programs: GLProgramInfo[] = [];
   static currentProgram: GLProgramInfo | null = null;
   static maxtexturesize = 0;
+  /** Most layers an array texture can have. */
+  static maxArrayTextureLayers = 0;
   static picmip: Cvar = null!;
   static clear: Cvar = null!;
   static streamArray: ArrayBuffer = null!;
@@ -486,6 +488,7 @@ class GL {
     }
 
     GL.maxtexturesize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    GL.maxArrayTextureLayers = gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS);
 
     gl.cullFace(gl.FRONT);
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);

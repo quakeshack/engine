@@ -55,6 +55,7 @@ export function createModelLoadContext(overrides: Partial<ModelLoadContext> = {}
     files: { LoadFile: () => Promise.resolve(null), LoadTextFile: () => Promise.resolve(null) },
     con: createSilentConsole(),
     loadRenderData: false,
+    spriteImages: null,
     ...overrides,
   };
 }

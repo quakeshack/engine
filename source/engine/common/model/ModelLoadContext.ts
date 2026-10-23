@@ -1,4 +1,5 @@
 import type { ConsoleOutput } from '../Services.ts';
+import type { SpriteImageDecoding } from './sprite/SpriteImageDecoding.ts';
 
 /** The file access a model loader needs. */
 export interface ModelFiles {
@@ -23,6 +24,8 @@ export interface ModelLoadContext {
   readonly con: ConsoleOutput;
   /** Whether textures and the other data only a renderer needs are created while loading. */
   readonly loadRenderData: boolean;
+  /** Decodes the pixels of image sprites (GIF, PNG, WebP). `null` in a realm that does not draw. */
+  readonly spriteImages: SpriteImageDecoding | null;
 }
 
 /**

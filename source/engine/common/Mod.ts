@@ -10,6 +10,7 @@ import { WavefrontOBJLoader } from './model/loaders/WavefrontOBJLoader.ts';
 import ParsedQC from './model/parsers/ParsedQC.ts';
 import { BSP38Loader } from './model/loaders/BSP38Loader.ts';
 import type { BaseModel } from './model/BaseModel.ts';
+import type { SpriteImageDecoding } from './model/sprite/SpriteImageDecoding.ts';
 import { BrushModel } from './model/BSP.ts';
 import { DEFAULT_MODEL_LOAD_OPTIONS, type ModelFiles, type ModelLoadContext, type ModelLoadOptions } from './model/ModelLoadContext.ts';
 
@@ -52,6 +53,8 @@ export interface ModDependencies {
   readonly con: ConsoleOutput;
   /** Whether loaders create textures and the other data only a renderer needs. A server realm says no. */
   readonly loadRenderData: boolean;
+  /** Decodes the pixels of image sprites. Only a realm that draws has one. */
+  readonly spriteImages?: SpriteImageDecoding | null;
   /** Names of client models that outlive a clear of the client scope (the models effects spawn at runtime). */
   readonly keptClientModels?: () => string[];
 }
@@ -121,6 +124,7 @@ export class Mod {
       files: dependencies.files,
       con: dependencies.con,
       loadRenderData: dependencies.loadRenderData,
+      spriteImages: dependencies.spriteImages ?? null,
     };
 
     this.#files = dependencies.files;
