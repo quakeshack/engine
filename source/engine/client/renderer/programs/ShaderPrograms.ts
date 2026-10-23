@@ -74,7 +74,7 @@ class ShaderPrograms {
 
       // for rendering sprites (usually effects)
       Promise.resolve(GL.CreateProgram('sprite',
-        ['uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uFogColor', 'uFogParams', 'uInterpolation', 'uAlpha', 'uBlendMode', 'uBloomEmissiveScale'],
+        ['uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uFogColor', 'uFogParams', 'uInterpolation', 'uAlpha', 'uBlendMode', 'uLight', 'uBloomEmissiveScale'],
           [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 3], ['aBlend', gl.FLOAT, 2]],
           ['tTexture'])),
 

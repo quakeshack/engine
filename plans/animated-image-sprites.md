@@ -24,6 +24,9 @@ actually shipped in Phase 5".
 ✅ Phase 6 done (2026-10-23): native Aseprite files and Half-Life SPR v2, see "What actually shipped in Phase 6".
 Phases 7 (extras) and 8 (2D sprites) are optional and each wait for their own go-ahead.
 
+✅ Phase 7 done (2026-10-23): lit sprites, the one extra the maintainer chose, see "What actually shipped in Phase 7".
+Phase 8 (2D sprites) waits for its own go-ahead.
+
 ### Decisions so far (2026-10-22, from the maintainer)
 
 - **Animation model: auto-play sequences.** A file is one sequence at `frame 0` that plays by
@@ -788,6 +791,26 @@ Image sprites are decoded and drawn in the client: GIF, APNG, static PNG, animat
   Firefox, a Half-Life sprite, a pivot from a real file.
 - **Docs.** `docs/sprites.md` (an Aseprite section, a Half-Life section with the unverified caveat, the format table),
   the README bullet names Aseprite and Half-Life sprites.
+
+### What actually shipped in Phase 7
+
+The three extras were put to the maintainer (2026-10-23) with a recommendation; only **lit sprites** was chosen.
+
+- **Lit sprites.** Sidecar `lit: true` (`SpriteSidecar.lit`, `SpriteModel.lit`, off by default; `.spr` sprites are never lit).
+  The renderer asks `EntityLighting.CalculateLightValues()` (the baked light at the origin through `LightSampler`, the
+  dynamic lights, smoothing, the fullbright and minlight rules) and adds ambient and dynamic light (`SpriteLighting.combine()`,
+  clamped to 0..1 per channel, so a lit sprite is never brighter than its texture). The shade term and the light
+  direction are not used: a billboard has no surface direction. `sprite.frag` multiplies the color by `uLight` (white
+  for unlit sprites, so nothing changes for them), before fog and the bloom emissive. A different light flushes the
+  stream like a different alpha does, so lit sprites do not batch with each other.
+- **Decoding in a worker: not built.** Measured instead: the largest sample (437x498, 20 frames, the maintainer's flame)
+  decodes in about 35 ms in Node, and the upload is one `texSubImage3D` per frame. That is no hitch at map load, which
+  was the plan's condition. Reconsider if someone ships sprites several times bigger.
+- **AVIF: not built,** nobody authors in it here; it would be an ISOBMFF header parser plus a WebCodecs strategy.
+- **Tests added** (2868 in all): `sprite-lighting`, the `lit` setting in `sprite-sidecar` and the loader tests.
+- **Browser check** (Chromium, one white sprite at one spot, shown unlit, lit and lit with a nearby dynamic light):
+  the unlit one is 255 on all its pixels, the lit one 193 (the map's light there), the lit one with the light 255 again.
+- **Docs:** the `lit` row in `docs/sprites.md`.
 
 ## Open questions
 

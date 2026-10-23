@@ -9,6 +9,8 @@ uniform float uAlpha;
 uniform float uGamma;
 // 0: alpha tested, 1: alpha blended, 2: additive
 uniform float uBlendMode;
+// the light of the map on a lit sprite, white for one that is not
+uniform vec3 uLight;
 uniform sampler2DArray tTexture;
 uniform float uBloomEmissiveScale;
 
@@ -27,7 +29,7 @@ void main(void) {
   float isAdditive = step(1.5, uBlendMode);
 
   // gamma and fog act on the color itself, so take the alpha out of it first
-  vec3 color = pow(texel.rgb / max(texel.a, 0.0001), vec3(uGamma));
+  vec3 color = pow(texel.rgb / max(texel.a, 0.0001), vec3(uGamma)) * uLight;
   float alpha = texel.a * uAlpha;
   // fog fades an additive sprite to nothing, not to the fog's color
   vec3 finalRgb = mix(uFogColor * (1.0 - isAdditive), color, vFog) * alpha;

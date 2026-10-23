@@ -38,6 +38,7 @@ void describe('SpriteSidecars', () => {
       filter: 'nearest',
       phase: 'random',
       interpolate: true,
+      lit: true,
       fps: 12,
       repeat: 3,
       colorKey: { color: [0, 0, 0], tolerance: 16 },
@@ -55,6 +56,7 @@ void describe('SpriteSidecars', () => {
     assert.equal(sidecar.filter, SpriteFilter.nearest);
     assert.equal(sidecar.phase, SpritePhase.random);
     assert.equal(sidecar.interpolate, true);
+    assert.equal(sidecar.lit, true);
     assert.equal(sidecar.fps, 12);
     assert.equal(sidecar.repeat, 3);
     assert.deepEqual(sidecar.colorKey, { color: [0, 0, 0], tolerance: 16 });
@@ -113,10 +115,10 @@ void describe('SpriteSidecars', () => {
     });
 
     void test('values of the wrong type', () => {
-      const { sidecar, warnings } = parse({ scale: '2', interpolate: 'yes', origin: [1], orientation: 3 });
+      const { sidecar, warnings } = parse({ scale: '2', interpolate: 'yes', origin: [1], orientation: 3, lit: 1 });
 
-      assert.deepEqual([sidecar.scale, sidecar.interpolate, sidecar.origin, sidecar.orientation], [1, null, null, null]);
-      assert.equal(warnings.length, 4);
+      assert.deepEqual([sidecar.scale, sidecar.interpolate, sidecar.origin, sidecar.orientation, sidecar.lit], [1, null, null, null, null]);
+      assert.equal(warnings.length, 5);
     });
 
     void test('a color key without a color', () => {

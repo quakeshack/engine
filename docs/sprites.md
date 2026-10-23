@@ -49,6 +49,7 @@ file too (the scale decides the bounds). A broken file, a wrong value or a setti
   "fps": 12,
   "repeat": 0,
   "interpolate": true,
+  "lit": true,
   "sequences": [
     { "name": "idle", "from": 0, "to": 7, "direction": "pingpong" },
     { "name": "burst", "from": 8, "to": 15, "repeat": 1, "fps": 24 }
@@ -69,6 +70,7 @@ file too (the scale decides the bounds). A broken file, a wrong value or a setti
 | `fps` | number above 0 | the file's timing | Frames per second for every image, replacing the delays of the file (also below the 10 ms limit). |
 | `repeat` | whole number, 0 = forever | the file's | How often the whole animation plays. A finished sequence holds its last image. |
 | `interpolate` | `true`, `false` | `false` | Crossfades from an image to the next. Needs `r_interpolation 1`, which is the default. |
+| `lit` | `true`, `false` | `false` | Shades the sprite with the light of the map at its origin plus the dynamic lights that reach it (a flat sprite has no surface direction, so this is its brightness only, never above the texture's own). Right for smoke, dust and puffs that should darken in a dark room; leave it off for fire, glow and sparks. A lit sprite is drawn on its own, it does not batch with its neighbors. |
 | `sequences` | list of `{ name, from, to, direction, repeat, fps }` | one sequence over all images | Each entry becomes one `frame` of the entity, in order, so `this.frame = 1` plays the second. `from` and `to` (both included) default to the first and last image, `direction` to `forward` (`reverse`, `pingpong` and `pingpongReverse` exist), `repeat` and `fps` to the settings above. |
 
 How a sequence ends: `forward` holds its last image, `reverse` its first. A `pingpong` goes to the far end and back without

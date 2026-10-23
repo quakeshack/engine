@@ -20,6 +20,9 @@ export class SpriteModel extends BaseModel {
   /** Which clock the animation follows. */
   phase = SpritePhase.global;
 
+  /** Whether the light of the map at the sprite's origin shades it. */
+  lit = false;
+
   /** Bounding sphere radius. */
   boundingradius = 0;
 
@@ -74,6 +77,7 @@ export class SpriteModel extends BaseModel {
     this.asset = null;
     this.orientation = SpriteOrientation.parallel;
     this.phase = SpritePhase.global;
+    this.lit = false;
     this.boundingradius = 0;
     this.width = 0;
     this.height = 0;

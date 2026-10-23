@@ -7,6 +7,8 @@ import { SpriteModel } from '../../../common/model/SpriteModel.ts';
 import { SpriteAnimator, type SpriteImageBlend } from '../../../common/model/sprite/SpriteAnimator.ts';
 import { SpriteBlend, SpriteOrientation, SpritePhase, type SpriteImage } from '../../../common/model/sprite/SpriteTypes.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
+import { EntityLighting } from '../lighting/EntityLighting.ts';
+import { SpriteLighting } from '../../../common/model/sprite/SpriteLighting.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
 import type { BaseModel } from '../../../common/model/BaseModel.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
@@ -35,6 +37,9 @@ export class SpriteModelRenderer extends ModelRenderer {
   static #alpha = Number.NaN;
   static #emissiveScale = Number.NaN;
   static #blendMode = Number.NaN;
+  /** The `uLight` the streamed sprites are drawn with. */
+  static readonly #light: [number, number, number] = [Number.NaN, 1, 1];
+  static readonly #wanted: [number, number, number] = [1, 1, 1];
 
   /** Layer of the image the sprite being built fades into, and how far (`aBlend` of its vertices). */
   static #nextLayer = 0;
@@ -73,6 +78,7 @@ export class SpriteModelRenderer extends ModelRenderer {
       SpriteModelRenderer.#alpha = Number.NaN;
       SpriteModelRenderer.#emissiveScale = Number.NaN;
       SpriteModelRenderer.#blendMode = Number.NaN;
+      SpriteModelRenderer.#light[0] = Number.NaN;
     }
   }
 
@@ -119,12 +125,19 @@ export class SpriteModelRenderer extends ModelRenderer {
     const emissiveScale = getEntityBloomEmissiveScale(entity.effects);
 
     const blendMode = SpriteModelRenderer.#BLEND_MODES[asset.blend];
+    const light = SpriteModelRenderer.#lightOf(spriteModel, entity);
+    const current = SpriteModelRenderer.#light;
 
-    if (entity.alpha !== SpriteModelRenderer.#alpha || emissiveScale !== SpriteModelRenderer.#emissiveScale || blendMode !== SpriteModelRenderer.#blendMode) {
+    if (entity.alpha !== SpriteModelRenderer.#alpha || emissiveScale !== SpriteModelRenderer.#emissiveScale || blendMode !== SpriteModelRenderer.#blendMode
+      || light[0] !== current[0] || light[1] !== current[1] || light[2] !== current[2]) {
       GL.StreamFlush();
       gl.uniform1f(program.uAlpha!, entity.alpha);
       gl.uniform1f(program.uBloomEmissiveScale!, emissiveScale);
       gl.uniform1f(program.uBlendMode!, blendMode);
+      gl.uniform3f(program.uLight!, light[0], light[1], light[2]);
+      current[0] = light[0];
+      current[1] = light[1];
+      current[2] = light[2];
       SpriteModelRenderer.#alpha = entity.alpha;
       SpriteModelRenderer.#emissiveScale = emissiveScale;
       SpriteModelRenderer.#blendMode = blendMode;
@@ -139,6 +152,26 @@ export class SpriteModelRenderer extends ModelRenderer {
 
     SpriteModelRenderer.#setBasis(spriteModel.orientation, entity);
     SpriteModelRenderer.#emitQuad(entity.origin, image);
+  }
+
+  /**
+   * @returns The light a sprite is drawn with: white, or for a lit sprite the light of the map at its origin and the
+   * dynamic lights that reach it.
+   */
+  static #lightOf(spriteModel: SpriteModel, entity: ClientEdict): readonly [number, number, number] {
+    const wanted = SpriteModelRenderer.#wanted;
+
+    if (!spriteModel.lit) {
+      wanted[0] = 1;
+      wanted[1] = 1;
+      wanted[2] = 1;
+
+      return wanted;
+    }
+
+    const [ambientLight, , , dynamicShadeLight] = EntityLighting.CalculateLightValues(entity);
+
+    return SpriteLighting.combine(ambientLight, dynamicShadeLight, wanted);
   }
 
   /**

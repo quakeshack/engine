@@ -286,8 +286,8 @@ void describe('ImageSpriteLoader', () => {
       assert.deepEqual([model.mins[2], model.maxs[2]], [0, 4]);
     });
 
-    void test('takes orientation, phase, blend, filter and interpolation', async () => {
-      const model = await loadWithSidecar('anim.apng', { orientation: 'facingUpright', phase: 'random', blend: 'additive', filter: 'nearest', interpolate: true });
+    void test('takes orientation, phase, blend, filter, interpolation and lighting', async () => {
+      const model = await loadWithSidecar('anim.apng', { orientation: 'facingUpright', phase: 'random', blend: 'additive', filter: 'nearest', interpolate: true, lit: true });
 
       assert.equal(model.orientation, SpriteOrientation.facingUpright);
       assert.equal(model.phase, SpritePhase.random);
@@ -295,6 +295,7 @@ void describe('ImageSpriteLoader', () => {
       assert.equal(model.asset?.blend, SpriteBlend.additive);
       assert.equal(model.asset?.filter, SpriteFilter.nearest);
       assert.equal(model.asset?.interpolate, true);
+      assert.equal(model.lit, true);
     });
 
     void test('without a sidecar the defaults of the format stay', async () => {
@@ -304,6 +305,7 @@ void describe('ImageSpriteLoader', () => {
       assert.equal(model.phase, SpritePhase.spawn);
       assert.equal(model.asset?.filter, null);
       assert.equal(model.asset?.interpolate, false);
+      assert.equal(model.lit, false, 'sprites are not shaded unless they ask for it');
       assert.equal(model.sidecarSkipped, false);
     });
 
