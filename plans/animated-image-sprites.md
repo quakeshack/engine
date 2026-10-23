@@ -5,8 +5,8 @@
 ✅ Phase 0 done (2026-10-23): formats verified against their specs, the code questions answered,
 results folded into the design below and summarized under "What actually shipped in Phase 0".
 
-✅ Phase 1 done (2026-10-23, branch `feature/animated-image-sprites`, not committed yet): SPR runs on the
-reshaped `SpriteModel`, see "What actually shipped in Phase 1".
+✅ Phase 1 done (2026-10-23, branch `feature/animated-image-sprites`; phases 1 to 7 are committed there, one commit
+each): SPR runs on the reshaped `SpriteModel`, see "What actually shipped in Phase 1".
 
 ✅ Phase 2 done (2026-10-23): GIF, PNG/APNG and WebP header parsers and `ImageSpriteLoader`, see "What actually
 shipped in Phase 2".
@@ -16,16 +16,17 @@ Phase 3". Chromium checked, Firefox not.
 
 ✅ Phase 4 done (2026-10-23): the sidecar with all its settings, the blend modes, `filter`, `interpolate`, the
 `sidecar: false` precache hint (protocol 43), see "What actually shipped in Phase 4". Chromium checked, Firefox not.
-Phase 5 waits for a go-ahead.
 
 ✅ Phase 5 done (2026-10-23): the game API queries, the README bullet and the complete `docs/sprites.md`, see "What
 actually shipped in Phase 5".
 
 ✅ Phase 6 done (2026-10-23): native Aseprite files and Half-Life SPR v2, see "What actually shipped in Phase 6".
-Phases 7 (extras) and 8 (2D sprites) are optional and each wait for their own go-ahead.
 
 ✅ Phase 7 done (2026-10-23): lit sprites, the one extra the maintainer chose, see "What actually shipped in Phase 7".
-Phase 8 (2D sprites) waits for its own go-ahead.
+
+Phase 8 (2D sprites) reviewed against the code and its forks settled (2026-10-23, "Decisions for Phase 8"); section G
+is rewritten to match. A blend-state bug from Phase 1 that Phase 8 builds on is fixed ahead of it ("Fixed before
+Phase 8"). Phase 8 waits for its own go-ahead.
 
 ### Decisions so far (2026-10-22, from the maintainer)
 
@@ -52,6 +53,18 @@ Phase 8 (2D sprites) waits for its own go-ahead.
   which costs one protocol change (C, Non-goals).
 - **Sequences can be looked up by name:** `GetSpriteSequenceIndex(modelName, name)` next to
   `GetSpriteSequenceDuration` (E).
+
+### Decisions for Phase 8 (2026-10-23, from the maintainer, taking the recommendations)
+
+- **API shape: one handle per element.** `LoadSprite(name)` returns a new `SpritePlayback` per call over an asset
+  that is cached once, drawn with `DrawSprite(x, y, playback, options)`. Rejected: handing out the asset with a
+  separate playback factory (two objects per HUD element), and a stateless `DrawSprite` that takes a sequence and a
+  start time (every HUD would track time itself).
+- **Screen effects are a full-screen `DrawSprite`** from the game's `draw()` or `drawOverlay()`. A `sprite` effect in
+  the post-process stack, which would get the pulse timing for free, is a later option.
+- **Clock: the handle picks it.** Client time by default, real time on request (menus, pause).
+- **Scope: HUD and screen effects.** No menu-space wrapper (`Menu.toScreenPosition` plus `DrawSprite` covers menus),
+  no `hud.txt` reader, no animated decals.
 
 ### Requests from the maintainer while testing Phase 3 (2026-10-23)
 
@@ -423,36 +436,54 @@ at `MAX_TEXTURE_SIZE`, layers at `MAX_ARRAY_TEXTURE_LAYERS` (WebGL 2 guarantees 
   the `shader-chunks` style rules.
 - Fullbright and bloom emissive stay as they are.
 
-### G. Later: the same sprites in 2D (HUD, screen effects)
+### G. The same sprites in 2D (HUD, screen effects), Phase 8
 
-Not built in this pass. A–F are shaped so it is an addition, not a rework.
+Not built yet. A–F are shaped so it is an addition, not a rework. Reviewed against the code on 2026-10-23; the forks
+are settled ("Decisions for Phase 8").
 
-- **Today** a HUD draws a `GLTexture` with `engine.DrawPic()` (`Draw.Pic`, `pic` program,
-  `sampler2D`), loaded once with `engine.LoadPicFromFile()`. Nothing animates, there are no
-  sub-rectangles, no tint, no additive blending.
-- **Loading.** `ClientEngineAPI.LoadSprite(filename): Promise<SpriteAsset>` runs the same header
-  pass, sidecar and decoder strategies as the model loader, but caches by file name for the
-  lifetime of the page, like `GLTexture`'s cache. A HUD isn't networked or precached and must
-  survive map changes, so it must not sit in `Mod`'s per-map scopes.
-- **Playback.** A small `SpritePlayback` handle (sequence, start time, speed, paused) wraps the
-  shared `SpriteAnimator`, so a HUD writes `flash.play('burst')` and does not track time itself.
-  World sprites keep using the entity's `frame` and `animationStartTime`; both end in the same
-  animator.
-- **Drawing.** `ClientEngineAPI.DrawSprite(x, y, playback, options)` with `scale`, `region`,
-  `tint` (RGB) and `alpha`, honoring the asset's `blend`. `Draw` gets a `pic` variant on
-  `sampler2DArray` (one chunk shared with `pic`, per `shader-chunks`). A full-screen
-  `DrawSprite` with `additive` or `alpha` covers screen effects (damage splatter, visor rain,
-  a teleport flash).
-- **Half-Life-style HUD.** GoldSrc draws its HUD from sprite sheets (`640hud1.spr`, ...) cut into
-  named regions by `sprites/hud.txt` (name, resolution, sheet, x, y, w, h), additive and tinted
-  per game (the orange numbers). That maps onto `regions` + `tint` + `additive`: regions come from
-  the sidecar (`"regions": { "number_0": [0, 0, 20, 24] }`), from Aseprite slices, or from a
-  `hud.txt` reader. The 320/640 pick fits the virtual-resolution work in
-  [menu-virtual-resolution.md](menu-virtual-resolution.md).
-- **Animated decals** (`PlaceDecal` taking a sprite) use the same asset. Listed as an option, not
-  designed.
-- The game-facing API shape (`LoadSprite`/`DrawSprite`/`SpritePlayback`) is a fork to settle with
-  the maintainer when this phase starts.
+- **Today** a HUD draws a `GLTexture` with `engine.DrawPic()` (`Draw.Pic`, `pic` program, `sampler2D`, straight
+  alpha), at screen coordinates times a `scale`, loaded once with `engine.LoadPicFromFile()`. Nothing animates, there
+  are no sub-rectangles, no tint, no additive blending, and `Draw.Pic` flushes the stream after every quad.
+- **Loading.** `ClientEngineAPI.LoadSprite(filename, options?): Promise<SpritePlayback>`, with
+  `options.sidecar` and `options.clock`. The asset comes from `Mod.modelLoaderRegistry.load()`, the
+  loaders a world sprite goes through (header pass, sidecar, decoder strategies, memory guard), so `.spr` works as well,
+  and Half-Life's HUD sheets are SPR v2. The resulting `SpriteModel` never enters Mod's per-map caches: a client-side
+  `SpriteAssets` cache keeps its asset by file name for the page's lifetime, survives map changes and disconnects, and
+  frees the textures on `gl.shutdown`. A file that does not load as a sprite throws. Of the sidecar, `orientation`,
+  `phase`, `lit` and `origin` are world settings and do nothing in 2D; the rest applies.
+- **Playback.** Each `LoadSprite` call returns a new `SpritePlayback` over the shared asset, so two HUD elements from
+  one file play independently. It holds the sequence, the start time, a speed and whether it is paused:
+  `play(sequence: number | string)` (by index or by name, restarting it), `pause()`, `resume()`, `duration`,
+  `finished`. It answers through the shared `SpriteAnimator`, the way world sprites use the entity's `frame` and
+  `animationStartTime`. Its clock is client time (`clientRuntimeState.time`) by default, or real time
+  (`clock: 'real'`) for menus and anything that should run while the game is paused or disconnected. Client time
+  starts over on a new connection, so a start time in the future restarts the sequence. Game code never constructs one:
+  `SpritePlayback` is re-exported from `source/shared/GameInterfaces.ts` as a type, like `GLTexture`.
+- **Drawing.** `ClientEngineAPI.DrawSprite(x, y, playback, options?)` with `scale`, `region` (a name), `tint` (RGB) and
+  `alpha`, at screen coordinates like `DrawPic`; a menu places it with `Menu.toScreenPosition`/`viewportScale`. The top
+  left corner of the image (or the region) is at `x, y`; its size is the image's width and height (pixels times the
+  sidecar's `scale`) times `options.scale`. `Draw` gets a `pic-sprite` program on `sampler2DArray` whose vertex carries
+  the layer, the next layer and the fade, so the asset's `blend` and `interpolate` (with `r_interpolation`) work as in
+  the world. Sprites are streamed and the stream is flushed when the texture or a uniform changes, not after each quad.
+- **Blend state.** Pictures hold straight alpha and the 2D pass blends with `SRC_ALPHA, ONE_MINUS_SRC_ALPHA`, which
+  `GL.Set2D()` now sets ("Fixed before Phase 8"). Sprite textures are premultiplied, so `DrawSprite` switches to
+  `ONE, ONE_MINUS_SRC_ALPHA` for its batch and switches back after the flush.
+- **Shader chunk.** What the 2D program shares is the sprite texel and blend-mode output of `sprite.frag` (crossfade
+  between two premultiplied layers, discard below a quarter for `alphaTest`, alpha 0 for `additive`), so that moves
+  into a chunk both programs include (`shader-chunks`). `pic.frag` is one line and stays as it is.
+- **Regions.** `SpriteAsset` gains `regions`, named rectangles in file pixels: from the sidecar
+  (`"regions": { "number_0": [0, 0, 20, 24] }`) and from Aseprite slices, the sidecar winning on a name clash. A
+  region cuts whatever image is current. `AsepriteSliceKey` keeps only `x`, `y` and the pivot today, so the reader has
+  to keep each key's width and height too; a slice takes the bounds of its key at frame 0. `SpriteImage` gains its
+  size in file pixels (today it has only world units after `scale`), so a region's texture coordinates come from
+  pixels and `uvScale`, not from the texture, which the memory guard may have shrunk.
+- **Screen effects.** A full-screen `DrawSprite` with `additive` or `alpha` from the game's `draw()`, or from
+  `drawOverlay()` for one that must stay visible under `nohud`, covers damage splatter, visor rain or a teleport flash.
+  Like every overlay it is not in a clean screenshot. A `sprite` effect in the post-process stack, which would get the
+  pulse timing (fade in, hold, fade out, keyed restarts) and the `final` stage, is a later option.
+- **Not in Phase 8.** A `hud.txt` reader (GoldSrc cuts its HUD sheets into named regions with it; there is no real
+  Half-Life file here to check it against, and SPR v2 itself is unverified), a menu-space wrapper under
+  `ClientEngineAPI.Menu`, animated decals (`PlaceDecal` taking a sprite), the post-process effect.
 
 ## Phasing
 
@@ -461,31 +492,32 @@ part of its exit.
 
 0. ✅ **Settle the forks**, verify the format layouts against the specs, check `TransparentPass`
    blend-state handling and how `COM.LoadFile` misses.
-1. **Reshape `SpriteModel`, SPR on the new path.** A (with the `SpriteAsset` split), F (array texture, orientations, shader
+1. ✅ **Reshape `SpriteModel`, SPR on the new path.** A (with the `SpriteAsset` split), F (array texture, orientations, shader
    `sampler2DArray`), `SpriteAnimator`, `animationStartTime`. No new formats. Exit: id1's
    `s_explod.spr`, `s_light.spr`, `s_bubble.spr` look and animate exactly as before in a browser.
-2. **Header parsers and the server side.** B.1, `ImageSpriteLoader` without pixels. Exit:
+2. ✅ **Header parsers and the server side.** B.1, `ImageSpriteLoader` without pixels. Exit:
    `setModel('gfx/x.gif')` on the dedicated server sets correct bounds; duration query works
    server-side.
-3. **Client decoding.** D: GIF and APNG decoders, the WebP `ImageDecoder` path, still fallback,
+3. ✅ **Client decoding.** D: GIF and APNG decoders, the WebP `ImageDecoder` path, still fallback,
    memory guard. Exit: GIF, APNG,
    static PNG and WebP sprites animate in Chromium and Firefox; GIF and APNG in Safari (or a
-   WebKit build, if available here; otherwise say so).
-4. **Sidecar and blend modes.** C, the `alpha`/`additive` shader paths, `filter`, `fps`,
+   WebKit build, if available here; otherwise say so). Checked in Chromium only; Firefox and Safari not.
+4. ✅ **Sidecar and blend modes.** C, the `alpha`/`additive` shader paths, `filter`, `fps`,
    sequences, `interpolate`, `phase`, the `sidecar: false` precache hint with its `serverdata`
    flags byte (protocol 43) and the quiet `LoadFile` variant.
-5. **Game API and docs.** E's duration and name queries, the README bullet (formats shipped so
+5. ✅ **Game API and docs.** E's duration and name queries, the README bullet (formats shipped so
    far: GIF, PNG/APNG, WebP), the complete `docs/sprites.md` page on authoring image sprites (formats,
    sidecar reference, ffmpeg/Aseprite export one-liners), JSDoc.
-6. **Aseprite and Half-Life SPR v2.** `AsepriteHeader` + `AsepriteSpriteDecoder` (tags →
+6. ✅ **Aseprite and Half-Life SPR v2.** `AsepriteHeader` + `AsepriteSpriteDecoder` (tags →
    sequences with direction and repeat, slice pivot → per-image origin), SPR v2 branch with its
    render modes. Their sections in `docs/sprites.md`; the README bullet gains Aseprite and
-   Half-Life sprites.
-7. **Extras, each optional:** lit sprites (sample the lightgrid at the origin), decoding in a
-   worker, AVIF.
-8. **Later, its own go-ahead: 2D sprites (G).** `LoadSprite`, `SpritePlayback`, `DrawSprite`,
-   regions, tint, the array `pic` program, optionally a `hud.txt` reader. Browser check of a HUD
-   element and a full-screen effect.
+   Half-Life sprites. The Half-Life render modes are unverified (no real file).
+7. ✅ **Extras, each optional:** lit sprites (sample the lightgrid at the origin), decoding in a
+   worker, AVIF. Only lit sprites was chosen and built; the worker was measured as not needed, AVIF not built.
+8. ⏳ **Later, its own go-ahead: 2D sprites (G).** Forks settled, not started. `LoadSprite` with the `SpriteAssets` cache, `SpritePlayback` with
+   its clock, `DrawSprite` with the `pic-sprite` program and the chunk shared with `sprite.frag`, regions from the
+   sidecar and Aseprite slices, tint. Browser check of an animated HUD element, a tinted additive region and a
+   full-screen effect.
 
 ## Documentation
 
@@ -519,8 +551,9 @@ are. Nothing claims a format before it loads.
 - **`README.md`**: one bullet in the feature list, linking `docs/sprites.md`, for example:
   "**Modern Sprites**: animated sprites from GIF, PNG/APNG, WebP and Aseprite files, plus
   Half-Life sprites, with blend modes, named sequences and optional per-sprite settings."
-- Phase 8 (2D) adds a HUD and screen-effects section to `docs/sprites.md` and extends the README
-  bullet.
+- Phase 8 (2D) adds a HUD and screen-effects section to `docs/sprites.md` (the `regions` setting in the settings
+  reference, which settings do nothing in 2D), `LoadSprite`/`DrawSprite` and the `SpritePlayback` handle to
+  `docs/game-module-contract.md`, the new chunk to `docs/shader-chunks.md`, and extends the README bullet.
 
 ## Testing
 
@@ -537,6 +570,12 @@ are. Nothing claims a format before it loads.
 - **Browser (`browser-ui-verification`):** after Phase 1 the three SPR effects side by side with
   `main`; after Phase 3/4 a test entity per format and blend mode, in Chromium and Firefox. Safari
   can't be run here; I'll say so rather than claim it.
+- **Phase 8, unit:** `SpritePlayback` (both clocks, play by index and name, pause, repeat and `finished`, a clock that
+  started over), `LoadSprite` (one asset for two handles, a file that is no sprite, survives a map change, freed on
+  `gl.shutdown`), regions from the sidecar and from Aseprite slices (the reader keeping their size, the sidecar
+  winning), region texture coordinates on a texture the memory guard shrank, `DrawSprite`'s blend switch and batching
+  with the recording context. **Browser:** an animated HUD element, a tinted additive region, a full-screen effect, and
+  a half transparent HUD rectangle while a sprite is the nearest transparent item (the fix below).
 
 ### What actually shipped in Phase 0
 
@@ -812,6 +851,22 @@ The three extras were put to the maintainer (2026-10-23) with a recommendation; 
   the unlit one is 255 on all its pixels, the lit one 193 (the map's light there), the lit one with the light 255 again.
 - **Docs:** the `lit` row in `docs/sprites.md`.
 
+### Fixed before Phase 8
+
+Found while reviewing Phase 8, from reading the code. `GL.Set2D()` turned blending on but never set a blend function,
+and `TransparentPass` does not put one back either. Since Phase 1 the sprite run blends with `ONE, ONE_MINUS_SRC_ALPHA`,
+so in a frame whose nearest transparent item was a sprite (and no color shift ran) the HUD, menu and console drew
+their straight-alpha pictures with the premultiplied function: half transparent pixels (a `DrawRect` with alpha, PNG
+pictures, font edges) came out too bright. Fully opaque and fully transparent lump pixels were not affected.
+`Set2D()` now sets `SRC_ALPHA, ONE_MINUS_SRC_ALPHA` (alpha `ONE, ONE`, as `GL.Init()` does). Test in
+`test/client/gl.test.ts`; the recording context knows `ONE`, `SRC_ALPHA` and `ONE_MINUS_SRC_ALPHA` now (`ONE` is
+logged as `1`, like `NONE` as `0`, because it is a size nearly everywhere).
+
+**Browser check** (Chromium on software GL, `start`, production builds of `HEAD` and of the fix): `s_explod.spr` as a
+client entity 40 units in front of the camera, and a 50% white rectangle over black drawn with the HUD. `HEAD` ends
+the frame with `ONE, ONE_MINUS_SRC_ALPHA` and draws the rectangle white (255); the fix ends it with `SRC_ALPHA,
+ONE_MINUS_SRC_ALPHA` and draws it mid gray (127). Both builds log the same three 404s of optional files, nothing else.
+
 ## Open questions
 
 - **Half-Life sprites need a real file** to confirm the meaning of `texFormat` and of index-alpha colors.
@@ -822,4 +877,4 @@ The three extras were put to the maintainer (2026-10-23) with a recommendation; 
   (a hard key, fine for pixel art); and `"alphaFrom": "luminance"` that takes the alpha from the brightness of the
   pixel and keeps its color (soft, for smoke and glow drawn on black). Do you want all three, or does `additive`
   plus the key cover it? The two that came out of Phase 0 were settled by the maintainer on 2026-10-23 (Status).
-The G fork (2D API shape) waits for Phase 8.
+- **The G forks (2D API shape, screen effects, clock, scope)** were settled on 2026-10-23, see "Decisions for Phase 8".
