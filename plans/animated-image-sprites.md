@@ -553,7 +553,7 @@ are. Nothing claims a format before it loads.
 - **`README.md`**: one bullet in the feature list, linking `docs/sprites.md`, for example:
   "**Modern Sprites**: animated sprites from GIF, PNG/APNG, WebP and Aseprite files, plus
   Half-Life sprites, with blend modes, named sequences and optional per-sprite settings."
-- Phase 8 (2D) adds a HUD and screen-effects section to `docs/sprites.md` (the `regions` setting in the settings
+- ✅ (shipped in Phase 8, see "What actually shipped in Phase 8") Phase 8 (2D) adds a HUD and screen-effects section to `docs/sprites.md` (the `regions` setting in the settings
   reference, which settings do nothing in 2D), `LoadSprite`/`DrawSprite` and the `SpritePlayback` handle to
   `docs/game-module-contract.md`, the new chunk to `docs/shader-chunks.md`, and extends the README bullet.
 

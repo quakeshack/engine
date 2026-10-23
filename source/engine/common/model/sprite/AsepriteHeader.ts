@@ -3,8 +3,8 @@ import type { ImageHeader } from './ImageHeader.ts';
 import type { SpriteRegion } from './SpriteTypes.ts';
 
 /**
- * Header pass for Aseprite files: size, the duration of every frame, the tags (which become named sequences) and the
- * pivot of the first slice that has one (which becomes the origin). Pixels are not touched; the layout of the file
+ * Header pass for Aseprite files: size, the duration of every frame, the tags (which become named sequences), the
+ * pivot of the first slice that has one (which becomes the origin) and every named slice (which becomes a region). Pixels are not touched; the layout of the file
  * is described on {@link AsepriteFile}. A file plays forever by default, like in the editor.
  */
 export class AsepriteHeader {

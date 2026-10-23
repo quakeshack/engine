@@ -18,7 +18,7 @@ This directory contains documentation for the QuakeShack engine codebase and fea
 - [Menu System](menu-system.md) - Stack-based, widget-driven menu framework and the `ClientEngineAPI.Menu` API for game code.
 - [Post-Process Effects](post-process-effects.md) - Game-controlled screen-space effects (color grading, blur, color shifts): stacks, channels, pulses, stages and how to extend them.
 - [QSMAT (QuakeShack Material) Format](qsmat-format.md) - Details on the `.qsmat.json` file format used to define PBR materials for Quake BSP maps.
-- [Sprites](sprites.md) - Images as models: GIF, PNG/APNG and WebP sprites, the optional settings file (`scale`, `origin`, `blend`, `colorKey`, `sequences` and more), timing, memory limit and the precache hint.
+- [Sprites](sprites.md) - Images as models: GIF, PNG/APNG, WebP and Aseprite sprites next to Quake's and Half-Life's `.spr`, the optional settings file (`scale`, `origin`, `blend`, `colorKey`, `sequences`, `regions` and more), timing, memory limit and the precache hint, and drawing the same files on the screen (`LoadSprite`/`DrawSprite`: HUD elements, sprite sheet regions, screen effects).
 - [Shader Chunks](shader-chunks.md) - `#include` for GLSL: the chunk folder, once-per-stage expansion, `#line` based error mapping, the list of chunks and how to add one.
 - [Traceline API](traceline.md) - Contract and semantics of the gameplay-facing trace query used by server and client game logic.
 - [Volumetric Fog](volumetric-fog.md) - Guide on creating atmospheric fog volumes in maps.

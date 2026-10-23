@@ -51,6 +51,7 @@ file too (the scale decides the bounds). A broken file, a wrong value or a setti
   "repeat": 0,
   "interpolate": true,
   "lit": true,
+  "regions": { "number_0": [0, 0, 20, 24], "number_1": [20, 0, 12, 24] },
   "sequences": [
     { "name": "idle", "from": 0, "to": 7, "direction": "pingpong" },
     { "name": "burst", "from": 8, "to": 15, "repeat": 1, "fps": 24 }
