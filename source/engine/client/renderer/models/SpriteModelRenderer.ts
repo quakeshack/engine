@@ -182,7 +182,8 @@ export class SpriteModelRenderer extends ModelRenderer {
 
     switch (spriteModel.phase) {
       case SpritePhase.random:
-        time += entity.syncbase;
+        // syncbase is 0..1, so scale it to the length of the loop or a long sequence would only spread over a second
+        time += 'images' in frame ? entity.syncbase * SpriteAnimator.cycleDuration(frame) : 0.0;
         break;
       case SpritePhase.spawn:
         time -= entity.animationStartTime;

@@ -307,6 +307,7 @@ function parseStaticEntity() {
   const modelindex = net.message.readByte();
   ent.modelindex = modelindex;
   ent.model = clientRuntimeState.model_precache[modelindex] || null;
+  ent.syncbase = ent.model?.random ? Math.random() : 0.0;
   ent.frame = net.message.readByte();
   ent.colormap = net.message.readByte();
   ent.skinnum = net.message.readByte();
