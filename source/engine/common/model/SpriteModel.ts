@@ -1,4 +1,5 @@
 import { BaseModel } from './BaseModel.ts';
+import { SpriteAnimator } from './sprite/SpriteAnimator.ts';
 import type { SpriteAsset } from './sprite/SpriteAsset.ts';
 import { SpriteOrientation, SpritePhase, type SpriteFrame } from './sprite/SpriteTypes.ts';
 
@@ -45,6 +46,27 @@ export class SpriteModel extends BaseModel {
    */
   get numframes(): number {
     return this.frames.length;
+  }
+
+  /**
+   * How long the sequence an entity's `frame` selects plays, as far as its repeat count goes. A game that spawns an
+   * effect for one play uses it to schedule the removal. A `frame` out of range selects the first, as the renderer does.
+   * @param frame The entity's `frame`.
+   * @returns Seconds, `Infinity` for a sequence that repeats forever, 0 for a single picture (it has nothing to play).
+   */
+  sequenceDuration(frame: number): number {
+    const entry = this.frames[frame >= 0 && frame < this.frames.length ? frame : 0];
+
+    return entry !== undefined && 'images' in entry ? SpriteAnimator.duration(entry) : 0;
+  }
+
+  /**
+   * Finds a named sequence (a sequence of the sidecar, later a tag of an Aseprite file).
+   * @param name The name the sidecar gave it.
+   * @returns The `frame` that selects it, -1 when there is none of that name.
+   */
+  sequenceIndex(name: string): number {
+    return name === '' ? -1 : this.frames.findIndex((entry) => 'images' in entry && entry.name === name);
   }
 
   override reset(): void {

@@ -74,6 +74,62 @@ file too (the scale decides the bounds). A broken file, a wrong value or a setti
 How a sequence ends: `forward` holds its last image, `reverse` its first. A `pingpong` goes to the far end and back without
 showing either end image twice in a row, and holds the image it started with.
 
+## Effects that remove themselves
+
+An explosion or a puff plays once and goes away. The settings file (or the file itself) says it plays once, and the game asks
+how long that takes:
+
+```ts
+// gfx/explosion.apng.json: { "repeat": 1, "blend": "additive", "scale": 0.5 }
+static precache(engine: ServerEngineAPI): void {
+  engine.PrecacheModel('gfx/explosion.apng');
+}
+
+explode(): void {
+  this.setModel('gfx/explosion.apng');
+  this._scheduleThink(this.game.time + this.engine.GetSpriteSequenceDuration('gfx/explosion.apng', 0), function (this: ExplosionEntity) {
+    this.remove();
+  });
+}
+```
+
+Both engine APIs have the two queries. They need the model to be precached (and, on the server, to have finished loading, so
+ask while the map runs, not while it loads), and throw if it is not:
+
+| Query | Answer |
+| :--- | :--- |
+| `GetSpriteSequenceDuration(modelName, frame = 0)` | Seconds the sequence that `frame` selects plays, counting its repeats. `Infinity` for a sequence that repeats forever, 0 for a still image and for a model that is no sprite. A `frame` out of range selects the first, as drawing does. |
+| `GetSpriteSequenceIndex(modelName, name)` | The `frame` of the sequence the settings file named `name`, -1 for none, an empty name or a model that is no sprite. |
+
+Naming sequences keeps a game independent of their order in the file:
+
+```ts
+this.frame = this.engine.GetSpriteSequenceIndex('gfx/imp.gif', 'burst');
+```
+
+Changing `frame` restarts a sprite that follows its entity's own clock (`phase: spawn`); setting the frame it already has
+does not, so a server repeating it every update leaves a running animation alone.
+
+## Making the files
+
+Any tool that writes GIF, APNG or animated WebP works. With `ffmpeg` (the three commands below were tried with ffmpeg 8.0.1-3ubuntu2, on
+small test inputs; a sprite is drawn at its pixel size times `scale`, so pick the size you want to keep):
+
+```bash
+# a video or a GIF to APNG, true color and 8 bit alpha, forever (-plays 0)
+ffmpeg -i in.mp4 -vf "fps=12,scale=128:-1,format=rgba" -plays 0 out.apng
+
+# a GIF to animated WebP (smaller, needs ImageDecoder in the browser)
+ffmpeg -i in.gif -loop 0 out.webp
+
+# a video to a GIF with a good palette
+ffmpeg -i in.mp4 -vf "fps=12,scale=128:-1,split[a][b];[a]palettegen[p];[b][p]paletteuse" -loop 0 out.gif
+```
+
+Frames of an animation that glows or burns are best made on a black background and drawn with `"blend": "additive"`, which
+needs no transparency at all; a GIF's "black" is often a few levels off, see `colorKey` above. For pixel art draw at the size
+the sprite has on screen and set `"filter": "nearest"`.
+
 ## Memory
 
 All images of a sprite are uploaded as the layers of one texture. A sprite may take `r_sprite_memory` megabytes of video

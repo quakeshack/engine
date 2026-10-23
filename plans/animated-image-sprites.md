@@ -18,6 +18,9 @@ Phase 3". Chromium checked, Firefox not.
 `sidecar: false` precache hint (protocol 43), see "What actually shipped in Phase 4". Chromium checked, Firefox not.
 Phase 5 waits for a go-ahead.
 
+✅ Phase 5 done (2026-10-23): the game API queries, the README bullet and the complete `docs/sprites.md`, see "What
+actually shipped in Phase 5". Phase 6 (Aseprite, Half-Life SPR v2) waits for a go-ahead.
+
 ### Decisions so far (2026-10-22, from the maintainer)
 
 - **Animation model: auto-play sequences.** A file is one sequence at `frame 0` that plays by
@@ -720,6 +723,28 @@ Image sprites are decoded and drawn in the client: GIF, APNG, static PNG, animat
   `ModelPrecacheList`); `interpolate` on a sprite whose images differ in size (image sprites never do).
 - **Found on the way:** a maintainer's uncommitted id1 experiment (`setModel('gfx/fire.gif')`, 437x498, 20 frames,
   opaque black) is what the lookup 404 in the logs was, and what the settings are for.
+
+### What actually shipped in Phase 5
+
+- **Game API (E).** `GetSpriteSequenceDuration(modelName, frame = 0)` and `GetSpriteSequenceIndex(modelName, name)` on
+  both `ServerEngineAPI` and `ClientEngineAPI` (the logic is `SpriteModel.sequenceDuration()` / `sequenceIndex()`).
+  Duration is `Infinity` for a sequence that repeats forever (an SPR group does), 0 for a still image and for a model
+  that is no sprite, and a `frame` out of range selects the first, like the renderer. The index is -1 for no match,
+  an empty name and a model that is no sprite. Both **throw** for a model that was not precached, and on the server for
+  one that has not finished loading (a precaching entity's `spawn()` during the map load can hit that): a typo must
+  not turn into an effect that removes itself at once. `ServerDependencies.ModelCache` got `ResolveScopedModel`.
+  The queries live on the engine API classes, which `GameInterfaces.ts` re-exports; nothing to add there.
+- **Docs.** `README.md` feature bullet; `docs/sprites.md` is complete for what exists: formats, settings, timing,
+  memory, the hint, effects that remove themselves, making the files (the three ffmpeg commands in it were run with
+  ffmpeg 8.0.1 against small generated inputs), what an Aseprite or Half-Life sprite will add is left to Phase 6;
+  `docs/game-module-contract.md` lists both queries.
+- **Real-world files.** An APNG and a GIF written by ffmpeg (12 frames, the GIF with sub-rectangle frames from its
+  palette optimization) decode pixel-identical to Pillow's frames with our decoders and headers (checked once, by
+  hand, not a test: no ffmpeg in the Docker stage). This is the check the maintainer's own files were meant for.
+- **Tests added** (2801 in all, ESLint and typecheck clean): `sprite-sequence-queries`, the same 8 cases against
+  both APIs (one-shot and counted durations, forever, still and non-sprite, named frame durations, out of range,
+  lookup by name, unknown and empty names, not precached) and `SpriteModel` ping-pong counting.
+- **Not changed:** the README does not promise Aseprite or Half-Life sprites yet.
 
 ## Open questions
 
