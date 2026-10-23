@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { SpriteAnimator } from '../../source/engine/common/model/sprite/SpriteAnimator.ts';
+import { SpriteAnimator, type SpriteImageBlend } from '../../source/engine/common/model/sprite/SpriteAnimator.ts';
 import { SpriteDirection, type SpriteImage, type SpriteSequence } from '../../source/engine/common/model/sprite/SpriteTypes.ts';
 
 /**
@@ -126,6 +126,56 @@ void describe('SpriteAnimator', () => {
 
     void test('is the cycle times the repeats', () => {
       assert.equal(SpriteAnimator.duration(createSequence([0.5, 0.25], SpriteDirection.forward, 4)), 3);
+    });
+  });
+
+  void describe('blendAt', () => {
+    /**
+     * @returns The image, the next one and how far in the first is at `time`, rounded for comparing.
+     */
+    function blend(sequence: SpriteSequence, time: number): [number, number, number] {
+      const out: SpriteImageBlend = { index: -1, nextIndex: -1, mix: -1 };
+
+      SpriteAnimator.blendAt(sequence, time, out);
+
+      return [out.index, out.nextIndex, Math.round(out.mix * 1000) / 1000];
+    }
+
+    void test('fades from an image to the next as its time runs out', () => {
+      const sequence = createSequence([1, 2, 1]);
+
+      assert.deepEqual(blend(sequence, 0), [0, 1, 0]);
+      assert.deepEqual(blend(sequence, 0.25), [0, 1, 0.25]);
+      assert.deepEqual(blend(sequence, 2), [1, 2, 0.5]);
+      assert.deepEqual(blend(sequence, 2.5), [1, 2, 0.75]);
+    });
+
+    void test('fades from the last image back to the first of a looping sequence', () => {
+      const sequence = createSequence([1, 1]);
+
+      assert.deepEqual(blend(sequence, 1.5), [1, 0, 0.5]);
+    });
+
+    void test('follows the direction of the sequence', () => {
+      assert.deepEqual(blend(createSequence([1, 1, 1], SpriteDirection.reverse), 0.5), [2, 1, 0.5]);
+      assert.deepEqual(blend(createSequence([1, 1, 1], SpriteDirection.pingpong), 2.5), [2, 1, 0.5]);
+      assert.deepEqual(blend(createSequence([1, 1, 1], SpriteDirection.pingpong), 3.5), [1, 0, 0.5]);
+    });
+
+    void test('does not fade while a finished sequence holds its last image', () => {
+      const sequence = createSequence([1, 1], SpriteDirection.forward, 1);
+
+      assert.deepEqual(blend(sequence, 5), [1, 1, 0]);
+    });
+
+    void test('a single image has nothing to fade to', () => {
+      assert.deepEqual(blend(createSequence([0.5]), 3), [0, 0, 0]);
+    });
+
+    void test('fades to the image it will hold when the last play ends', () => {
+      const sequence = createSequence([1, 1], SpriteDirection.forward, 1);
+
+      assert.deepEqual(blend(sequence, 1.5), [1, 1, 0.5]);
     });
   });
 });

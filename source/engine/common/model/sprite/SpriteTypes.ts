@@ -22,6 +22,14 @@ export enum SpriteBlend {
   additive = 'additive',
 }
 
+/** How a sprite's texture is sampled. Without one the sprite follows `gl_texturemode` like other textures. */
+export enum SpriteFilter {
+  /** Smooth, with mip levels. */
+  linear = 'linear',
+  /** Hard pixels, for pixel art. */
+  nearest = 'nearest',
+}
+
 /** In which order a sequence shows its images. */
 export enum SpriteDirection {
   forward = 'forward',

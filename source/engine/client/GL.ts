@@ -2,6 +2,7 @@ import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { MissingResourceError } from '../common/Errors.ts';
 import { WadLumpTexture } from '../common/W.ts';
+import { SpriteFilter } from '../common/model/sprite/SpriteTypes.ts';
 import { eventBus } from '../common/EventBus.ts';
 import VID from './VID.ts';
 import Con from '../common/Console.ts';
@@ -623,6 +624,7 @@ export const ATTRIB_LOCATIONS = {
   aPositionB: 7,
   aNormalA: 8,
   aNormalB: 9,
+  aBlend: 10, // sprites: next image and fade
 } as const;
 
 export const BRUSH_VERTEX_STRIDE = 80;
@@ -780,9 +782,10 @@ export class GLTextureArray {
    * @param width width of every layer
    * @param height height of every layer
    * @param layers premultiplied RGBA pixels of each layer, `width * height * 4` bytes each
+   * @param filter how to sample it, `null` to follow `gl_texturemode`
    * @returns the new texture
    */
-  static FromRGBALayers(width: number, height: number, layers: readonly Uint8Array[]): GLTextureArray {
+  static FromRGBALayers(width: number, height: number, layers: readonly Uint8Array[], filter: SpriteFilter | null = null): GLTextureArray {
     console.assert(layers.length > 0 && layers.length <= gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS), 'layer count within the context limit required');
 
     const texture = new GLTextureArray();
@@ -801,9 +804,19 @@ export class GLTextureArray {
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     GL.CheckError();
 
-    texture.#followsTextureMode = true;
-    texture.#applyTextureMode(currentTextureMode);
-    followingTextureArrays.add(texture);
+    switch (filter) {
+      case SpriteFilter.nearest:
+        texture.#applyFilter(gl.NEAREST, gl.NEAREST);
+        break;
+      case SpriteFilter.linear:
+        texture.#applyFilter(gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR);
+        break;
+      default:
+        texture.#followsTextureMode = true;
+        texture.#applyTextureMode(currentTextureMode);
+        followingTextureArrays.add(texture);
+        break;
+    }
 
     return texture;
   }
@@ -845,9 +858,13 @@ export class GLTextureArray {
     const mode = textureModes[name];
     console.assert(mode !== undefined, 'Valid texture mode required');
 
+    this.#applyFilter(mode.min, mode.max);
+  }
+
+  #applyFilter(minFilter: number, magFilter: number): void {
     this.bind(0);
-    gl.texParameterf(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, mode.min);
-    gl.texParameterf(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, mode.max);
+    gl.texParameterf(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, minFilter);
+    gl.texParameterf(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, magFilter);
   }
 
   free(): void {

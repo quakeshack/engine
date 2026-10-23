@@ -14,6 +14,7 @@ import Cvar from '../common/Cvar.ts';
 import { type GameEdition, GameFlavors, type GameTrace, type InternalTraceLike, internalTraceToGameTrace } from '../common/GameApiSupport.ts';
 import Mod, { ModelScope } from '../common/Mod.ts';
 import type { ModelLoadOptions } from '../common/model/ModelLoadContext.ts';
+import { ModelPrecacheFlags } from '../../shared/ModelPrecacheFlags.ts';
 import { type BaseEntity, ServerEdict } from './Edict.ts';
 
 type ServerEntityFilter = ((entity: ServerEdict) => boolean) | null;
@@ -24,6 +25,12 @@ type ServerEntityFilter = ((entity: ServerEdict) => boolean) | null;
 export interface PrecacheModelOptions {
   /** Keep the model's triangles and poses, for entities that are solid as `SOLID_MESH`. */
   readonly meshCollision?: boolean;
+  /**
+   * Whether to look for the sidecar settings of an image sprite (`<model>.json`). `false` says there is none,
+   * which saves the lookup on the server and, as a hint in the model list, on every client (a browser pays a
+   * request for each file that is not there). Leaving it out keeps "drop in a sidecar and it works".
+   */
+  readonly sidecar?: boolean;
 }
 
 /**
@@ -474,17 +481,26 @@ export class ServerEngineAPI {
   PrecacheModel(modelName: string, options: PrecacheModelOptions = {}): void {
     console.assert(typeof modelName === 'string', 'modelName must be a string');
 
-    const loadOptions: ModelLoadOptions = { collisionGeometry: options.meshCollision === true };
+    const loadOptions: ModelLoadOptions = { collisionGeometry: options.meshCollision === true, sidecar: options.sidecar !== false };
+    const flags = loadOptions.sidecar ? ModelPrecacheFlags.none : ModelPrecacheFlags.noSidecar;
     const index = this.#sv.server.modelPrecache.indexOf(modelName);
 
     if (index === -1) {
       this.#sv.server.modelPrecache.push(modelName);
+      this.#sv.server.modelPrecacheFlags[this.#sv.server.modelPrecache.length - 1] = flags;
       this.#sv.server.models.push(this.#sv.mod.ForNameAsync(modelName, true, ModelScope.server, loadOptions)); // will cause promises in the array
       return;
     }
 
-    if (loadOptions.collisionGeometry) {
-      // Already precached, possibly without its geometry: the cache reloads it only when that is the case.
+    // Already precached, possibly without its geometry or without looking for its sidecar: the cache reloads it
+    // only when that is the case, and a later precache that wants more wins over an earlier one that wanted less.
+    const hadSidecarSkipped = (this.#sv.server.modelPrecacheFlags[index] & ModelPrecacheFlags.noSidecar) !== 0;
+
+    if (loadOptions.collisionGeometry || (loadOptions.sidecar && hadSidecarSkipped)) {
+      if (loadOptions.sidecar) {
+        this.#sv.server.modelPrecacheFlags[index] &= ~ModelPrecacheFlags.noSidecar;
+      }
+
       this.#sv.server.models[index] = this.#sv.mod.ForNameAsync(modelName, true, ModelScope.server, loadOptions);
     }
   }

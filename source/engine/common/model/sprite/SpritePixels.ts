@@ -89,4 +89,36 @@ export class SpritePixels {
 
     return { rgba: result, width: halfWidth, height: halfHeight };
   }
+
+  /**
+   * Makes every pixel transparent whose color is within `tolerance` of `key`, in place. The pixels are
+   * premultiplied, so a half transparent pixel is compared by the color it would have with full alpha.
+   * @param rgba premultiplied RGBA pixels
+   * @param key red, green and blue to remove
+   * @param tolerance how far each channel may be from the key, 0 to 255
+   * @returns the same array
+   */
+  static keyColor(rgba: Uint8Array, key: readonly [number, number, number], tolerance: number): Uint8Array {
+    for (let index = 0; index < rgba.length; index += 4) {
+      const alpha = rgba[index + 3];
+
+      if (alpha === 0) {
+        continue;
+      }
+
+      let matches = true;
+
+      for (let channel = 0; channel < 3 && matches; channel++) {
+        const straight = alpha === 255 ? rgba[index + channel] : Math.min(255, Math.round(rgba[index + channel] * 255 / alpha));
+
+        matches = Math.abs(straight - key[channel]) <= tolerance;
+      }
+
+      if (matches) {
+        rgba.fill(0, index, index + 4);
+      }
+    }
+
+    return rgba;
+  }
 }

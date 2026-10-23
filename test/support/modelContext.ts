@@ -41,6 +41,9 @@ export function createDirectoryFiles(baseUrl: URL): ModelFiles {
         return null;
       }
     },
+    async LoadOptionalTextFile(name: string): Promise<string | null> {
+      return await this.LoadTextFile(name);
+    },
   };
 }
 
@@ -52,7 +55,7 @@ export function createDirectoryFiles(baseUrl: URL): ModelFiles {
  */
 export function createModelLoadContext(overrides: Partial<ModelLoadContext> = {}): ModelLoadContext {
   return {
-    files: { LoadFile: () => Promise.resolve(null), LoadTextFile: () => Promise.resolve(null) },
+    files: { LoadFile: () => Promise.resolve(null), LoadTextFile: () => Promise.resolve(null), LoadOptionalTextFile: () => Promise.resolve(null) },
     con: createSilentConsole(),
     loadRenderData: false,
     spriteImages: null,

@@ -145,6 +145,7 @@ two places and the engine carries both to the client:
 - `isCrashShutdown` is never `true` today: no engine path raises it.
 - `ClientDisconnect` is skipped for clients whose connection failed, so a game cannot rely on it to clean up after every departing player.
 - **The server keeps only the bounds of a model it precaches**, which is all `setModel` reads. An alias model's triangles and poses (about 70 times larger in memory than in the file) are only kept when the game says so: `ServerEngineAPI.PrecacheModel(name, { meshCollision: true })`. Every entity that is solid as `SOLID_MESH` needs its model precached that way, from `_precache` or from `setModel` while loading (set `solid` first). Without it the entity is traced as its bounding box and the server prints a warning once per model. Precaching a model again with the option reloads it with its geometry, so the order of calls does not matter. Brush and mesh (`.obj`) models are not affected.
+- **`PrecacheModel(name, { sidecar: false })` says an image sprite has no settings file** (`<name>.json`), which saves the lookup on the server and, as a flags byte after each model name in `serverdata` (`ModelPrecacheFlags`, protocol 43), on every client. Leaving it out looks for the file, and precaching the model again without it loads the file after all. See [Sprites](sprites.md).
 
 ## Changing the contract
 

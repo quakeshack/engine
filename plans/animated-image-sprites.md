@@ -12,7 +12,11 @@ reshaped `SpriteModel`, see "What actually shipped in Phase 1".
 shipped in Phase 2".
 
 ✅ Phase 3 done (2026-10-23): client decoding for GIF, APNG, static PNG and WebP, see "What actually shipped in
-Phase 3". Chromium checked, Firefox not. Phase 4 waits for a go-ahead.
+Phase 3". Chromium checked, Firefox not.
+
+✅ Phase 4 done (2026-10-23): the sidecar with all its settings, the blend modes, `filter`, `interpolate`, the
+`sidecar: false` precache hint (protocol 43), see "What actually shipped in Phase 4". Chromium checked, Firefox not.
+Phase 5 waits for a go-ahead.
 
 ### Decisions so far (2026-10-22, from the maintainer)
 
@@ -669,9 +673,58 @@ Image sprites are decoded and drawn in the client: GIF, APNG, static PNG, animat
   there for animated WebP, version 133 or later), Safari, and the sidecar-less size problem (Phase 4).
 - **Docs:** none yet, by plan; `r_sprite_memory` is described in the cvar's own help text.
 
+### What actually shipped in Phase 4
+
+- **Sidecar (C).** `common/model/sprite/SpriteSidecar.ts`: `SpriteSidecars.parse()` validates every setting with
+  typed readers and reports what is wrong on the console (wrong type, out of range, a word that is not a choice, an
+  unknown key as "unknown setting"), leaves it out and still loads the sprite. Both realms read it
+  (`ModelFiles.LoadOptionalTextFile(name + '.json')`), because the scale decides the bounds the server uses.
+  Settings: `version`, `orientation`, `origin`, `scale`, `blend`, `filter`, `phase`, `interpolate`, `fps`, `repeat`,
+  `colorKey`, `sequences`.
+  - **`origin` is a pixel of the image counted from its top left corner** (the plan did not say). Default is the
+    center; `[width / 2, height]` is the bottom center. The bounds follow it: horizontally as far as the farther
+    side, because a billboard turns around the origin; vertically from the real bottom to the real top.
+  - **A sequence's `repeat` and `fps` default to the sidecar's top-level ones, then the file's.** `fps` replaces
+    the file's delays and the 10 ms clamp. Sequences that reach past the file are cut and reported.
+- **Black to alpha.** Built as proposed and recommended: `blend: additive` and `colorKey` (`color`, `tolerance`;
+  matches by the color a pixel has at full alpha, hard edge, applied to every frame before upload).
+  `"alphaFrom": "luminance"` is **not built** (no answer to the question yet); say so and it is a few lines in
+  `SpritePixels`.
+- **Rendering (F).** `sprite.frag` has `uBlendMode` (0 alpha tested, 1 alpha, 2 additive): additive writes no alpha,
+  so it adds; fog fades an additive sprite to nothing; the three batch in one run with a flush when alpha, emissive
+  scale or mode change. The vertex got `aBlend` (next layer, fade) at attribute location 10; `interpolate` mixes the
+  two premultiplied texels. `SpriteAnimator.blendAt()` gives the next image and the fade (reverse and ping-pong
+  included) and honors `r_interpolation`. `GLTextureArray.FromRGBALayers(..., filter)`: `nearest` is hard pixels, `linear`
+  is smooth with mips, none follows `gl_texturemode`.
+- **Hint and protocol.** `PrecacheModel(name, { sidecar: false })`; `ModelLoadOptions.sidecar` (default `true`);
+  `BaseModel.sidecarSkipped` lets the model cache reload a model that skipped it when a later load wants it (and
+  never replace one that has it by one that skipped). `serverdata` carries one `ModelPrecacheFlags` byte after each
+  model name, protocol **43** (`source/shared/ModelPrecacheFlags.ts`; the writer and reader of the list are
+  `network/ModelPrecacheList.ts`, tested for layout and round trip). The Half-Life studio model plan still has to
+  take 44.
+- **Quiet lookup.** `Com.LoadOptionalFile` / `LoadOptionalTextFile`: like `LoadFile` but a miss prints nothing; every
+  `ModelFiles` implementation has the text variant. In a browser a miss is still a request, so the hint matters.
+- **Docs.** New `docs/sprites.md` (formats as they are shipped, the settings reference, timing, memory, the hint),
+  linked from `docs/README.md`; `docs/game-module-contract.md` (the option and the flags byte); `docs/asset-layer.md`
+  (the optional lookups). The README bullet and the game API queries stay with Phase 5.
+- **Tests added** (2784 in all, ESLint and typecheck clean): `sprite-sidecar` (every setting, every kind of
+  mistake), the loader with a sidecar (scale, origin, bounds, every setting, fps below the clamp, sequences, repeat
+  inheritance, cut sequences, broken file, no lookup with the hint, color key and filter reaching the texture),
+  `precache-sidecar` (hint, flags, reload order, model cache rule), `model-precache-list`, animator `blendAt`,
+  `keyColor`.
+- **Browser check** (Chromium, clock pinned, ten sprites at once): scale 1 against 0.5, bottom-center origin,
+  `linear` against `nearest` on a pixel-art PNG, a flame GIF with an opaque black background drawn plain, `additive`
+  and with a color key, a crossfade at half time between two frames, a named sequence selected with `frame` playing
+  in reverse. A sidecar-less lookup prints nothing and costs one request. **Not checked:** Firefox; the hint end to
+  end in a live game (covered by unit tests of both sides, the in-browser server and client talk through the same
+  `ModelPrecacheList`); `interpolate` on a sprite whose images differ in size (image sprites never do).
+- **Found on the way:** a maintainer's uncommitted id1 experiment (`setModel('gfx/fire.gif')`, 437x498, 20 frames,
+  opaque black) is what the lookup 404 in the logs was, and what the settings are for.
+
 ## Open questions
 
-- **Black to alpha (Phase 4), shape of the setting.** My proposal for the sidecar, to settle when Phase 4 starts:
+- **Luminance alpha.** Not built, see above.
+- **Black to alpha (Phase 4), shape of the setting (settled, see Phase 4).** My proposal for the sidecar, to settle when Phase 4 starts:
   `"blend": "additive"` for fire and glow (black adds nothing, no key needed); for an alpha-blended sprite with a
   black background `"colorKey": { "color": [0, 0, 0], "tolerance": 16 }` that makes matching pixels transparent
   (a hard key, fine for pixel art); and `"alphaFrom": "luminance"` that takes the alpha from the brightness of the

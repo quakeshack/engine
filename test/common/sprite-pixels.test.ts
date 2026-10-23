@@ -33,6 +33,41 @@ void describe('SpritePixels.halve', () => {
   });
 });
 
+void describe('SpritePixels.keyColor', () => {
+  void test('clears the pixels of the key color', () => {
+    const rgba = new Uint8Array([0, 0, 0, 255, 10, 20, 30, 255, 0, 0, 0, 255]);
+
+    SpritePixels.keyColor(rgba, [0, 0, 0], 0);
+
+    assert.deepEqual([...rgba], [0, 0, 0, 0, 10, 20, 30, 255, 0, 0, 0, 0]);
+  });
+
+  void test('takes in colors within the tolerance of each channel', () => {
+    const rgba = new Uint8Array([8, 8, 8, 255, 9, 0, 0, 255, 20, 0, 0, 255]);
+
+    SpritePixels.keyColor(rgba, [0, 0, 0], 8);
+
+    assert.deepEqual([...rgba], [0, 0, 0, 0, 9, 0, 0, 255, 20, 0, 0, 255]);
+  });
+
+  void test('compares a half transparent pixel by its color at full alpha', () => {
+    // red at half alpha, premultiplied: stays red for a red key, is not black
+    const rgba = new Uint8Array([128, 0, 0, 128, 0, 0, 0, 128]);
+
+    SpritePixels.keyColor(rgba, [0, 0, 0], 0);
+
+    assert.deepEqual([...rgba], [128, 0, 0, 128, 0, 0, 0, 0]);
+  });
+
+  void test('leaves pixels that are already transparent alone', () => {
+    const rgba = new Uint8Array([0, 0, 0, 0]);
+
+    SpritePixels.keyColor(rgba, [0, 0, 0], 0);
+
+    assert.deepEqual([...rgba], [0, 0, 0, 0]);
+  });
+});
+
 void describe('CRC32', () => {
   void test('matches the standard check value', () => {
     assert.equal(CRC32.Block(new TextEncoder().encode('123456789')), 0xcbf43926);

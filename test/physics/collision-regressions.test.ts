@@ -3058,6 +3058,9 @@ async function loadBSPMap(mapName: string): Promise<BrushModel> {
         return null;
       }
     },
+    async LoadOptionalTextFile(name: string) {
+      return await this.LoadTextFile(name);
+    },
   };
   const restoreEngineMocks = installEngineMocks({ Con: con, Mod, COM: files });
   Mod.Init({ files, con, loadRenderData: false });

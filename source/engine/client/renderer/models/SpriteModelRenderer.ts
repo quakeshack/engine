@@ -4,8 +4,9 @@ import { eventBus } from '../../../common/EventBus.ts';
 import GL, { type GLTextureArray } from '../../GL.ts';
 import Vector from '../../../../shared/Vector.ts';
 import { SpriteModel } from '../../../common/model/SpriteModel.ts';
-import { SpriteAnimator } from '../../../common/model/sprite/SpriteAnimator.ts';
-import { SpriteOrientation, SpritePhase, type SpriteImage } from '../../../common/model/sprite/SpriteTypes.ts';
+import { SpriteAnimator, type SpriteImageBlend } from '../../../common/model/sprite/SpriteAnimator.ts';
+import { SpriteBlend, SpriteOrientation, SpritePhase, type SpriteImage } from '../../../common/model/sprite/SpriteTypes.ts';
+import rendererCvars from '../resources/RendererCvars.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
 import type { BaseModel } from '../../../common/model/BaseModel.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
@@ -33,6 +34,20 @@ export class SpriteModelRenderer extends ModelRenderer {
   /** The `uAlpha` and `uBloomEmissiveScale` the streamed sprites are drawn with; `NaN` before the first sprite of a run. */
   static #alpha = Number.NaN;
   static #emissiveScale = Number.NaN;
+  static #blendMode = Number.NaN;
+
+  /** Layer of the image the sprite being built fades into, and how far (`aBlend` of its vertices). */
+  static #nextLayer = 0;
+  static #fade = 0;
+
+  static readonly #imageBlend: SpriteImageBlend = { index: 0, nextIndex: 0, mix: 0 };
+
+  /** The values of `uBlendMode` in `sprite.frag`. */
+  static readonly #BLEND_MODES: Readonly<Record<SpriteBlend, number>> = {
+    [SpriteBlend.alphaTest]: 0,
+    [SpriteBlend.alpha]: 1,
+    [SpriteBlend.additive]: 2,
+  };
 
   /** Basis of the sprite being built. */
   static readonly #right = new Vector();
@@ -57,6 +72,7 @@ export class SpriteModelRenderer extends ModelRenderer {
       SpriteModelRenderer.#boundTexture = null;
       SpriteModelRenderer.#alpha = Number.NaN;
       SpriteModelRenderer.#emissiveScale = Number.NaN;
+      SpriteModelRenderer.#blendMode = Number.NaN;
     }
   }
 
@@ -102,12 +118,16 @@ export class SpriteModelRenderer extends ModelRenderer {
     // the quads are drawn at the next flush, so what the uniforms say has to be the same for all of them
     const emissiveScale = getEntityBloomEmissiveScale(entity.effects);
 
-    if (entity.alpha !== SpriteModelRenderer.#alpha || emissiveScale !== SpriteModelRenderer.#emissiveScale) {
+    const blendMode = SpriteModelRenderer.#BLEND_MODES[asset.blend];
+
+    if (entity.alpha !== SpriteModelRenderer.#alpha || emissiveScale !== SpriteModelRenderer.#emissiveScale || blendMode !== SpriteModelRenderer.#blendMode) {
       GL.StreamFlush();
       gl.uniform1f(program.uAlpha!, entity.alpha);
       gl.uniform1f(program.uBloomEmissiveScale!, emissiveScale);
+      gl.uniform1f(program.uBlendMode!, blendMode);
       SpriteModelRenderer.#alpha = entity.alpha;
       SpriteModelRenderer.#emissiveScale = emissiveScale;
+      SpriteModelRenderer.#blendMode = blendMode;
     }
 
     const image = SpriteModelRenderer.#selectImage(spriteModel, entity);
@@ -131,6 +151,8 @@ export class SpriteModelRenderer extends ModelRenderer {
     const frame = frames[entity.frame >= 0 && entity.frame < frames.length ? entity.frame : 0];
 
     if (!('images' in frame)) {
+      SpriteModelRenderer.#nextLayer = frame.layer;
+      SpriteModelRenderer.#fade = 0;
       return frame;
     }
 
@@ -147,7 +169,22 @@ export class SpriteModelRenderer extends ModelRenderer {
         break;
     }
 
-    return frame.images[SpriteAnimator.imageIndexAt(frame, time)];
+    if (spriteModel.asset!.interpolate && rendererCvars.interpolation.value !== 0) {
+      const blend = SpriteModelRenderer.#imageBlend;
+
+      SpriteAnimator.blendAt(frame, time, blend);
+      SpriteModelRenderer.#nextLayer = frame.images[blend.nextIndex].layer;
+      SpriteModelRenderer.#fade = blend.mix;
+
+      return frame.images[blend.index];
+    }
+
+    const image = frame.images[SpriteAnimator.imageIndexAt(frame, time)];
+
+    SpriteModelRenderer.#nextLayer = image.layer;
+    SpriteModelRenderer.#fade = 0;
+
+    return image;
   }
 
   /**
@@ -214,6 +251,8 @@ export class SpriteModelRenderer extends ModelRenderer {
     const uMax = image.uvScale[0];
     const vMax = image.uvScale[1];
     const layer = image.layer;
+    const nextLayer = SpriteModelRenderer.#nextLayer;
+    const fade = SpriteModelRenderer.#fade;
 
     GL.StreamGetSpace(6);
 
@@ -223,18 +262,21 @@ export class SpriteModelRenderer extends ModelRenderer {
       p[1] + x1 * r[1] + y1 * u[1],
       p[2] + x1 * r[2] + y1 * u[2]);
     GL.StreamWriteFloat3(0.0, vMax, layer);
+    GL.StreamWriteFloat2(nextLayer, fade);
 
     GL.StreamWriteFloat3(
       p[0] + x1 * r[0] + y2 * u[0],
       p[1] + x1 * r[1] + y2 * u[1],
       p[2] + x1 * r[2] + y2 * u[2]);
     GL.StreamWriteFloat3(0.0, 0.0, layer);
+    GL.StreamWriteFloat2(nextLayer, fade);
 
     GL.StreamWriteFloat3(
       p[0] + x2 * r[0] + y1 * u[0],
       p[1] + x2 * r[1] + y1 * u[1],
       p[2] + x2 * r[2] + y1 * u[2]);
     GL.StreamWriteFloat3(uMax, vMax, layer);
+    GL.StreamWriteFloat2(nextLayer, fade);
 
     // Triangle 2: top-right, bottom-left, bottom-right
     GL.StreamWriteFloat3(
@@ -242,18 +284,21 @@ export class SpriteModelRenderer extends ModelRenderer {
       p[1] + x2 * r[1] + y1 * u[1],
       p[2] + x2 * r[2] + y1 * u[2]);
     GL.StreamWriteFloat3(uMax, vMax, layer);
+    GL.StreamWriteFloat2(nextLayer, fade);
 
     GL.StreamWriteFloat3(
       p[0] + x1 * r[0] + y2 * u[0],
       p[1] + x1 * r[1] + y2 * u[1],
       p[2] + x1 * r[2] + y2 * u[2]);
     GL.StreamWriteFloat3(0.0, 0.0, layer);
+    GL.StreamWriteFloat2(nextLayer, fade);
 
     GL.StreamWriteFloat3(
       p[0] + x2 * r[0] + y2 * u[0],
       p[1] + x2 * r[1] + y2 * u[1],
       p[2] + x2 * r[2] + y2 * u[2]);
     GL.StreamWriteFloat3(uMax, 0.0, layer);
+    GL.StreamWriteFloat2(nextLayer, fade);
   }
 
   /**

@@ -1,10 +1,14 @@
 import type { GLTextureArray } from '../../../client/GL.ts';
-import { SpriteBlend, type SpriteFrame } from './SpriteTypes.ts';
+import { SpriteBlend, type SpriteFilter, type SpriteFrame } from './SpriteTypes.ts';
 
 /** What a {@link SpriteAsset} is made of. */
 export interface SpriteAssetOptions {
   readonly frames: readonly SpriteFrame[];
   readonly blend?: SpriteBlend;
+  /** How the texture is sampled, `null` to follow `gl_texturemode`. */
+  readonly filter?: SpriteFilter | null;
+  /** Whether to crossfade from an image to the next. */
+  readonly interpolate?: boolean;
   /** Width of every layer of the texture, the largest image. */
   readonly layerWidth?: number;
   /** Height of every layer of the texture, the largest image. */
@@ -24,6 +28,12 @@ export class SpriteAsset {
   /** How pixels are combined with what is behind them. */
   readonly blend: SpriteBlend;
 
+  /** How the texture is sampled, `null` to follow `gl_texturemode`. */
+  readonly filter: SpriteFilter | null;
+
+  /** Whether to crossfade from an image to the next (also needs `r_interpolation`). */
+  readonly interpolate: boolean;
+
   /** Width of every layer of {@link SpriteAsset.texture}. */
   readonly layerWidth: number;
 
@@ -36,6 +46,8 @@ export class SpriteAsset {
   constructor(options: SpriteAssetOptions) {
     this.frames = options.frames;
     this.blend = options.blend ?? SpriteBlend.alphaTest;
+    this.filter = options.filter ?? null;
+    this.interpolate = options.interpolate ?? false;
     this.layerWidth = options.layerWidth ?? 0;
     this.layerHeight = options.layerHeight ?? 0;
     this.texture = options.texture ?? null;

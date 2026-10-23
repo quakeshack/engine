@@ -1,5 +1,19 @@
 import { SpriteDirection, type SpriteSequence } from './SpriteTypes.ts';
 
+/** What `SpriteAnimator.blendAt()` fills in. */
+export interface SpriteImageBlend {
+  index: number;
+  nextIndex: number;
+  mix: number;
+}
+
+/** Where in an image a time falls. */
+interface ImageLocation {
+  index: number;
+  remaining: number;
+  duration: number;
+}
+
 /**
  * Works out which image of a {@link SpriteSequence} is showing at a given time. Pure, so the server
  * (how long does this effect last?) and the renderer (what do I draw?) agree.
@@ -47,35 +61,89 @@ export class SpriteAnimator {
    * @returns Index into `sequence.images` showing at `time`.
    */
   static imageIndexAt(sequence: SpriteSequence, time: number): number {
+    SpriteAnimator.#locate(sequence, time, SpriteAnimator.#scratch);
+
+    return SpriteAnimator.#scratch.index;
+  }
+
+  /**
+   * Works out the image showing at `time` and the one that follows it, with how far the first has run, for
+   * sprites that crossfade between their images.
+   * @param time Seconds since the sequence started.
+   * @param out Filled in: `index` is the image showing, `nextIndex` the one after it (the same while a finished
+   * sequence holds), `mix` is 0 when the image has just appeared and approaches 1 when the next one takes over.
+   */
+  static blendAt(sequence: SpriteSequence, time: number, out: SpriteImageBlend): void {
+    const location = SpriteAnimator.#scratch;
+
+    SpriteAnimator.#locate(sequence, time, location);
+
+    // asking for the next image reuses the scratch object, so keep what this one said
+    const { index, remaining, duration } = location;
+
+    out.index = index;
+
+    if (!Number.isFinite(remaining)) {
+      out.nextIndex = index;
+      out.mix = 0;
+      return;
+    }
+
+    out.nextIndex = SpriteAnimator.imageIndexAt(sequence, Math.max(time, 0) + remaining + SpriteAnimator.#EPSILON);
+    out.mix = Math.min(1, Math.max(0, 1 - remaining / duration));
+  }
+
+  /** Nudges a time over the end of an image, past rounding. */
+  static readonly #EPSILON = 1e-4;
+
+  static readonly #scratch: ImageLocation = { index: 0, remaining: Infinity, duration: Infinity };
+
+  /**
+   * Finds the image at a time, and how long it still has to run.
+   */
+  static #locate(sequence: SpriteSequence, time: number, out: ImageLocation): void {
     const count = sequence.images.length;
     const reversed = sequence.direction === SpriteDirection.reverse || sequence.direction === SpriteDirection.pingpongReverse;
     const pingpong = sequence.direction === SpriteDirection.pingpong || sequence.direction === SpriteDirection.pingpongReverse;
-
-    if (count === 1) {
-      return 0;
-    }
-
     const cycle = SpriteAnimator.cycleDuration(sequence);
 
-    if (!(cycle > 0) || time <= 0) {
-      return SpriteAnimator.#imageOfRank(count, 0, reversed);
+    out.remaining = Infinity;
+    out.duration = Infinity;
+
+    if (count === 1) {
+      out.index = 0;
+      return;
     }
 
-    if (sequence.repeat > 0 && time >= cycle * sequence.repeat) {
-      return SpriteAnimator.#imageOfRank(count, pingpong ? 0 : count - 1, reversed);
+    if (!(cycle > 0)) {
+      out.index = SpriteAnimator.#imageOfRank(count, 0, reversed);
+      return;
     }
 
-    const cycleTime = time - Math.floor(time / cycle) * cycle;
+    const clamped = Math.max(time, 0);
+
+    if (sequence.repeat > 0 && clamped >= cycle * sequence.repeat) {
+      out.index = SpriteAnimator.#imageOfRank(count, pingpong ? 0 : count - 1, reversed);
+      return;
+    }
+
+    const cycleTime = clamped - Math.floor(clamped / cycle) * cycle;
     const total = sequence.endTimes[count - 1];
+    let rank: number;
 
     if (!pingpong || cycleTime < total) {
-      return SpriteAnimator.#imageOfRank(count, SpriteAnimator.#rankAt(sequence, cycleTime, reversed), reversed);
+      rank = SpriteAnimator.#rankAt(sequence, cycleTime, reversed);
+      out.remaining = SpriteAnimator.#cumulative(sequence, rank, reversed) - cycleTime;
+    } else {
+      // the way back runs over ranks count - 2 down to 1, mirrored onto the forward time line
+      const backTime = SpriteAnimator.#cumulative(sequence, count - 2, reversed) - (cycleTime - total);
+
+      rank = SpriteAnimator.#rankAtEnd(sequence, backTime, reversed);
+      out.remaining = backTime - (rank > 0 ? SpriteAnimator.#cumulative(sequence, rank - 1, reversed) : 0);
     }
 
-    // the way back runs over ranks count - 2 down to 1, mirrored onto the forward time line
-    const backTime = SpriteAnimator.#cumulative(sequence, count - 2, reversed) - (cycleTime - total);
-
-    return SpriteAnimator.#imageOfRank(count, SpriteAnimator.#rankAtEnd(sequence, backTime, reversed), reversed);
+    out.duration = SpriteAnimator.#rankDuration(sequence, rank);
+    out.index = SpriteAnimator.#imageOfRank(count, rank, reversed);
   }
 
   /**

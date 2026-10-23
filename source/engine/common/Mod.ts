@@ -250,7 +250,7 @@ export class Mod {
     const existing = this.known[model.name];
 
     if (existing !== undefined && existing !== model) {
-      if (existing.hasCollisionGeometry && !model.hasCollisionGeometry) {
+      if ((existing.hasCollisionGeometry && !model.hasCollisionGeometry) || (!existing.sidecarSkipped && model.sidecarSkipped)) {
         return;
       }
 
@@ -282,12 +282,12 @@ export class Mod {
   async LoadModelAsync(name: string, crash: boolean, scope: ModelScope = ModelScope.shared, options: ModelLoadOptions = DEFAULT_MODEL_LOAD_OPTIONS): Promise<BaseModel | null> {
     const scopedModel = this.ResolveScopedModel(name, scope);
 
-    if (scopedModel !== null && (!options.collisionGeometry || scopedModel.hasCollisionGeometry)) {
+    if (scopedModel !== null && (!options.collisionGeometry || scopedModel.hasCollisionGeometry) && (!options.sidecar || !scopedModel.sidecarSkipped)) {
       return scopedModel;
     }
 
-    // A load with collision geometry is a different load than one without, so they must not share a pending promise.
-    const pendingKey = options.collisionGeometry ? `${name}?collision` : name;
+    // A load with collision geometry, or one that skips the sidecar, is a different load than the plain one, so they must not share a pending promise.
+    const pendingKey = `${name}${options.collisionGeometry ? '?collision' : ''}${options.sidecar ? '' : '?nosidecar'}`;
 
     if (this.pendingLoads[pendingKey] === undefined) {
       this.pendingLoads[pendingKey] = (async () => {
