@@ -342,6 +342,11 @@ export class NavMeshOutOfDateException extends CorruptedResourceError { }
 
 // TODO: in future we could build graphs per entity type (e.g. monster navmesh with tighter clearances, flying monster navmesh that ignores ground support, etc.)
 
+/**
+ * Version of the `.nav` file. Raise it whenever the binary layout changes and also whenever the
+ * generator produces a different graph for the same map (link rules, costs, clearances): a mesh of
+ * another version counts as out of date and is rebuilt, the ones that ship with a game included.
+ */
 const NAV_FILE_VERSION = 3;
 const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);
 const NAV_MONSTER_MAXS = new Vector(16.0, 16.0, 40.0);
@@ -356,9 +361,10 @@ const NAV_TRAVERSAL_DROP_LIMIT = 256.0;
 /** What a `Navigation` depends on. */
 export interface NavigationServices {
   readonly con: ConsoleOutput;
+  /** Where meshes are read from, and where a rebuilt one is kept (`COM.WriteGeneratedFile`, never the user files). */
   readonly files: {
     LoadFile(filename: string): Promise<ArrayBuffer | null>;
-    WriteFile(filename: string, data: ArrayLike<number>, len: number): Promise<boolean>;
+    WriteGeneratedFile(filename: string, data: Uint8Array): Promise<boolean>;
   };
   /** The server whose world is navigated, `null` inside the worker that only searches paths. */
   readonly sv: Server | null;
@@ -399,6 +405,9 @@ export class Navigation {
 
   /** unsubscribe from nav_debug_waypoints changes. */
   #debugWaypointsEventListener: EventUnsubscribe = null;
+
+  /** Whether the worker already reported this map's mesh as out of date, see {@link Navigation#rebuildOutdated}. */
+  #outdatedRebuildRequested = false;
 
   worldmodel: BrushModel | null;
   graph: NavigationGraph;
@@ -453,10 +462,22 @@ export class Navigation {
 
     // worker thread -> main thread: mesh probably out of date
     eventBus.subscribe('nav.build', (): void => {
-      if (sv.server.navigation) {
-        sv.server.navigation.build();
-      }
+      sv.server.navigation?.rebuildOutdated();
     });
+  }
+
+  /**
+   * Rebuilds the mesh the worker found out of date. Only once per map: should the rebuilt mesh not
+   * reach the worker (a full quota, a failing write), it would report it again and again otherwise.
+   */
+  rebuildOutdated(): void {
+    if (this.#outdatedRebuildRequested) {
+      this.con.DPrint('Navigation: mesh is still out of date after a rebuild, not trying again\n');
+      return;
+    }
+
+    this.#outdatedRebuildRequested = true;
+    this.build();
   }
 
   #initWorker(): void {
@@ -610,9 +631,10 @@ export class Navigation {
       throw new CorruptedResourceError(filename, 'invalid binary magic');
     }
 
+    // Another version is either another layout or another generator: rebuild it either way.
     const version = readUint32();
     if (version !== NAV_FILE_VERSION) {
-      throw new CorruptedResourceError(filename, 'invalid binary version');
+      throw new NavMeshOutOfDateException(filename, `version ${version}, expected ${NAV_FILE_VERSION}`);
     }
 
     // worldmodel name (uint16 length + utf8 bytes)
@@ -764,8 +786,9 @@ export class Navigation {
       }
     }
 
-    const out = new Uint8Array(bytes);
-    await this.files.WriteFile(filename, out, out.length);
+    if (!await this.files.WriteGeneratedFile(filename, new Uint8Array(bytes))) {
+      throw new Error(`could not write ${filename}`);
+    }
 
     // Keep the worker in sync after every successful rebuild, including listen-server sessions.
     eventBus.publish('nav.load', this.sv.server.mapname!, this.worldmodel!.checksum);

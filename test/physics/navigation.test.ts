@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import Vector from '../../source/shared/Vector.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
-import { Navigation } from '../../source/engine/server/Navigation.ts';
+import { Navigation, NavMeshOutOfDateException } from '../../source/engine/server/Navigation.ts';
 import { mockedNavigationServices } from '../support/fixtures.ts';
 import { createCvarStub } from '../support/cvarStub.ts';
 import { withEngineMocks } from '../support/withEngineMocks.ts';
@@ -295,7 +295,7 @@ void describe('Navigation.build', () => {
     Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
-      COM: { WriteFile() { return Promise.resolve(); } },
+      COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
       Con: {
         DPrint() {},
         PrintWarning() {},
@@ -355,7 +355,7 @@ void describe('Navigation.build', () => {
     Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
-      COM: { WriteFile() { return Promise.resolve(); } },
+      COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
       Con: {
         DPrint() {},
         PrintWarning() {},
@@ -413,7 +413,7 @@ void describe('Navigation.build', () => {
     Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
-      COM: { WriteFile() { return Promise.resolve(); } },
+      COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
       Con: {
         DPrint() {},
         PrintWarning() {},
@@ -479,7 +479,7 @@ void describe('Navigation.build', () => {
     Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
-      COM: { WriteFile() { return Promise.resolve(); } },
+      COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
       Con: {
         DPrint() {},
         PrintWarning() {},
@@ -537,9 +537,9 @@ void describe('Navigation.build', () => {
 
     await withNavigationRegistry({
       COM: {
-        WriteFile(_filename: string, data: ArrayLike<number>) {
+        WriteGeneratedFile(_filename: string, data: Uint8Array) {
           writtenData = new Uint8Array(data);
-          return Promise.resolve();
+          return Promise.resolve(true);
         },
       },
       Con: {
@@ -601,7 +601,7 @@ void describe('Navigation.build', () => {
     Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
-      COM: { WriteFile() { return Promise.resolve(); } },
+      COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
       Con: {
         DPrint() {},
         PrintWarning() {},
@@ -662,7 +662,7 @@ void describe('Navigation.build', () => {
     Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
-      COM: { WriteFile() { return Promise.resolve(); } },
+      COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
       Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
       SV: {
         collision,
@@ -731,7 +731,7 @@ void describe('Navigation.build (tight corridor)', () => {
     Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
-      COM: { WriteFile() { return Promise.resolve(); } },
+      COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
       Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
       SV: {
         collision,
@@ -904,7 +904,7 @@ void describe('Navigation.build (slope)', () => {
     Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
-      COM: { WriteFile() { return Promise.resolve(); } },
+      COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
       Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
       SV: {
         collision,
@@ -950,7 +950,7 @@ void describe('Navigation.findPath', () => {
     Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
-      COM: { WriteFile() { return Promise.resolve(); } },
+      COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
       Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
       SV: {
         collision,
@@ -995,7 +995,7 @@ void describe('Navigation.findPath', () => {
     Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
-      COM: { WriteFile() { return Promise.resolve(); } },
+      COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
       Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
       SV: {
         collision,
@@ -1056,7 +1056,7 @@ void describe('Navigation.findPath', () => {
     Navigation.nav_debug_path = createCvarStub(0);
 
     await withNavigationRegistry({
-      COM: { WriteFile() { return Promise.resolve(); } },
+      COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
       Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
       SV: {
         collision,
@@ -1240,7 +1240,7 @@ void describe('Navigation (two-level floor — drop-link regression)', () => {
     };
 
     await withNavigationRegistry({
-      COM: { WriteFile() { return Promise.resolve(); } },
+      COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
       Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
       SV: {
         collision,
@@ -1359,6 +1359,99 @@ void describe('Navigation.findPath (test_e1m1.nav — in-game path regression)',
       'Failure indicates missing nav node coverage in the connecting corridor ' +
       '(z=-408 to z=-344 transition). Rebuild test_e1m1.nav.',
     );
+  });
+});
+
+void describe('Navigation.load (outdated meshes)', () => {
+  void test('treats a mesh of another file version as out of date, so it is rebuilt', async () => {
+    const navigation = new Navigation(null, { ...mockedNavigationServices(), sv: null });
+    const olderMesh = navFileBuffer.slice(0);
+
+    // The version follows the four bytes of the magic.
+    new DataView(olderMesh).setUint32(4, 2, true);
+
+    await withNavigationRegistry({
+      COM: { LoadFile: () => Promise.resolve(olderMesh) },
+      Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
+      SV: {},
+    }, async () => {
+      await assert.rejects(navigation.load('test_e1m1', 5874), (error: Error) => error instanceof NavMeshOutOfDateException && /version 2/.test(error.message));
+    });
+  });
+
+  void test('treats a mesh of another map build as out of date', async () => {
+    const navigation = new Navigation(null, { ...mockedNavigationServices(), sv: null });
+
+    await withNavigationRegistry({
+      COM: { LoadFile: () => Promise.resolve(navFileBuffer) },
+      Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
+      SV: {},
+    }, async () => {
+      await assert.rejects(navigation.load('test_e1m1', 1234), NavMeshOutOfDateException);
+    });
+  });
+});
+
+void describe('Navigation.rebuildOutdated', () => {
+  void test('rebuilds once per map, so a mesh that still does not reach the worker cannot loop', async () => {
+    const navigation = new Navigation(createNavigationWorldModel(), mockedNavigationServices());
+    const build = mock.method(navigation, 'build', () => {});
+
+    await withNavigationRegistry({
+      COM: {},
+      Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
+      SV: {},
+    }, () => {
+      navigation.rebuildOutdated();
+      navigation.rebuildOutdated();
+    });
+
+    assert.equal(build.mock.callCount(), 1);
+  });
+});
+
+void describe('Navigation.save', () => {
+  void test('keeps the mesh as a generated file', async () => {
+    const worldmodel = createNavigationWorldModel();
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
+    const written: string[] = [];
+
+    await withNavigationRegistry({
+      COM: {
+        WriteGeneratedFile(filename: string) {
+          written.push(filename);
+          return Promise.resolve(true);
+        },
+      },
+      Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
+      SV: { server: { mapname: 'nav-test', worldmodel } },
+    }, async () => {
+      await navigation.save();
+    });
+
+    assert.deepEqual(written, ['maps/nav-test.nav']);
+  });
+
+  void test('fails without telling the worker to load when the mesh could not be stored', async () => {
+    const worldmodel = createNavigationWorldModel();
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
+    const loads: string[] = [];
+
+    await withNavigationRegistry({
+      COM: { WriteGeneratedFile: () => Promise.resolve(false) },
+      Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
+      SV: { server: { mapname: 'nav-test', worldmodel } },
+    }, async () => {
+      const unsubscribe = eventBus.subscribe('nav.load', (mapname) => { loads.push(mapname); });
+
+      try {
+        await assert.rejects(navigation.save(), /could not write maps\/nav-test\.nav/);
+      } finally {
+        unsubscribe();
+      }
+    });
+
+    assert.deepEqual(loads, []);
   });
 });
 

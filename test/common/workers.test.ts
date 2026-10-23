@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import type { BuildConfig } from '../../source/engine/build-config';
 import PlatformWorker from '../../source/engine/common/PlatformWorker.ts';
 import WorkerManager from '../../source/engine/common/WorkerManager.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
@@ -83,7 +84,7 @@ function createConsoleCapture(): ConsoleCapture {
  * @param consoleCapture
  * @param callback
  */
-async function withWorkerServices(consoleCapture: ReturnType<typeof createConsoleCapture>, callback: (context: { crashes: unknown[], com: { searchpaths: unknown[], gamedir: unknown[], game: string }, urls: object }) => void | Promise<void>) {
+async function withWorkerServices(consoleCapture: ReturnType<typeof createConsoleCapture>, callback: (context: { crashes: unknown[], com: { searchpaths: unknown[], gamedir: unknown[], game: string, buildConfig: BuildConfig, gameVersion: string }, urls: object }) => void | Promise<void>) {
   const previousServices = WorkerManager.services;
   const previousOnCrash = PlatformWorker.onCrash;
   const crashes: Array<Error | ErrorEvent> = [];
@@ -91,6 +92,11 @@ async function withWorkerServices(consoleCapture: ReturnType<typeof createConsol
     searchpaths: [{ filename: 'id1', pack: [] }],
     gamedir: [{ filename: 'id1', pack: [] }],
     game: 'id1',
+    buildConfig: { mode: 'production', timestamp: 'T', commitHash: 'abc123', gameDir: null, baseDir: null },
+    gameVersion: '1.0.0',
+    getBuildConfig(): BuildConfig {
+      return this.buildConfig;
+    },
   };
   const urls = { cdnURL: 'https://cdn.example/{gameDir}/{filename}' };
 
@@ -154,7 +160,7 @@ void describe('PlatformWorker', () => {
 });
 
 void describe('WorkerManager', () => {
-  void test('subscribes worker events, forwards console messages, and sends framework init payload', async () => {
+  void test('subscribes worker events, forwards console messages, and sends framework init payload with the build and game version', async () => {
     const consoleCapture = createConsoleCapture();
 
     await withWorkerServices(consoleCapture, async ({ com, urls }) => {
@@ -169,7 +175,7 @@ void describe('WorkerManager', () => {
       assert.deepEqual(rawWorker.messages[0], {
         event: 'worker.framework.init',
         args: [
-          [com.searchpaths, com.gamedir, com.game],
+          [com.searchpaths, com.gamedir, com.game, com.buildConfig, com.gameVersion],
           urls,
         ],
       });
