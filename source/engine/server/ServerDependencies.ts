@@ -40,7 +40,7 @@ export interface ServerDependencies {
   /** Where navigation meshes are read from and written to. */
   readonly files: {
     LoadFile(filename: string): Promise<ArrayBuffer | null>;
-    WriteFile(filename: string, data: ArrayLike<number>, len: number): Promise<boolean>;
+    WriteGeneratedFile(filename: string, data: Uint8Array): Promise<boolean>;
   };
   /** Which edition of the game data is in use, read when a game asks. */
   readonly gameEdition: () => GameEdition;

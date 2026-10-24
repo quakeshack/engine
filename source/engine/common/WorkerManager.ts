@@ -1,6 +1,6 @@
 import type { URLs } from '../build-config';
 import type { ConsoleOutput } from './Services.ts';
-import type { EngineEventName } from '../../shared/EngineEvents.ts';
+import type { EngineEventName, WorkerFrameworkInitPayload } from '../../shared/EngineEvents.ts';
 import { eventBus } from './EventBus.ts';
 import { SysError } from './Errors.ts';
 import type COM from './Com.ts';
@@ -10,14 +10,14 @@ import PlatformWorker, { type WorkerFactoryRegistry, type WorkerMessageEnvelope 
 export interface WorkerManagerServices {
   /** Where what the workers print is shown. */
   readonly con: ConsoleOutput;
-  /** The file system of the realm, whose game directory a worker is told to use. */
-  readonly com: Pick<COM, 'searchpaths' | 'gamedir' | 'game'>;
+  /** The file system of the realm, whose game directory, build and game version a worker is told to use. */
+  readonly com: Pick<COM, 'searchpaths' | 'gamedir' | 'game' | 'getBuildConfig' | 'gameVersion'>;
   /** The URLs the realm was configured with. */
   readonly urls: () => URLs | undefined;
 }
 
 type WorkerFrameworkInitArgs = [
-  [COM['searchpaths'], COM['gamedir'], COM['game']],
+  WorkerFrameworkInitPayload,
   URLs | undefined,
 ];
 
@@ -144,7 +144,7 @@ export default class WorkerManager {
     }
 
     const initArgs: WorkerFrameworkInitArgs = [
-      [com.searchpaths, com.gamedir, com.game], // COM
+      [com.searchpaths, com.gamedir, com.game, com.getBuildConfig(), com.gameVersion], // COM
       urls(), // urls
     ];
 
