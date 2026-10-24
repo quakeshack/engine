@@ -26,9 +26,9 @@ void computeEntityLighting(float specularShininess, float specularIntensity, out
   // Point light shadows — entity shadows from up to 3 nearby dynamic lights.
   // Combined via min() since this model only tracks one dominant analytic
   // dlight term below, so it darkens if occluded from any active light.
-  float pointShadow0 = samplePointShadow(tPointShadowMap0, uPointLightPos0, uPointLightRadius0);
-  float pointShadow1 = samplePointShadow(tPointShadowMap1, uPointLightPos1, uPointLightRadius1);
-  float pointShadow2 = samplePointShadow(tPointShadowMap2, uPointLightPos2, uPointLightRadius2);
+  float pointShadow0 = samplePointShadow(tPointShadowMap0, uPointLightPos0, uPointLightRadius0, vNormal);
+  float pointShadow1 = samplePointShadow(tPointShadowMap1, uPointLightPos1, uPointLightRadius1, vNormal);
+  float pointShadow2 = samplePointShadow(tPointShadowMap2, uPointLightPos2, uPointLightRadius2, vNormal);
   float pointShadow = min(min(pointShadow0, pointShadow1), pointShadow2);
 
   // A nearby, unoccluded shadow-casting dlight locally fills in the top-down

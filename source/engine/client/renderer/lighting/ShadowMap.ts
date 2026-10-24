@@ -31,7 +31,7 @@ const TOPDOWN_SHADOW_SIZE = 2048;
 /** Point light cube shadow map resolution (px per face). */
 const POINT_SHADOW_SIZE = 512;
 
-/** Near plane for point light perspective projection. */
+/** Near plane for point light perspective projection, `POINT_SHADOW_NEAR` in shadow-point.glsl. */
 const POINT_NEAR = 1.0;
 
 /**
@@ -172,10 +172,10 @@ export default class ShadowMap {
   /** Enable point light shadow mapping (0 = off, 1 = on). */
   static pointEnabled: Cvar | null = null;
 
-  /** Normal offset bias for point light shadows (world units). */
+  /** Offset of the receiver's lookup along its surface normal, in shadow map texels (scaled by the sine of the light's angle). */
   static pointNormalBias: Cvar | null = null;
 
-  /** Receiver-side depth bias for point light shadows (normalized depth units, applied post-projection). */
+  /** Receiver-side depth bias for point light shadows, in shadow map texels. */
   static pointBias: Cvar | null = null;
 
   /** Per-leaf flags marking world leaves that only hold submodel faces (lazy cache). */
@@ -230,8 +230,8 @@ export default class ShadowMap {
 
     // ── Point light cubemap depth texture ──────────────────────────
     ShadowMap.pointEnabled = new Cvar('r_shadow_point', '1', Cvar.FLAG.NONE, 'Enable point light shadow mapping');
-    ShadowMap.pointNormalBias = new Cvar('r_shadow_point_normal_bias', '2.5', Cvar.FLAG.NONE, 'Normal offset bias for point light shadows (world units)');
-    ShadowMap.pointBias = new Cvar('r_shadow_point_bias', '0.002', Cvar.FLAG.NONE, 'Receiver depth bias for point light shadows (normalized depth units)');
+    ShadowMap.pointNormalBias = new Cvar('r_shadow_point_normal_bias', '2', Cvar.FLAG.NONE, 'Normal offset of point light shadow lookups, in shadow map texels');
+    ShadowMap.pointBias = new Cvar('r_shadow_point_bias', '1', Cvar.FLAG.NONE, 'Depth bias of point light shadow lookups, in shadow map texels');
 
     ShadowMap.pointDepthCubes.length = 0;
     for (let slot = 0; slot < POINT_SHADOW_COUNT; slot++) {
@@ -470,8 +470,6 @@ export default class ShadowMap {
         lightSpaceMatrix,
         casterFade,
         isPointLight,
-        pointLightOrigin: cutoffOrigin,
-        pointNormalBias: ShadowMap.pointNormalBias?.value ?? 0,
       });
     }
   }
@@ -714,7 +712,12 @@ export default class ShadowMap {
     return flags;
   }
 
-  /** Render the point light shadow cube maps (all 6 faces) for every active slot. */
+  /**
+   * Render the point light shadow cube maps (all 6 faces) for every active slot.
+   * Casters are drawn without any depth bias: the receivers bias their own
+   * lookups per fragment, scaled by the texel size at their distance
+   * (samplePointShadowMap in shadow-point.glsl).
+   */
   static renderPointLightShadow(): void {
     const worldmodel = clientRuntimeState.worldmodel as BrushModel | null;
     if (!worldmodel) {
@@ -760,9 +763,6 @@ export default class ShadowMap {
 
     gl.uniform3f(program.uOrigin!, 0, 0, 0);
     gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
-    gl.uniform3fv(program.uLightPos!, pointLightOrigin);
-    gl.uniform1f(program.uLightRadius!, pointLightRadius);
-    gl.uniform1f(program.uNormalBias!, ShadowMap.pointNormalBias!.value);
 
     for (let face = 0; face < 6; face++) {
       ShadowMap.pointTarget!.attachDepthCubeFace(ShadowMap.pointDepthCubes[slot].texture, face);

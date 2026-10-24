@@ -11,6 +11,11 @@ import PostProcess from '../../source/engine/client/renderer/postprocess/PostPro
 import Particles from '../../source/engine/client/renderer/effects/Particles.ts';
 import Decals from '../../source/engine/client/renderer/effects/Decals.ts';
 import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts';
+import DynamicLights from '../../source/engine/client/renderer/lighting/DynamicLights.ts';
+import Camera from '../../source/engine/client/renderer/scene/Camera.ts';
+import SkyBox from '../../source/engine/client/renderer/scene/SkyBox.ts';
+import Visibility from '../../source/engine/client/renderer/scene/Visibility.ts';
+import { createCvarStub } from '../support/cvarStub.ts';
 import Lightmaps from '../../source/engine/client/renderer/lighting/Lightmaps.ts';
 import LightStyles from '../../source/engine/client/renderer/lighting/LightStyles.ts';
 import ShaderPrograms from '../../source/engine/client/renderer/programs/ShaderPrograms.ts';
@@ -149,5 +154,43 @@ void describe('R.Init', () => {
     assert.equal(rendererCvars.bloom.name, 'r_bloom');
     assert.equal(rendererCvars.fog_mode.string, '-1');
     assert.equal(rendererCvars.drawentities.value, 1);
+  });
+});
+
+void describe('R.RenderScene', () => {
+  const previousContext = GL.gl;
+  const previousShadows = ShadowMap.enabled;
+
+  afterEach(() => {
+    mock.restoreAll();
+    eventBus.publish('gl.shutdown');
+    GL.gl = previousContext;
+    ShadowMap.enabled = previousShadows;
+  });
+
+  void test('builds the dynamic lightmap after it picked the point-shadow lights of this frame', () => {
+    const steps: string[] = [];
+
+    GL.gl = createFakeContext();
+    publishGlReady();
+    ShadowMap.enabled = createCvarStub(0);
+
+    mock.method(Camera, 'SetFrustum', () => {});
+    mock.method(ShadowMap, 'selectPointLights', () => {
+      steps.push('select point lights');
+
+      return 0;
+    });
+    mock.method(DynamicLights, 'Push', () => { steps.push('dynamic lightmap'); });
+    mock.method(R, 'SetupGL', () => { steps.push('uniforms'); });
+    mock.method(Visibility, 'MarkLeafs', () => {});
+    mock.method(PostProcess, 'getEffect', () => null);
+    mock.method(SkyBox, 'Draw', () => {});
+    mock.method(R, 'DrawViewModel', () => {});
+    mock.method(R, 'RenderWorld', () => {});
+
+    R.RenderScene();
+
+    assert.deepEqual(steps, ['select point lights', 'dynamic lightmap', 'uniforms']);
   });
 });

@@ -4,7 +4,6 @@ precision highp float;
 uniform vec3 uViewOrigin;
 uniform mat3 uViewAngles;
 uniform mat4 uPerspective;
-uniform float uScale;
 
 in vec3 aOrigin;
 in vec2 aCoord;

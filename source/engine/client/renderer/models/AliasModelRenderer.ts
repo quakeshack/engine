@@ -225,23 +225,10 @@ export class AliasModelRenderer extends ModelRenderer {
     gl.vertexAttribPointer(program.aPositionA!.location as number, 3, gl.FLOAT, false, 24, frameA.cmdofs!);
     gl.vertexAttribPointer(program.aPositionB!.location as number, 3, gl.FLOAT, false, 24, frameB.cmdofs!);
 
-    if (program.aNormalA) {
-      gl.enableVertexAttribArray(program.aNormalA!.location as number);
-      gl.enableVertexAttribArray(program.aNormalB!.location as number);
-      gl.vertexAttribPointer(program.aNormalA!.location as number, 3, gl.FLOAT, false, 24, frameA.cmdofs! + 12);
-      gl.vertexAttribPointer(program.aNormalB!.location as number, 3, gl.FLOAT, false, 24, frameB.cmdofs! + 12);
-      gl.uniform3fv(program.uLightPos!, ctx.pointLightOrigin);
-      gl.uniform1f(program.uNormalBias!, ctx.pointNormalBias);
-    }
-
     gl.drawArrays(gl.TRIANGLES, 0, clmodel._num_tris * 3);
 
     gl.disableVertexAttribArray(program.aPositionA!.location as number);
     gl.disableVertexAttribArray(program.aPositionB!.location as number);
-    if (program.aNormalA) {
-      gl.disableVertexAttribArray(program.aNormalA!.location as number);
-      gl.disableVertexAttribArray(program.aNormalB!.location as number);
-    }
   }
 
   /**

@@ -300,12 +300,18 @@ class R {
   }
 
   /**
-   * Renders the 3D scene of the frame into the current target, in pass order: shadow maps, the frame's GL and
-   * uniform setup, visibility, the turbulent boundary depth, sky, view model, then world and entities.
+   * Renders the 3D scene of the frame into the current target, in pass order: shadow maps, the dynamic lightmap,
+   * the frame's GL and uniform setup, visibility, the turbulent boundary depth, sky, view model, then world and
+   * entities.
    */
   static RenderScene() {
     Camera.SetFrustum();
     R.#renderShadowMaps();
+
+    // The dynamic lightmap leaves out the lights that got a point shadow this frame (their light is computed and
+    // shadowed per fragment), so it is built after selectPointLights; before it, a light that was just selected
+    // would be added twice, one of them unshadowed, and one that just dropped out not at all.
+    DynamicLights.Push();
 
     // The point-light state that FrameUniforms uploads is only final once selectPointLights has run, so the
     // uniforms are written here and not in PreRenderScene.

@@ -10,10 +10,6 @@ export interface ShadowRenderContext {
   readonly lightSpaceMatrix: Float64Array;
   readonly casterFade: number;
   readonly isPointLight: boolean;
-  /** Point light world-space origin — used only when the shadow program has normal-bias support. */
-  readonly pointLightOrigin: Float32Array;
-  /** Normal-offset bias value for point light shadow shaders. */
-  readonly pointNormalBias: number;
 }
 
 /**
