@@ -28,6 +28,10 @@ actually shipped in Phase 5".
 actually shipped in Phase 8". A blend-state bug from Phase 1 that it builds on was fixed ahead of it ("Fixed before
 Phase 8"). This was the last phase of the plan.
 
+Follow-up: Doom-style rotations (a view per side, picked by the angle to the camera) continue in
+[doom-style-sprite-rotations.md](doom-style-sprite-rotations.md). Its rotations in the world and on the screen
+shipped on this branch (2026-10-24); the converter for Doom's art waits for a go-ahead.
+
 ### Decisions so far (2026-10-22, from the maintainer)
 
 - **Animation model: auto-play sequences.** A file is one sequence at `frame 0` that plays by

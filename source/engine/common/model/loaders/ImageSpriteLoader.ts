@@ -195,7 +195,7 @@ export class ImageSpriteLoader extends ModelLoader {
     const sequences = sidecar.sequences ?? (header.tags.length > 0 ? header.tags.map((tag) => ImageSpriteLoader.#sequenceOfTag(tag, sidecar.repeat)) : null);
 
     if (sequences === null) {
-      return [images.length === 1 ? images[0] : ImageSpriteLoader.#buildSequence('', images, seconds, SpriteDirection.forward, repeat)];
+      return [images.length === 1 ? images[0] : ImageSpriteLoader.#buildSequence('', [images], seconds, SpriteDirection.forward, repeat)];
     }
 
     return sequences.map((entry) => this.#buildNamedSequence(entry, images, seconds, repeat, name));
@@ -217,9 +217,15 @@ export class ImageSpriteLoader extends ModelLoader {
       direction: tag.direction,
       repeat: repeatOverride ?? (pingpong && tag.repeat > 0 ? Math.max(1, Math.round(tag.repeat / 2)) : tag.repeat),
       fps: null,
+      rotations: null,
     };
   }
 
+  /**
+   * Builds a sequence of the sidecar (or a tag) over its range of images. With rotations the range splits into one
+   * block per view, the front first; the front's images give the timing of every view.
+   * @returns The sequence.
+   */
   #buildNamedSequence(entry: SpriteSidecarSequence, images: readonly SpriteImage[], seconds: readonly number[], repeat: number, name: string): SpriteSequence {
     const last = images.length - 1;
     const from = Math.min(entry.from ?? 0, last);
@@ -229,16 +235,59 @@ export class ImageSpriteLoader extends ModelLoader {
       this.context.con.PrintWarning(`${name}: sequence "${entry.name}" runs from ${entry.from ?? 0} to ${entry.to ?? last}, the file has the images 0 to ${last}; using ${from} to ${to}\n`);
     }
 
-    return ImageSpriteLoader.#buildSequence(
-      entry.name,
-      images.slice(from, to + 1),
-      entry.fps === null ? seconds.slice(from, to + 1) : new Array<number>(to - from + 1).fill(1 / entry.fps),
-      entry.direction ?? SpriteDirection.forward,
-      entry.repeat ?? repeat,
-    );
+    const viewCount = this.#viewCount(entry, to - from + 1, name);
+    const steps = (to - from + 1) / viewCount;
+    const views = Array.from({ length: viewCount }, (_value, view) => images.slice(from + view * steps, from + (view + 1) * steps));
+    const timing = entry.fps === null ? seconds.slice(from, from + steps) : new Array<number>(steps).fill(1 / entry.fps);
+
+    if (entry.fps === null && !ImageSpriteLoader.#viewsTimedAlike(seconds, from, steps, viewCount)) {
+      this.context.con.PrintWarning(`${name}: the views of sequence "${entry.name}" are timed differently, all of them play with the timing of the front\n`);
+    }
+
+    return ImageSpriteLoader.#buildSequence(entry.name, views, timing, entry.direction ?? SpriteDirection.forward, entry.repeat ?? repeat);
   }
 
-  static #buildSequence(sequenceName: string, images: readonly SpriteImage[], seconds: readonly number[], direction: SpriteDirection, repeat: number): SpriteSequence {
+  /**
+   * @param count Number of images in the sequence's range.
+   * @returns How many views the sequence has: its `rotations`, or 1 when the range does not split into that many
+   * blocks of the same length (reported).
+   */
+  #viewCount(entry: SpriteSidecarSequence, count: number, name: string): number {
+    const rotations = entry.rotations ?? 1;
+
+    if (count % rotations !== 0) {
+      this.context.con.PrintWarning(`${name}: sequence "${entry.name}" has ${count} images, which do not split into ${rotations} views of the same length; it is drawn without rotations\n`);
+      return 1;
+    }
+
+    return rotations;
+  }
+
+  /**
+   * @param seconds How long each image of the file is shown.
+   * @param from The first image of the sequence.
+   * @param steps Images per view.
+   * @returns Whether every view shows its images as long as the front does.
+   */
+  static #viewsTimedAlike(seconds: readonly number[], from: number, steps: number, viewCount: number): boolean {
+    for (let view = 1; view < viewCount; view++) {
+      for (let step = 0; step < steps; step++) {
+        if (seconds[from + view * steps + step] !== seconds[from + step]) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * @param views The images of each view, all of the same length; a single entry for a sequence without rotations.
+   * @param seconds How long each image of a view is shown.
+   * @returns The sequence, its timing worked out.
+   */
+  static #buildSequence(sequenceName: string, views: ReadonlyArray<readonly SpriteImage[]>, seconds: readonly number[], direction: SpriteDirection, repeat: number): SpriteSequence {
+    const images = views[0];
     const endTimes = new Float32Array(images.length);
     let elapsed = 0;
 
@@ -247,6 +296,6 @@ export class ImageSpriteLoader extends ModelLoader {
       endTimes[index] = elapsed;
     }
 
-    return { name: sequenceName, images, endTimes, direction, repeat };
+    return { name: sequenceName, images, views, endTimes, direction, repeat };
   }
 }

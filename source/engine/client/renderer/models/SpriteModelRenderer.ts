@@ -173,12 +173,20 @@ export class SpriteModelRenderer extends ModelRenderer {
 
   /**
    * Picks the image an entity shows now into {@link SpriteModelRenderer.#sample}: its `frame` selects a frame, a
-   * sequence animates on the clock the model's phase names.
+   * sequence animates on the clock the model's phase names, and a sequence with rotations shows the view the camera
+   * sees it from.
    */
   static #selectImage(spriteModel: SpriteModel, entity: ClientEdict): void {
     const frames = spriteModel.frames;
     const frame = frames[entity.frame >= 0 && entity.frame < frames.length ? entity.frame : 0];
     let time = clientRuntimeState.time;
+    let view = 0;
+
+    if ('images' in frame && frame.views.length > 1) {
+      const vieworg = Camera.refdef.vieworg;
+
+      view = SpriteAnimator.viewIndex(frame.views.length, entity.angles[1], vieworg[0] - entity.origin[0], vieworg[1] - entity.origin[1]);
+    }
 
     switch (spriteModel.phase) {
       case SpritePhase.random:
@@ -192,7 +200,7 @@ export class SpriteModelRenderer extends ModelRenderer {
         break;
     }
 
-    SpriteAnimator.sample(frame, time, spriteModel.asset!.interpolate && rendererCvars.interpolation.value !== 0, SpriteModelRenderer.#sample);
+    SpriteAnimator.sample(frame, time, spriteModel.asset!.interpolate && rendererCvars.interpolation.value !== 0, SpriteModelRenderer.#sample, view);
   }
 
   /**

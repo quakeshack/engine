@@ -297,6 +297,7 @@ export class SpriteSPRLoader extends ModelLoader {
       const sequence: SpriteSequence = {
         name: '',
         images,
+        views: [images],
         endTimes: Float32Array.from(sprFrame.endTimes),
         direction: SpriteDirection.forward,
         repeat: 0,

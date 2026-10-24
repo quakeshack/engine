@@ -1,5 +1,6 @@
 import { SpriteAnimator, type SpriteSample } from '../../../common/model/sprite/SpriteAnimator.ts';
 import type { SpriteAsset } from '../../../common/model/sprite/SpriteAsset.ts';
+import type { SpriteFrame } from '../../../common/model/sprite/SpriteTypes.ts';
 
 /** Which clock a {@link SpritePlayback} follows. */
 export type SpriteClock = 'client' | 'real';
@@ -26,6 +27,7 @@ export class SpritePlayback {
   #anchor: number;
   #paused = false;
   #speed = 1;
+  #view = 0;
 
   /**
    * @param asset What to play.
@@ -63,6 +65,28 @@ export class SpritePlayback {
     this.#elapsed = this.#animationTime();
     this.#anchor = this.#now();
     this.#speed = value;
+  }
+
+  /**
+   * @returns The view that is asked for, as it was set: of a sequence with rotations (Doom-style sprites) the one
+   * that is drawn is this number wrapped around its count of views, so `view += 1` keeps turning the sprite. A
+   * sequence without rotations has only its front.
+   */
+  get view(): number {
+    return this.#view;
+  }
+
+  /**
+   * Turns the sprite to another view, 0 for the front and counting counterclockwise as the views in the world do. The
+   * sequence goes on where it is, it does not restart.
+   * @param value A whole number, also negative or past the number of views (it wraps around).
+   */
+  set view(value: number) {
+    if (!Number.isInteger(value)) {
+      throw new RangeError(`SpritePlayback.view has to be a whole number, got ${value}`);
+    }
+
+    this.#view = value;
   }
 
   /**
@@ -151,7 +175,22 @@ export class SpritePlayback {
    * @param out Filled in.
    */
   sample(interpolate: boolean, out: SpriteSample): void {
-    SpriteAnimator.sample(this.asset.frames[this.#sequence], this.#animationTime(), interpolate, out);
+    const frame = this.asset.frames[this.#sequence];
+
+    SpriteAnimator.sample(frame, this.#animationTime(), interpolate, out, this.#viewOf(frame));
+  }
+
+  /**
+   * @returns The view of a frame that {@link SpritePlayback.view} selects, wrapped around its count of views.
+   */
+  #viewOf(frame: SpriteFrame): number {
+    if (!('images' in frame)) {
+      return 0;
+    }
+
+    const count = frame.views.length;
+
+    return ((this.#view % count) + count) % count;
   }
 
   /**
@@ -176,6 +215,6 @@ export class SpritePlayback {
   #currentImage(): { width: number, height: number } {
     const frame = this.asset.frames[this.#sequence];
 
-    return 'images' in frame ? frame.images[0] : frame;
+    return 'images' in frame ? frame.views[this.#viewOf(frame)][0] : frame;
   }
 }

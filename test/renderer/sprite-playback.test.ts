@@ -17,9 +17,12 @@ function image(layer: number): SpriteImage {
  * @returns A sequence of `count` images that each take a second.
  */
 function sequence(name: string, count: number, repeat: number, direction = SpriteDirection.forward): SpriteSequence {
+  const images = Array.from({ length: count }, (_value, layer) => image(layer));
+
   return {
     name,
-    images: Array.from({ length: count }, (_value, layer) => image(layer)),
+    images,
+    views: [images],
     endTimes: Float32Array.from({ length: count }, (_value, index) => index + 1),
     direction,
     repeat,
@@ -289,6 +292,73 @@ void describe('SpritePlayback', () => {
       playback.play(1);
 
       assert.equal(playback.width, 8);
+    });
+  });
+
+  void describe('view', () => {
+    /**
+     * @returns A sequence of 2 steps that each take a second, in `viewCount` views; view `v` shows the layers
+     * `v * 10` and `v * 10 + 1`.
+     */
+    function rotated(viewCount: number): SpriteSequence {
+      const front = sequence('walk', 2, 0);
+      const views = Array.from({ length: viewCount }, (_value, view) => front.images.map((frontImage) => ({ ...frontImage, layer: frontImage.layer + view * 10 })));
+
+      return { ...front, images: views[0], views };
+    }
+
+    void test('shows the front until it is turned', () => {
+      const { playback } = createPlayback([rotated(8)]);
+
+      assert.equal(playback.view, 0);
+      assert.equal(layerOf(playback), 0);
+    });
+
+    void test('shows the view it is turned to, at the step that is playing', () => {
+      const { clock, playback } = createPlayback([rotated(8)]);
+
+      clock.now += 1.5;
+      playback.view = 3;
+
+      assert.equal(layerOf(playback), 31);
+    });
+
+    void test('wraps around in both directions, so it can keep turning', () => {
+      const { playback } = createPlayback([rotated(8)]);
+
+      playback.view = 9;
+      assert.equal(layerOf(playback), 10);
+      playback.view = -1;
+      assert.equal(layerOf(playback), 70);
+      assert.equal(playback.view, -1, 'it keeps the number it was given');
+    });
+
+    void test('does not restart the sequence', () => {
+      const { clock, playback } = createPlayback([rotated(4)]);
+
+      clock.now += 1.5;
+      playback.view = 1;
+      clock.now += 1;
+
+      assert.equal(layerOf(playback), 10, 'the second step has ended, the loop is back at the first');
+    });
+
+    void test('a sequence without rotations shows its images whatever the view', () => {
+      const { playback } = createPlayback([sequence('idle', 2, 0), rotated(8)]);
+
+      playback.view = 5;
+      assert.equal(layerOf(playback), 0);
+
+      playback.play(1);
+      assert.equal(layerOf(playback), 50, 'the view stays when another sequence plays');
+    });
+
+    void test('has to be a whole number', () => {
+      const { playback } = createPlayback([rotated(8)]);
+
+      assert.throws(() => { playback.view = 1.5; }, RangeError);
+      assert.throws(() => { playback.view = Number.NaN; }, RangeError);
+      assert.equal(playback.view, 0);
     });
   });
 });

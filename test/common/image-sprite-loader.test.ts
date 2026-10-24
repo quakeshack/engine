@@ -662,3 +662,84 @@ void describe('ImageSpriteLoader, regions and pixel sizes', () => {
     assert.match(warnings[0], /region "wide" reaches outside the 16x8 image/);
   });
 });
+
+void describe('ImageSpriteLoader, rotations', () => {
+  /**
+   * Loads an Aseprite file of `count` frames (each 100 ms unless `durations` says otherwise) with a sidecar, on a server.
+   * @returns The model and what the loader reported.
+   */
+  async function load(count: number, settings: object, durations: readonly number[] = []): Promise<{ model: SpriteModel, warnings: string[] }> {
+    const warnings: string[] = [];
+    const loader = new ImageSpriteLoader(createModelLoadContext({
+      con: createSilentConsole({ PrintWarning: (text: string) => { warnings.push(text); } }),
+      files: { ...createDirectoryFiles(FIXTURES), LoadOptionalTextFile: () => Promise.resolve(JSON.stringify(settings)) },
+    }));
+    const frames = Array.from({ length: count }, (_value, index) => ({ duration: durations[index] ?? 100 }));
+    const model = await loader.load(encodeAseprite({ width: 8, height: 8, frames }), 'gfx/guy.aseprite');
+
+    return { model, warnings };
+  }
+
+  /**
+   * @returns The layers of every view of a sequence.
+   */
+  function layersOf(sequence: SpriteSequence): number[][] {
+    return sequence.views.map((view) => view.map((image) => image.layer));
+  }
+
+  void test('splits the range into one block of steps per view, the front first', async () => {
+    const { model, warnings } = await load(10, { sequences: [{ name: 'walk', from: 2, to: 9, rotations: 4 }] });
+    const walk = model.frames[0] as SpriteSequence;
+
+    assert.deepEqual(warnings, []);
+    assert.deepEqual(layersOf(walk), [[2, 3], [4, 5], [6, 7], [8, 9]]);
+    assert.equal(walk.images, walk.views[0], 'code that knows nothing of rotations sees the front');
+    assert.deepEqual(Array.from(walk.endTimes).map((time) => Math.round(time * 1000)), [100, 200], 'the timing of one view');
+  });
+
+  void test('mixes sequences with and without rotations, as Doom\'s walk and death do', async () => {
+    const { model } = await load(11, {
+      sequences: [
+        { name: 'walk', from: 0, to: 7, rotations: 8 },
+        { name: 'death', from: 8, to: 10, repeat: 1 },
+      ],
+    });
+    const [walk, death] = model.frames as SpriteSequence[];
+
+    assert.equal(walk.views.length, 8);
+    assert.deepEqual(layersOf(walk)[7], [7]);
+    assert.deepEqual(layersOf(death), [[8, 9, 10]]);
+    assert.equal(model.sequenceIndex('death'), 1);
+    assert.equal(Math.round(model.sequenceDuration(1) * 1000), 300);
+  });
+
+  void test('a range that does not split evenly is drawn without rotations, and said so', async () => {
+    const { model, warnings } = await load(7, { sequences: [{ name: 'walk', rotations: 2 }] });
+    const walk = model.frames[0] as SpriteSequence;
+
+    assert.deepEqual(layersOf(walk), [[0, 1, 2, 3, 4, 5, 6]]);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /sequence "walk" has 7 images, which do not split into 2 views/);
+  });
+
+  void test('views timed differently play with the front\'s timing, and it is said', async () => {
+    const { model, warnings } = await load(4, { sequences: [{ name: 'walk', rotations: 2 }] }, [100, 200, 100, 300]);
+
+    assert.deepEqual(Array.from((model.frames[0] as SpriteSequence).endTimes).map((time) => Math.round(time * 1000)), [100, 300]);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /views of sequence "walk" are timed differently/);
+  });
+
+  void test('a sequence fps times every view alike, so there is nothing to report', async () => {
+    const { warnings } = await load(4, { sequences: [{ name: 'walk', rotations: 2, fps: 5 }] }, [100, 200, 100, 300]);
+
+    assert.deepEqual(warnings, []);
+  });
+
+  void test('the bounds cover every view', async () => {
+    const { model } = await load(4, { origin: [0, 8], sequences: [{ name: 'walk', rotations: 4 }] });
+
+    assert.deepEqual([...model.mins], [-8, -8, 0]);
+    assert.deepEqual([...model.maxs], [8, 8, 8]);
+  });
+});

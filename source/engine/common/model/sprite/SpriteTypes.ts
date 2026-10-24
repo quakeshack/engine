@@ -77,11 +77,18 @@ export interface SpriteRegion {
   readonly height: number;
 }
 
-/** Images shown one after the other. */
+/**
+ * Images shown one after the other. A sequence with rotations has one list of images per view (Doom-style sprites):
+ * every view has the same number of images and shares the timing, and the angle the entity is seen from picks the
+ * view, see `SpriteAnimator.viewIndex()`.
+ */
 export interface SpriteSequence {
   /** Empty for sequences that have no name (SPR groups, untagged images). */
   readonly name: string;
+  /** The images of the first view, the front: the same array as `views[0]`. */
   readonly images: readonly SpriteImage[];
+  /** One list of images per view, counterclockwise from the front as seen from above; only `images` without rotations. */
+  readonly views: ReadonlyArray<readonly SpriteImage[]>;
   /** Seconds from the start of one play to the end of each image, like the `interval`s of an SPR group. */
   readonly endTimes: Float32Array;
   readonly direction: SpriteDirection;

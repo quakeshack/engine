@@ -45,6 +45,7 @@ void describe('SpriteSidecars', () => {
       sequences: [
         { name: 'idle', from: 0, to: 7, direction: 'pingpong' },
         { name: 'burst', from: 8, to: 15, repeat: 1, fps: 24 },
+        { name: 'walk', from: 16, to: 47, rotations: 8 },
       ],
     });
 
@@ -61,8 +62,9 @@ void describe('SpriteSidecars', () => {
     assert.equal(sidecar.repeat, 3);
     assert.deepEqual(sidecar.colorKey, { color: [0, 0, 0], tolerance: 16 });
     assert.deepEqual(sidecar.sequences, [
-      { name: 'idle', from: 0, to: 7, direction: SpriteDirection.pingpong, repeat: null, fps: null },
-      { name: 'burst', from: 8, to: 15, direction: null, repeat: 1, fps: 24 },
+      { name: 'idle', from: 0, to: 7, direction: SpriteDirection.pingpong, repeat: null, fps: null, rotations: null },
+      { name: 'burst', from: 8, to: 15, direction: null, repeat: 1, fps: 24, rotations: null },
+      { name: 'walk', from: 16, to: 47, direction: null, repeat: null, fps: null, rotations: 8 },
     ]);
   });
 
@@ -185,6 +187,14 @@ void describe('SpriteSidecars', () => {
 
       assert.deepEqual(sidecar.sequences?.map((sequence) => sequence.name), ['ok']);
       assert.equal(warnings.length, 1);
+    });
+
+    void test('rotations that are not a whole number of at least one', () => {
+      const { sidecar, warnings } = parse({ sequences: [{ name: 'a', rotations: 0 }, { name: 'b', rotations: 2.5 }, { name: 'c', rotations: '8' }] });
+
+      assert.deepEqual(sidecar.sequences?.map((sequence) => sequence.rotations), [null, null, null]);
+      assert.equal(warnings.length, 3);
+      assert.match(warnings[0], /sequence 0: "rotations" has to be a whole number from 1/);
     });
 
     void test('an unknown version still reads the settings', () => {

@@ -74,7 +74,7 @@ file too (the scale decides the bounds). A broken file, a wrong value or a setti
 | `interpolate` | `true`, `false` | `false` | Crossfades from an image to the next. Needs `r_interpolation 1`, which is the default. |
 | `lit` | `true`, `false` | `false` | Shades the sprite with the light of the map at its origin plus the dynamic lights that reach it (a flat sprite has no surface direction, so this is its brightness only, never above the texture's own). Right for smoke, dust and puffs that should darken in a dark room; leave it off for fire, glow and sparks. A lit sprite is drawn on its own, it does not batch with its neighbors. |
 | `regions` | `{ "name": [x, y, width, height] }`, pixels | none | Named rectangles of the image, counted from its top left corner, for drawing a part of a sprite sheet on the screen (`region` of `DrawSprite`). An Aseprite file's slices are regions as well; the settings file wins on a name clash. A region that reaches outside the image is left out with a console message. It does nothing for a sprite in the world. |
-| `sequences` | list of `{ name, from, to, direction, repeat, fps }` | one sequence over all images | Each entry becomes one `frame` of the entity, in order, so `this.frame = 1` plays the second. `from` and `to` (both included) default to the first and last image, `direction` to `forward` (`reverse`, `pingpong` and `pingpongReverse` exist), `repeat` and `fps` to the settings above. |
+| `sequences` | list of `{ name, from, to, direction, repeat, fps, rotations }` | one sequence over all images | Each entry becomes one `frame` of the entity, in order, so `this.frame = 1` plays the second. `from` and `to` (both included) default to the first and last image, `direction` to `forward` (`reverse`, `pingpong` and `pingpongReverse` exist), `repeat` and `fps` to the settings above. `rotations` (a whole number, default 1) makes the sequence look different from each side, see [Rotations](#rotations-doom-style-sprites). |
 
 How a sequence ends: `forward` holds its last image, `reverse` its first. A `pingpong` goes to the far end and back without
 showing either end image twice in a row, and holds the image it started with.
@@ -138,6 +138,45 @@ this.frame = this.engine.GetSpriteSequenceIndex('gfx/imp.gif', 'burst');
 Changing `frame` restarts a sprite that follows its entity's own clock (`phase: spawn`); setting the frame it already has
 does not, so a server repeating it every update leaves a running animation alone.
 
+## Rotations: Doom-style sprites
+
+A monster drawn as a sprite needs a picture for each side it can be seen from, the way Doom draws its monsters with 8
+rotations. A sequence with `rotations` has that many *views* of the same animation, and the angle between the entity's
+yaw and the direction to the camera picks the view that is drawn:
+
+```json
+{
+  "origin": [33, 59],
+  "orientation": "parallelUpright",
+  "filter": "nearest",
+  "lit": true,
+  "sequences": [
+    { "name": "walk", "from": 0, "to": 31, "rotations": 8 },
+    { "name": "death", "from": 32, "to": 37, "repeat": 1 }
+  ]
+}
+```
+
+- **The images of a range are one block per view**, each block holding the steps of the animation in order: here
+  images 0 to 3 are the four steps of the walk seen from the front, 4 to 7 the same steps seen from the next view, and
+  so on. A range that does not split into blocks of the same length is reported on the console and drawn without
+  rotations.
+- **View 0 is the front**, seen while the camera stands in front of the entity. The views go on counterclockwise as
+  seen from above: view k is drawn while the camera stands k × 360 / N degrees counterclockwise around the entity,
+  and each view covers the same angle, centered on its direction. This is Doom's order (`R_ProjectSprite`): Doom's
+  rotation 1 is view 0, its rotation 2 is view 1 and so on.
+- **Every view plays on the same timeline.** The views share the timing of the front view (a console message says so
+  if the file times them differently), so the walk does not restart or skip when the camera moves around the
+  monster. A crossfade (`interpolate`) stays within one view.
+- **Sequences with and without rotations mix**, like Doom's walk (8 rotations) and death (one picture for every side).
+- **The game does nothing new.** The entity's yaw (`angles[1]`) and `frame` choose what is drawn, so
+  `GetSpriteSequenceIndex` and `GetSpriteSequenceDuration` work as for any sequence.
+- **Use `parallelUpright` or `facingUpright`**, which keep the sprite upright like Doom's. The other orientations
+  work too, but turn the quad in ways that do not suit a picture of a side.
+- **Every view is an image of its own.** The engine does not mirror one side to make the other: a picture that Doom
+  draws flipped for the other side (its `A2A8` lumps) is in the file twice, the second time flipped.
+- **On the screen** a playback shows the front view until its `view` is set, see the playback's members below.
+
 ## On the screen: HUD elements and screen effects
 
 Any sprite file also draws in 2D, from a game's `draw()` (or `drawOverlay()`, which stays visible when `nohud` is set):
@@ -181,6 +220,7 @@ or the smooth filter blends a pixel row of the neighboring cell in at the edge.
 | :--- | :--- |
 | `play(sequence)` | Starts a sequence from its first image, by index or by name (a sidecar sequence, an Aseprite tag). Throws a `RangeError` for one the file does not have. |
 | `pause()`, `resume()`, `paused` | Holds the image that is showing, and goes on from there. |
+| `view` | The view of a sequence with [rotations](#rotations-doom-style-sprites) to show, 0 (the front) by default, counting counterclockwise. A whole number that wraps around, so `view += 1` keeps turning the sprite; changing it does not restart the sequence. A sequence without rotations ignores it. |
 | `speed` | How fast it plays, `1` is the file's speed. Changing it keeps what has played. |
 | `duration` | Seconds the sequence takes as far as its repeat count goes, with the speed counted in; `Infinity` for one that repeats forever, `0` for a single picture. |
 | `finished` | The sequence has played as often as it repeats and holds its last image. A sequence that repeats forever never finishes. |

@@ -111,8 +111,10 @@ export class SpriteAnimator {
    * @param time Seconds since the sequence started (ignored by a single picture).
    * @param interpolate Whether to work out the image to fade into, for sprites that crossfade.
    * @param out Filled in.
+   * @param view The view of a sequence with rotations ({@link SpriteAnimator.viewIndex}), 0 for the front. The fade
+   * stays within the view, it never blends one view into another.
    */
-  static sample(frame: SpriteFrame, time: number, interpolate: boolean, out: SpriteSample): void {
+  static sample(frame: SpriteFrame, time: number, interpolate: boolean, out: SpriteSample, view = 0): void {
     if (!('images' in frame)) {
       out.image = frame;
       out.nextLayer = frame.layer;
@@ -120,19 +122,46 @@ export class SpriteAnimator {
       return;
     }
 
+    console.assert(view >= 0 && view < frame.views.length, 'view of the sequence required');
+
+    const images = frame.views[view];
+
     if (interpolate) {
       const blend = SpriteAnimator.#blend;
 
       SpriteAnimator.blendAt(frame, time, blend);
-      out.image = frame.images[blend.index];
-      out.nextLayer = frame.images[blend.nextIndex].layer;
+      out.image = images[blend.index];
+      out.nextLayer = images[blend.nextIndex].layer;
       out.fade = blend.mix;
       return;
     }
 
-    out.image = frame.images[SpriteAnimator.imageIndexAt(frame, time)];
+    out.image = images[SpriteAnimator.imageIndexAt(frame, time)];
     out.nextLayer = out.image.layer;
     out.fade = 0;
+  }
+
+  /**
+   * Which view of a sequence with rotations is seen, the way Doom picks a sprite rotation (`R_ProjectSprite` in
+   * `r_things.c`): view 0 while the viewer is in front of the entity, view k while the viewer stands k times
+   * `360 / count` degrees counterclockwise around it (seen from above). Each view covers the same angle, centered on
+   * its direction; on the edge between two the later view wins, as in Doom.
+   * @param count Number of views of the sequence.
+   * @param yaw The entity's yaw in degrees (counterclockwise from +X, like Doom's angles).
+   * @param toViewerX Direction from the entity to the viewer, X.
+   * @param toViewerY Direction from the entity to the viewer, Y.
+   * @returns The view, 0 to `count - 1`.
+   */
+  static viewIndex(count: number, yaw: number, toViewerX: number, toViewerY: number): number {
+    if (count <= 1) {
+      return 0;
+    }
+
+    const sector = 360 / count;
+    const angle = Math.atan2(toViewerY, toViewerX) * (180 / Math.PI) - yaw;
+    const view = Math.floor(angle / sector + 0.5) % count;
+
+    return view < 0 ? view + count : view;
   }
 
   static readonly #blend: SpriteImageBlend = { index: 0, nextIndex: 0, mix: 0 };

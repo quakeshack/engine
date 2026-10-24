@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { SpriteAnimator, type SpriteImageBlend } from '../../source/engine/common/model/sprite/SpriteAnimator.ts';
+import { SpriteAnimator, SpriteSample, type SpriteImageBlend } from '../../source/engine/common/model/sprite/SpriteAnimator.ts';
 import { SpriteDirection, type SpriteImage, type SpriteSequence } from '../../source/engine/common/model/sprite/SpriteTypes.ts';
 
 /**
@@ -21,7 +21,7 @@ function createSequence(durations: number[], direction = SpriteDirection.forward
     endTimes[index] = elapsed;
   }
 
-  return { name: '', images, endTimes, direction, repeat };
+  return { name: '', images, views: [images], endTimes, direction, repeat };
 }
 
 /**
@@ -176,6 +176,85 @@ void describe('SpriteAnimator', () => {
       const sequence = createSequence([1, 1], SpriteDirection.forward, 1);
 
       assert.deepEqual(blend(sequence, 1.5), [1, 1, 0.5]);
+    });
+  });
+
+  void describe('viewIndex', () => {
+    /**
+     * @returns The view of 8 seen by a viewer at `degrees` around an entity that faces +X.
+     */
+    function viewAt(degrees: number, yaw = 0, count = 8): number {
+      const radians = degrees * (Math.PI / 180);
+
+      return SpriteAnimator.viewIndex(count, yaw, Math.cos(radians) * 100, Math.sin(radians) * 100);
+    }
+
+    void test('counts counterclockwise from the front, one view per sector', () => {
+      assert.deepEqual([0, 45, 90, 135, 180, 225, 270, 315].map((degrees) => viewAt(degrees)), [0, 1, 2, 3, 4, 5, 6, 7]);
+    });
+
+    void test('centers each sector on its view', () => {
+      assert.equal(viewAt(22), 0);
+      assert.equal(viewAt(-22), 0);
+      assert.equal(viewAt(67), 1);
+      assert.equal(viewAt(-23), 7);
+    });
+
+    void test('gives the edge between two sectors to the later view, as Doom does', () => {
+      // Doom's (angle + 22.5 degrees) >> 29 is a floor: 22.5 degrees is already rotation 2 (view 1)
+      assert.equal(SpriteAnimator.viewIndex(8, 0, Math.cos(Math.PI / 8), Math.sin(Math.PI / 8)), 1);
+    });
+
+    void test('is measured against the entity\'s yaw, whatever its range', () => {
+      assert.equal(viewAt(90, 90), 0, 'facing the viewer');
+      assert.equal(viewAt(0, 180), 4, 'facing away');
+      assert.equal(viewAt(0, 720 + 90), 6);
+      assert.equal(viewAt(0, -90), 2);
+    });
+
+    void test('works for any number of views', () => {
+      assert.deepEqual([0, 22.5, 90, 180, 337.5].map((degrees) => viewAt(degrees, 0, 16)), [0, 1, 4, 8, 15]);
+      assert.deepEqual([0, 90, 180, 270].map((degrees) => viewAt(degrees, 0, 4)), [0, 1, 2, 3]);
+    });
+
+    void test('a single view is always the front', () => {
+      assert.equal(viewAt(180, 0, 1), 0);
+    });
+  });
+
+  void describe('sample', () => {
+    /**
+     * @returns A sequence of two steps in two views, the second view on layers 10 and 11.
+     */
+    function createRotatedSequence(): SpriteSequence {
+      const front = createSequence([1, 1]);
+      const side = front.images.map((image) => ({ ...image, layer: image.layer + 10 }));
+
+      return { ...front, views: [front.images, side] };
+    }
+
+    void test('shows the image of the step that is playing in the view it is given', () => {
+      const out = new SpriteSample();
+
+      SpriteAnimator.sample(createRotatedSequence(), 1.5, false, out, 1);
+
+      assert.equal(out.image.layer, 11);
+    });
+
+    void test('shows the front without a view', () => {
+      const out = new SpriteSample();
+
+      SpriteAnimator.sample(createRotatedSequence(), 1.5, false, out);
+
+      assert.equal(out.image.layer, 1);
+    });
+
+    void test('fades only within the view, never into another one', () => {
+      const out = new SpriteSample();
+
+      SpriteAnimator.sample(createRotatedSequence(), 0.5, true, out, 1);
+
+      assert.deepEqual([out.image.layer, out.nextLayer, out.fade], [10, 11, 0.5]);
     });
   });
 });

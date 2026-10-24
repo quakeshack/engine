@@ -259,9 +259,11 @@ void describe('Draw.Sprite', () => {
   });
 
   void describe('animation', () => {
+    const images = [image(0), image(1)];
     const sequence = {
       name: '',
-      images: [image(0), image(1)],
+      images,
+      views: [images],
       endTimes: Float32Array.from([1, 2]),
       direction: SpriteDirection.forward,
       repeat: 0,
@@ -271,6 +273,16 @@ void describe('Draw.Sprite', () => {
       Draw.Sprite(0, 0, createPlayback([sequence]));
 
       assert.ok(streamedVertices().every((vertex) => vertex.layer === 0 && vertex.fade === 0));
+    });
+
+    void test('draws the view the playback is turned to', () => {
+      const side = [image(2), image(3)];
+      const playback = createPlayback([{ ...sequence, views: [images, side] }]);
+
+      playback.view = 1;
+      Draw.Sprite(0, 0, playback);
+
+      assert.ok(streamedVertices().every((vertex) => vertex.layer === 2));
     });
 
     void test('fades into the next image for a sprite that interpolates', () => {

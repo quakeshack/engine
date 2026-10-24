@@ -21,6 +21,11 @@ export interface SpriteSidecarSequence {
   readonly repeat: number | null;
   /** Frames per second of this sequence, `null` for the timing of the file. */
   readonly fps: number | null;
+  /**
+   * Number of views (Doom-style rotations), `null` for one. The range holds one block of images per view, the front
+   * first, then counterclockwise.
+   */
+  readonly rotations: number | null;
 }
 
 /**
@@ -60,7 +65,7 @@ const ORIENTATIONS: Readonly<Record<string, SpriteOrientation>> = {
 };
 
 const SETTINGS = ['version', 'orientation', 'origin', 'scale', 'blend', 'filter', 'phase', 'interpolate', 'lit', 'fps', 'repeat', 'colorKey', 'sequences', 'regions'];
-const SEQUENCE_SETTINGS = ['name', 'from', 'to', 'direction', 'repeat', 'fps'];
+const SEQUENCE_SETTINGS = ['name', 'from', 'to', 'direction', 'repeat', 'fps', 'rotations'];
 const COLOR_KEY_SETTINGS = ['color', 'tolerance'];
 
 /**
@@ -219,6 +224,7 @@ export class SpriteSidecars {
         direction: reader.choice('direction', SpriteDirection),
         repeat: reader.number('repeat', { min: 0, integer: true }),
         fps: reader.number('fps', { min: 0, exclusiveMin: true }),
+        rotations: reader.number('rotations', { min: 1, integer: true }),
       });
     });
 
