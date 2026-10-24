@@ -32,6 +32,19 @@ Follow-up: Doom-style rotations (a view per side, picked by the angle to the cam
 [doom-style-sprite-rotations.md](doom-style-sprite-rotations.md). Its rotations in the world and on the screen
 shipped on this branch (2026-10-24); the converter for Doom's art waits for a go-ahead.
 
+**⏸ Parked (2026-10-24, maintainer's decision).** Everything planned has shipped and the work stops here. These were
+never checked against the real thing, and `docs/sprites.md` lists them under "Not tested yet":
+
+- **Firefox and Safari.** Every browser check ran in Chromium, though Phase 3's exit asked for all three.
+- **GIF loop counts.** That a GIF plays N + 1 times was never compared with a browser (Phase 3, "Timing check postponed").
+  It needs a GIF with a visible counter in each frame.
+- **Half-Life SPR v2.** No real file has been loaded; `texFormat`, the index-alpha colors and the render modes come
+  from FTE's source (Open questions).
+- **A HUD in a game.** `LoadSprite`/`DrawSprite` were drawn only by test pages; no game code uses them yet.
+
+Left out on purpose and still possible later: luminance alpha (`alphaFrom`), AVIF, batching for `DrawSprite`, the
+post-process `sprite` effect, a `hud.txt` reader, and a game clock that stops on pause.
+
 ### Decisions so far (2026-10-22, from the maintainer)
 
 - **Animation model: auto-play sequences.** A file is one sequence at `frame 0` that plays by
@@ -937,10 +950,7 @@ ONE_MINUS_SRC_ALPHA` and draws it mid gray (127). Both builds log the same three
 
 - **Half-Life sprites need a real file** to confirm the meaning of `texFormat` and of index-alpha colors.
 - **Luminance alpha.** Not built, see above.
-- **Black to alpha (Phase 4), shape of the setting (settled, see Phase 4).** My proposal for the sidecar, to settle when Phase 4 starts:
-  `"blend": "additive"` for fire and glow (black adds nothing, no key needed); for an alpha-blended sprite with a
-  black background `"colorKey": { "color": [0, 0, 0], "tolerance": 16 }` that makes matching pixels transparent
-  (a hard key, fine for pixel art); and `"alphaFrom": "luminance"` that takes the alpha from the brightness of the
-  pixel and keeps its color (soft, for smoke and glow drawn on black). Do you want all three, or does `additive`
-  plus the key cover it? The two that came out of Phase 0 were settled by the maintainer on 2026-10-23 (Status).
-- **The G forks (2D API shape, screen effects, clock, scope)** were settled on 2026-10-23, see "Decisions for Phase 8".
+- **Untested in practice:** see "Parked" under Status.
+
+Settled: black to alpha (`additive` plus `colorKey`, Phase 4), the Phase 0 forks (2026-10-23, Status) and the G forks
+(2026-10-23, "Decisions for Phase 8").

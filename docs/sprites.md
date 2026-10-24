@@ -176,6 +176,8 @@ yaw and the direction to the camera picks the view that is drawn:
 - **Every view is an image of its own.** The engine does not mirror one side to make the other: a picture that Doom
   draws flipped for the other side (its `A2A8` lumps) is in the file twice, the second time flipped.
 - **On the screen** a playback shows the front view until its `view` is set, see the playback's members below.
+- **No tool converts Doom's art yet.** A file with rotations has to be made by hand or with your own script, which
+  writes each view as a block and the flipped pictures as images of their own.
 
 ## On the screen: HUD elements and screen effects
 
@@ -243,6 +245,10 @@ cache or the precache list. Its textures are freed when the GL context goes away
 dead. Load the sprites of a HUD once, not per frame (a second load of a file that is loaded only makes a new playback).
 Every `DrawSprite` is one draw call, there is no batching of neighbors yet.
 
+**Not tried in a game yet.** `LoadSprite` and `DrawSprite` have been checked with unit tests and test pages that draw
+playbacks over a running game, but no game's HUD uses them so far. Expect rough edges the first time one does, see
+[Not tested yet](#not-tested-yet).
+
 ## Making the files
 
 Any tool that writes GIF, APNG or animated WebP works. With `ffmpeg` (the three commands below were tried with ffmpeg 8.0.1-3ubuntu2, on
@@ -298,8 +304,10 @@ decides how a sprite is drawn:
 | 2, index alpha | the palette index is the alpha | `alpha`, color from the palette entry, alpha is the index |
 | 3, alpha test | palette index 255 is transparent | alpha tested |
 
-These meanings come from the source of another engine (FTE), which says it is not sure about them, and **no Half-Life
-sprite has been compared against them yet**: if an additive or index-alpha sprite looks wrong, that is the first suspect.
+These meanings come from the source of another engine (FTE), which says it is not sure about them, and **no real
+Half-Life sprite has been loaded yet**: the loader has only seen files that its tests build, so neither the formats
+above nor the palette handling have been compared against the game. If a Half-Life sprite looks wrong, start with this
+table.
 A `.spr` does not read a settings file: its header says how it is drawn.
 
 ## Memory
@@ -327,3 +335,15 @@ the file after all.
 `.spr` files (version 1) draw as they always did, on the same renderer: groups animate on the global clock, or on a random
 offset when the file says so, and all five orientation types of the header are honored. Only image files read the settings
 file: a `.spr` is configured by its header.
+
+## Not tested yet
+
+Everything below is covered by unit tests, but has not been checked against the real thing:
+
+- **Browsers other than Chromium.** Every browser check ran in Chromium. Firefox (animated WebP needs version 133 or
+  later there) and Safari have not been tried.
+- **GIF loop counts.** That a GIF with a loop count of N plays N + 1 times, the way browsers play it, has not been
+  checked against a browser side by side.
+- **Half-Life sprites.** No real Half-Life `.spr` has been loaded, see [Half-Life sprites](#half-life-sprites).
+- **HUD elements in a game.** `LoadSprite` and `DrawSprite` have only been drawn by test pages, not by a game's HUD,
+  see [On the screen](#on-the-screen-hud-elements-and-screen-effects).

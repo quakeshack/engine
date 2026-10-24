@@ -6,6 +6,12 @@ Phases 1 and 2 are committed on `feature/animated-image-sprites` as one commit, 
 monster") inside hellwave. Left out on purpose: hellwave's first wave spawning only the demon and id1's flames and
 explosions drawn from GIFs, both local experiments that need files no game ships.
 
+**⏸ Parked (2026-10-24, maintainer's decision)** after Phase 2, together with
+[animated-image-sprites.md](animated-image-sprites.md). Phase 3 (the converter) is not started; `monster_doom_demon`
+stays behind `hw_doom_monsters` (default 0) until it exists, because its files come from a throwaway script nobody
+committed. Not checked: the demon's sounds (they load, but the browser runs were headless), and any browser but
+Chromium. `docs/sprites.md` says that no converter ships yet and lists what has not been tested.
+
 ## Context
 
 A Doom monster is drawn from a set of pictures per animation step: 8 *rotations* (16 in some
