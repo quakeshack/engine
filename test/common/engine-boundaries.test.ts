@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { describe, test } from 'node:test';
-import { dirname, join, relative, resolve } from 'node:path';
+import { join, relative } from 'node:path';
+
+import { importClosure, readCode } from '../support/importClosure.ts';
 
 const ENGINE_ROOT = new URL('../../source/engine/', import.meta.url).pathname;
 
@@ -35,17 +37,6 @@ function listSourceFiles(directory: string): string[] {
 }
 
 /**
- * Reads a source file without its comments, so a mention in documentation is not a reference.
- * @param path absolute file path
- * @returns the code of the file
- */
-function readCode(path: string): string {
-  return readFileSync(path, 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1');
-}
-
-/**
  * Finds files whose code matches a pattern.
  * @param directory directory below the engine source
  * @param pattern pattern that marks a violation
@@ -55,39 +46,6 @@ function filesMatching(directory: string, pattern: RegExp): string[] {
   return listSourceFiles(join(ENGINE_ROOT, directory))
     .filter((path) => pattern.test(readCode(path)))
     .map((path) => relative(ENGINE_ROOT, path));
-}
-
-/**
- * Collects every file that loading an entry point loads, following value imports only.
- * @param entry absolute path of the entry file
- * @returns absolute paths of the entry and everything it imports, directly or not
- */
-function importClosure(entry: string): Set<string> {
-  const seen = new Set<string>();
-  const pending = [entry];
-
-  while (pending.length > 0) {
-    const path = pending.pop()!;
-
-    if (seen.has(path)) {
-      continue;
-    }
-
-    seen.add(path);
-
-    // `import type` and `export type` are erased, only the others load a file.
-    const imports = readCode(path).matchAll(/^(?:import|export)(?!\s+type\b)[^;]*?\sfrom\s+'(\.[^']+\.ts)'/gm);
-
-    for (const [, specifier] of imports) {
-      const target = resolve(dirname(path), specifier);
-
-      if (existsSync(target)) {
-        pending.push(target);
-      }
-    }
-  }
-
-  return seen;
 }
 
 void describe('engine boundaries', () => {

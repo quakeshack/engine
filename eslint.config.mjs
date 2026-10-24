@@ -34,7 +34,11 @@ const nodeGlobals = Object.fromEntries(
   Object.entries(globals.node).filter(([name]) => name !== 'Buffer'),
 );
 
-const commonRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
+/**
+ * Rules for every file. Exported together with {@link tsStrictRules} so that a sibling project (the editor) builds
+ * its own config on the same rules instead of copying them.
+ */
+export const commonRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
   'max-len': 'off',
   'new-cap': 'off',
   'no-mixed-spaces-and-tabs': 'warn',
@@ -89,7 +93,7 @@ const commonRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
 });
 
 /** Extra strict rules applied only to TypeScript files. */
-const tsStrictRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
+export const tsStrictRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
   // Replace base rules with TS-aware extension equivalents
   'consistent-return': 'off',
   '@typescript-eslint/consistent-return': 'error',
