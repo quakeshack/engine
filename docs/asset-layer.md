@@ -1,8 +1,11 @@
 # Files: Content, User Files and Caches
 
 Where the engine gets its files from and where it keeps what it writes. This is the layer under
-`COM.LoadFile`, `COM.LoadTextFile`, `COM.WriteFile` and `COM.WriteTextFile`. It exists in the browser;
-the dedicated server reads and writes the file system directly (`server/Com.ts`) and does not use it.
+`COM.LoadFile`, `COM.LoadTextFile`, `COM.WriteFile` and `COM.WriteTextFile`. Content is read through an
+`AssetSource` everywhere: in the browser one that downloads the files already merged
+(`CachedFetchAssetSource`), in Node.js one that runs Quake's search path over `data/`
+(`SearchPathAssetSource`). User files exist in the browser only; the dedicated server writes into `data/`
+directly (`server/Com.ts`).
 
 ## Two kinds of files
 
@@ -19,7 +22,34 @@ user store first, so a file the engine wrote overrides content of the same name,
 Both storages exist inside workers as well (the old `localStorage` did not), so a server running in a
 worker can read content and write saves like the main thread.
 
-## Content: `CachedFetchAssetSource`
+## Content in Node.js: `SearchPathAssetSource`
+
+`common/SearchPathAssetSource.ts` finds a file the way Quake's search path does, over the raw files of a
+game folder:
+
+- **Later game directories win over earlier ones**, a mod over its base game (`COM.AddGameDirectory`
+  adds them in that order).
+- **Within one game directory the paks win over loose files**, the highest-numbered pak first. This
+  is id's `COM_AddGameDirectory`, which puts each pak in front of its directory. A loose `maps/e1m1.bsp`
+  next to a `pak0.pak` that has one is not used.
+- A path names a game directory (`hellwave/maps/start.bsp`): that one and the ones added before it are
+  searched. `COM` always names the topmost one.
+
+It reads through a `GameFolder` (`open(path)` → `Blob` or `null`). `NodeGameFolder`
+(`server/NodeGameFolder.ts`) is the one over `data/`; it refuses paths that would leave the folder,
+since `/qfs/` passes request paths on. A blob is read in ranges, so of a pak only the header, the directory
+and the entries asked for are read (`common/PakFile.ts` knows the format).
+
+The source keeps no state of its own: it reads `COM.searchpaths`, where `loadGameDirectory` put the
+paks' directories as plain data. That is what a worker receives (`WorkerManager`, the server worker's
+init), so a worker's `NodeCOM` reads the same files without opening the paks again. `NodeCOM` installs the
+source as its `assetSource`, so the dedicated server reads through the same `COM.LoadFile` as the
+browser; the files `/qfs/` serves come from there.
+
+Another app built on the engine (the editor, which reads a folder the user picks) uses the same source
+with a `GameFolder` of its own.
+
+## Content in the browser: `CachedFetchAssetSource`
 
 - **Cache Storage** belongs to the origin, so every realm (the main thread and each worker) sees the
   same files. What one realm downloaded is a local read for the other, independent of HTTP cache
@@ -80,6 +110,9 @@ answers from a snapshot of the slots' metadata that `SaveSlots.refresh()` takes 
 ## Testing
 
 `test/common/asset-source.test.ts`, `user-store.test.ts` and `com-storage.test.ts` run the logic
-against fakes for `fetch`, Cache Storage, Web Locks and the key-value backend. The real browser parts
+against fakes for `fetch`, Cache Storage, Web Locks and the key-value backend.
+`search-path-asset-source.test.ts` and `pak-file.test.ts` cover the search order and the pak format on
+an in-memory game folder (`test/support/gameFolder.ts`: `MemoryGameFolder`, `createPak`), and
+`test/server/node-game-folder.test.ts` the folder on disk. The real browser parts
 (`IndexedDbBackend`, real Cache Storage and locks, the migration) need a browser: see
 [browser-verification.md](browser-verification.md).

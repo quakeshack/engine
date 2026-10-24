@@ -5,6 +5,8 @@ import type { BuildConfig } from '../../source/engine/build-config';
 import COM from '../../source/engine/common/Com.ts';
 import { BackendUserStore, MemoryBackend, type UserStore } from '../../source/engine/common/UserStore.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { SearchPathAssetSource } from '../../source/engine/common/SearchPathAssetSource.ts';
+import { createPak, MemoryGameFolder } from '../support/gameFolder.ts';
 
 /** The COM of the running test, replaced by `withStorage` before any test code runs. */
 let com: COM;
@@ -102,6 +104,25 @@ void describe('COM storage', () => {
       await withStorage({ assets: { 'id1/a.lmp': [3] }, userStore: null }, async () => {
         assert.deepEqual([...new Uint8Array((await com.LoadFile('a.lmp'))!)], [3]);
       });
+    });
+
+    void test('reads through a search path in Node, without a page or a download URL', async () => {
+      const printed: string[] = [];
+      const nodeCom = new COM({
+        con: { DPrint() {}, Print() {}, PrintWarning() {}, PrintError() {}, PrintSuccess() {} },
+        sys: { Print: (text: string) => { printed.push(text); }, FloatTime: () => 0 },
+        buildConfig: () => undefined,
+        urls: () => undefined,
+      });
+      const files = new SearchPathAssetSource(new MemoryGameFolder({
+        'id1/pak0.pak': createPak({ 'gfx/palette.lmp': [5] }),
+      }), () => nodeCom.searchpaths);
+
+      nodeCom.assetSource = files;
+      nodeCom.searchpaths.push((await files.loadGameDirectory('id1')).search, { filename: 'hellwave', pack: [] });
+
+      assert.deepEqual([...new Uint8Array((await nodeCom.LoadFile('gfx/palette.lmp'))!)], [5]);
+      assert.deepEqual(printed, ['COM.LoadFile: hellwave/gfx/palette.lmp\n']);
     });
   });
 

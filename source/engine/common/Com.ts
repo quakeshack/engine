@@ -14,17 +14,14 @@ import W from './W.ts';
 import Cmd from './Cmd.ts';
 import { defaultBasedir, defaultGame, productVersion } from './Def.ts';
 import { CRC16CCITT } from './CRC.ts';
+import type { PackFileEntry } from './PakFile.ts';
 
-/** A file entry inside a .pak archive. */
-export interface PackFileEntry {
-  readonly name: string;
-  readonly filepos: number;
-  readonly filelen: number;
-}
-
-/** A search path entry in the virtual filesystem. */
+/**
+ * A game directory on the search path. Plain data, so it travels to a worker with the paks' directories.
+ */
 export interface SearchPath {
   readonly filename: string;
+  /** The directories of the game directory's paks, `pak0.pak` first. Empty where the paks were merged in advance. */
   pack: PackFileEntry[][];
 }
 
@@ -34,12 +31,6 @@ export interface ParseResult {
   readonly data: string | null;
 }
 
-/**
- * Common file system, command line, and string parsing utilities.
- *
- * This is the base class shared by both the browser client and the Node.js
- * dedicated server (`server/Com.ts` extends this as `NodeCOM`).
- */
 /** What a `COM` depends on. */
 export interface ComDependencies {
   readonly con: ConsoleOutput;
@@ -50,6 +41,12 @@ export interface ComDependencies {
   readonly urls: () => URLs | undefined;
 }
 
+/**
+ * Common file system, command line, and string parsing utilities.
+ *
+ * This is the base class shared by both the browser client and the Node.js
+ * dedicated server (`server/Com.ts` extends this as `NodeCOM`).
+ */
 export default class COM {
   readonly con: ConsoleOutput;
   readonly sys: SystemServices;
@@ -96,8 +93,9 @@ export default class COM {
   game: string = defaultGame;
 
   /**
-   * Where content files are read from. Set by {@link COM#InitStorage}. The dedicated server does
-   * not use it, it reads the file system directly.
+   * Where content files are read from. Set by {@link COM#InitStorage} in a browser; `NodeCOM` reads
+   * `data/` through a `SearchPathAssetSource`, and a page without a server behind it (the editor) may
+   * assign one of its own.
    */
   assetSource: AssetSource | null = null;
 
@@ -537,11 +535,11 @@ export default class COM {
       return userData;
     }
 
-    // 2) Content from the pre-merged filesystem (all PAKs and priorities resolved at build time).
+    // 2) Content, through the search path (Node.js) or a filesystem merged in advance (`/qfs/`, the CDN).
     const data = await this.assetSource?.read(path) ?? null;
 
     if (data !== null) {
-      this.sys.Print(`COM.LoadFile: ${this.GetNetpath(filename, gameDir)}\n`);
+      this.sys.Print(`COM.LoadFile: ${path}\n`);
       eventBus.publish('com.fs.end', filename);
       return data;
     }
@@ -566,7 +564,7 @@ export default class COM {
 
   /**
    * Add a game directory to the search path.
-   * Note: PAK files are pre-extracted at build time, so we only track the directory.
+   * In a browser the files arrive merged (`/qfs/`, the CDN), so only the directory is tracked; `NodeCOM` opens the paks.
    */
   // eslint-disable-next-line @typescript-eslint/require-await
   async AddGameDirectory(dir: string) {
