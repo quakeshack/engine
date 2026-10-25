@@ -1,57 +1,34 @@
 # QuakeShack Engine
 
-QuakeShack is a modern JavaScript/TypeScript port of the Quake 1 engine running in the browser (WebGL/WebAudio) and on Node.js, integrated with Cloudflare services.
+A JavaScript/TypeScript port of the Quake 1 engine for the browser (WebGL/WebAudio) and Node.js, integrated with Cloudflare services.
 
-Be a good boy scout: whenever touching something, leave it cleaner than before. Follow the conventions below. Run `eslint --fix`. Write unit tests for things you work on. Keep all existing tests passing. Update JSDoc when changing public APIs.
+Be a good boy scout: leave what you touch cleaner than before. Follow the conventions below, run `eslint --fix`, write unit tests for what you work on, keep all tests passing, update JSDoc when changing public APIs. American English.
 
-## Quick Reference
+## Commands
 
-**Build & run**
 ```bash
-npm install
-npm run build:production          # browser client → dist/browser/
-npm run dedicated:dev             # dedicated server (watch)
-npm run dedicated:build:production
-npm run dedicated:start
-npm test                          # all tests
-npm run test:game                 # game/mod tests
-npm run test:common               # engine common tests
-npm run test:physics
-npm run test:renderer
-npm run typecheck                 # tsc over engine, game and shared; gates the Cloudflare build and the Docker test stage
-npx eslint --fix <file>
+npm run build:production            # browser client → dist/browser/
+npm run dedicated:dev               # dedicated server (watch); dedicated:build:production, dedicated:start
+npm test                            # all tests; test:game, test:common, test:physics, test:renderer
+npm run typecheck                   # must stay at zero errors (gates Cloudflare build and Docker test stage)
+npx eslint --fix <file>             # strict config, fix all warnings
 ```
-
-**Lint and typecheck before committing.** The ESLint config is strict — fix all warnings. `npm run typecheck` must stay at zero errors: it fails the Cloudflare build (`npm run build:wrangler`) and the Docker `test` stage. Every test is TypeScript and type-checked with it, the engine's under `test/` and a game's under `source/game/<mod>/test/` alike.
 
 ## Working Agreements
 
-For substantial work (architecture changes, cross-cutting refactors, new subsystems; not bug fixes or single-file edits) follow the `plan-first-workflow` skill: write `plans/<topic>.md` first (`plans/menu-rework.md` is the reference), put real forks (composition vs. subclassing, event-bus boundaries, public API shape, scope) to the developer instead of picking one, implement one phase at a time and stop at each boundary for a go-ahead, and record what shipped in the plan.
-
-- **Verify UI-facing changes in a real browser**, not just with unit tests (`browser-ui-verification` skill, `docs/browser-verification.md`). If you couldn't verify something, say so. Headless Chromium here never gets real Pointer Lock, so pointer-lock, mouse-look and hover bugs need a live test.
-- **LLM output gets reviewed.** `LLM.md` explains how this project uses LLMs: output is read, adjusted or rewritten, never taken on faith, and LLMs know Quake engine internals only shallowly. This code has diverged a lot from WinQuake, so check the source instead of trusting recalled engine details.
+- Substantial work (architecture changes, cross-cutting refactors, new subsystems) follows the `plan-first-workflow` skill.
+- Verify UI-facing changes in a real browser: the `browser-ui-verification` skill runs it in a Sonnet subagent. Say so if it couldn't verify.
+- Memory or performance concerns get measured attribution first (heap snapshots, profiles, `scripts/measure-bsp-memory.mts`), never a guessed fix. Check the plan in `plans/` for numbers already taken.
+- LLMs know Quake internals only shallowly and this code has diverged a lot from WinQuake: check the source instead of trusting recalled engine details (`LLM.md`).
 
 ## Known Traps
 
-Things that fail silently, so nothing tells you that you tripped them. Skills live in `.claude/skills/<name>/SKILL.md` and load on demand by their `description`.
+Silent failures. The project skills in `.claude/skills/` cover the others (commits under `source/game/`, Dockerfile fixtures, shaders, event bus docs, UI verification, tests); load one when its description matches.
 
-- **Committing under `source/game/id1/`** → `submodule-aware-commit`. `id1` is its own git repo (submodule `game.git`), so a top-level `git add -A && git commit` silently skips its files. Commit inside the submodule first, then bump the pointer. `source/game/hellwave` is its own repo too, but the outer repo leaves it untracked: commit inside it and never `git add` it from the outer repo.
-- **Adding a test fixture or a new top-level source/config file** → `dockerfile-fixture-sync`. The Dockerfile's `test` and `builder` stages only see files they explicitly `COPY`, so it passes locally and fails only in CI.
-- **Editing a `.frag`/`.vert` file or a chunk in `shaders/include/`** → `shader-chunks` (it also holds the GLSL style rules: branchless math, vectorizing, safe normalization). A chunk edit changes every program that includes it, and a routine pasted into a program starts a new copy.
-- **Adding or changing an `eventBus` event** → `event-bus-docs-sync`. Every event must be documented in `docs/events.md` (engine) or the game's own `docs/events.md`; nothing checks the Arguments and description columns.
-- **Changing client, UI, HUD, or input code** → `browser-ui-verification`. Unit tests can't catch texture-binding, FBO, or input-pipeline bugs, and there is no `chromium-cli` or Playwright dependency, so verification needs a specific recipe.
-- **Writing or changing a test** → `writing-engine-tests`. It lists the fixture factories and the mock helpers, and which file each lives in.
-- **Sampling the scene depth while the scene is drawn.** Bind the texture that `PostProcess.copySceneDepth()` returns, never `PostProcess.depthTexture`: that one is attached to the framebuffer that is drawn into (unless the frame is multisampled), and sampling it raises a `GL_INVALID_OPERATION` feedback-loop error. Ask again for every pass, the copy is of the depth at that moment. A unit that keeps the copy after the pass is sampled by whatever draws next with that unit (unit 7 is `tSpecular` of the brush shader), so put a neutral texture back if the unit is not yours. The contract is JSDoc on `copySceneDepth()` in `source/engine/client/renderer/postprocess/PostProcess.ts`, and in development builds `Frame` asserts it (`r_framegraph` shows the pass that sampled an attached texture).
-- **Tidying a static facade class (`CL.ts`, `ClientHost.ts`).** Some mix `this.foo` and `ClassName.foo` because they were once one monolithic file. Standardize on `ClassName.foo` ("Clean up global objects" in `code-style-guide.instructions.md`).
-- **Adding a worker.** It must be registered in `WorkerFactories.ts` and its file must end in `Worker.ts` (`docs/workers.md`).
-- **Adding a test in a new, deeper subdirectory.** `npm test` globs reach one level under dash; `test/common/test-globs.test.ts` fails when a test file is skipped.
-- **Writing engine-level docs, instructions, or skills.** Keep them game-agnostic: references to `id1` or `hellwave` are illustrative examples, not engine facts (`source-directories.instructions.md`).
+- **Sampling scene depth while drawing**: bind `PostProcess.copySceneDepth()`, never `PostProcess.depthTexture` (feedback loop). Contract in its JSDoc (`source/engine/client/renderer/postprocess/PostProcess.ts`).
+- **Adding a worker**: register it in `WorkerFactories.ts`, file name ends in `Worker.ts` (`docs/workers.md`).
 
-**Where new knowledge goes.** When you learn a repo gotcha that isn't obvious from the code, record it in the repo instead of only in a personal agent memory, so it reaches every developer. An API contract goes in JSDoc on the API. A reference or how-to goes in `docs/`. Something to *do at a specific moment* (a trigger plus a checklist) becomes a skill. A cross-cutting rule goes in the matching `.github/instructions/` file. Add it to the list above only when none of those fit. Everything in "Imported Guidelines" below is loaded into every session, so keep those files short and move detail into a skill or `docs/`.
-
-## Miscellaneous
-
-- Use American English.
+**Where new knowledge goes**: an API contract in JSDoc, a reference or how-to in `docs/`, a trigger plus checklist as a skill, a cross-cutting rule in the matching `.github/instructions/` file, a rule for certain files only in `.claude/rules/` with `paths:` frontmatter. Everything imported below loads into every session: keep it short, put detail in a skill or `docs/`.
 
 ## Imported Guidelines
 
@@ -66,5 +43,3 @@ Things that fail silently, so nothing tells you that you tripped them. Skills li
 @.github/instructions/typescript-port.instructions.md
 
 @.github/instructions/event-bus.instructions.md
-
-@.github/instructions/unit-tests.instructions.md

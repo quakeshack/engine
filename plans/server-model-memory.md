@@ -1,5 +1,11 @@
 # Server model memory: stop holding what the server never reads
 
+**Status (2026-10-17):** Phase 2 shipped (see below). Most of the unexplained heap turned out to be the BSPX lightgrid parsed
+into objects (1020 MB on `hw_village`, loaded by the server too); `plans/bsp-flat-layout.md` fixed that and flattened the hulls
+and the node/leaf tree. Still open: Phase 0's heap snapshot of the real Hellwave server worker (so check the worker's heap
+before assuming the 746 MB is gone), Phase 1, and the browser pass for alias model rendering. The developer has raised the
+memory concern twice: before proposing more memory work, the first answer is measured attribution, not another guess.
+
 Hellwave precaches every monster for every map, and the server worker's JS heap sits at ~750 MB (main thread ~910 MB). This plan finds out what actually holds that memory and shrinks it, starting with the cheapest change that needs no game-side API.
 
 ## Context

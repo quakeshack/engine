@@ -5,7 +5,7 @@ description: Use when writing or changing a test under test/ or a test helper in
 
 # Writing engine tests
 
-The always-loaded rules (runner, layout, naming, `describe` structure) are in `.github/instructions/unit-tests.instructions.md`. This is the detail you need while writing the test itself.
+The general rules (runner, layout, naming, `describe` structure) are in `.claude/rules/unit-tests.md`, which loads once a test file is read. This is the detail you need while writing the test itself.
 
 ## Fixture factories
 

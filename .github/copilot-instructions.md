@@ -1,6 +1,6 @@
 # QuakeShack AI Assistant Instructions
 
-QuakeShack is a TypeScript port of the Quake 1 engine (browser and Node.js) integrated with Cloudflare services. The full rules are in `CLAUDE.md` at the root of `engine/`. It pulls its guidelines in with `@imports`, which Copilot does not follow, so read these files yourself: `.github/instructions/source-directories.instructions.md`, `architecture`, `build-and-deploy`, `code-style-guide`, `typescript-port` (the TypeScript conventions), `event-bus` and `unit-tests`, all in `.github/instructions/`. `LLM.md` explains how this project uses LLMs.
+QuakeShack is a TypeScript port of the Quake 1 engine (browser and Node.js) integrated with Cloudflare services. The full rules are in `CLAUDE.md` at the root of `engine/`. It pulls its guidelines in with `@imports`, which Copilot does not follow, so read these files yourself: `.github/instructions/source-directories.instructions.md`, `architecture`, `build-and-deploy`, `code-style-guide`, `typescript-port` (the TypeScript conventions), and `event-bus`, all in `.github/instructions/`, plus `.claude/rules/unit-tests.md` when working on tests. `LLM.md` explains how this project uses LLMs.
 
 ## Multi-root workspace
 

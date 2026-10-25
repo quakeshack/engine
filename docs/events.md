@@ -6,7 +6,9 @@ The engine has an event bus. Each name, its arguments, whether a game sees it an
 are declared in `source/shared/EngineEvents.ts`: `EngineEventMap` types the arguments, `engineEventTable` carries the two
 flags. The bus is typed by that map, so a typo in a name or a wrong argument is a `tsc` error, and
 `test/common/event-map-docs.test.ts` fails when this file and the table disagree. A new event is added to the map, to the
-table and to a table below, in that order.
+table and to a table below, in that order. `clientGameEvents` and `forwardedServerEvents` are derived from the table,
+never edited by hand. Transport code that only has a name at run time (worker messages, the `eb_publish` command) uses
+`publishUntyped`; everything else uses `publish`.
 
 ### Common
 

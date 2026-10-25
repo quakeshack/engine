@@ -1,46 +1,37 @@
 ---
 name: browser-ui-verification
-description: Use before reporting any client/UI change as done (rendering, menus, HUD, input; anything under source/engine/client or a game's client code). There is no chromium-cli or Playwright dependency, so a specific local recipe is needed; unit tests alone do not count.
+description: Use before reporting any client/UI change as done (rendering, menus, HUD, input; anything under source/engine/client or a game's client code); unit tests alone do not count. Runs in a Sonnet subagent, so pass as args what changed, how to reach it (mod, map, menu, console command) and what should be seen; relay its verdict.
+context: fork
+agent: browser-verifier
 ---
 
 # Browser UI verification
 
-This repo has no `chromium-cli` and no `playwright`/`puppeteer` project dependency, but a
-real, working recipe for live-browser verification exists and is documented in
-`docs/browser-verification.md`. Read that file for the full recipe — this skill is the
-trigger to actually use it instead of settling for "the unit tests pass" on a UI change.
+Verify this change in a live browser:
+
+$ARGUMENTS
 
 ## Fast path
 
-1. Check whether the ingredients are available in this environment:
+1. Check whether the ingredients are available:
    ```bash
    ls ~/.cache/ms-playwright/ 2>/dev/null
    find ~/.npm/_npx -maxdepth 3 -iname playwright 2>/dev/null
    ```
-2. **If both exist:** follow `docs/browser-verification.md` end to end — symlink the
-   cached package into a scratch `node_modules/`, build fresh output, boot a scratch
-   dedicated server on a spare port (never kill an already-running one), launch Chromium
-   with the software-GL args, and drive the actual page (clicks via the virtual-space
-   coordinate formula, console commands via real keyboard input, gated menu pages via
-   `window.engine`).
-3. **For a change that must not alter what is drawn** (a renderer refactor, a shader move), use the capture
-   scripts in `scripts/renderer-capture/` instead of writing a one-off: `capture.mjs` renders nine fixed views of
-   a build, `compare.mjs` compares two builds against the noise between captures of one build (recipe and
-   limits: `docs/browser-verification.md` §8, "The capture scripts").
-4. **If neither is available:** this is an environment gap, not a license to silently
-   skip verification. Say so explicitly in your final report — "UI change not verified in
-   a live browser: Chromium/Playwright unavailable in this sandbox" — rather than implying
-   the change was checked when only unit tests or a code read actually happened.
+2. **If both exist:** follow `docs/browser-verification.md` end to end: symlink the cached package into a scratch
+   `node_modules/`, build fresh output, boot a scratch dedicated server on a spare port (never kill an already-running
+   one), launch Chromium with the software-GL args, and drive the actual page (clicks via the virtual-space coordinate
+   formula, console commands via real keyboard input, gated menu pages via `window.engine`).
+3. **For a change that must not alter what is drawn** (a renderer refactor, a shader move), use
+   `scripts/renderer-capture/` instead of a one-off: `capture.mjs` renders nine fixed views of a build, `compare.mjs`
+   compares two builds against the noise between captures of one build (`docs/browser-verification.md` §8).
+4. **If neither is available:** report "not verified in a live browser: Chromium/Playwright unavailable". Never imply
+   the change was checked when only unit tests or a code read happened.
 
-## What this skill does NOT do
+## Limits
 
-- Does not add `playwright`/`puppeteer` to `package.json`. This stays a local dev/agent
-  workaround using whatever happens to be npx-cached, not a project dependency.
-- Does not replace unit tests — it's the end-to-end complement to them, for exactly the
-  class of bug a mocked-`gl` or DOM-less test can't catch (texture binding order, FBO
-  attachment points, real click/keyboard round-trips through the actual input pipeline).
-- Does not prove anything about the pointer-lock/mousemove/hover pipeline — headless
-  Chromium here never grants real Pointer Lock (see `docs/browser-verification.md` §6), so
-  a passing automated pass on that class of bug is a false-confidence trap, not evidence.
-  Say explicitly that this class needs a live user test instead of reporting confidence
-  from Playwright alone.
+- Do not add `playwright`/`puppeteer` to `package.json`; this uses whatever is npx-cached.
+- This complements unit tests for the bugs a mocked `gl` or DOM-less test cannot catch (texture binding order, FBO
+  attachments, real click/keyboard round-trips).
+- Headless Chromium never grants real Pointer Lock (`docs/browser-verification.md` §6): a pass on the
+  pointer-lock/mousemove/hover pipeline is no evidence. Say that this class needs a live user test.
