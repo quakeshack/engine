@@ -51,6 +51,7 @@ file too (the scale decides the bounds). A broken file, a wrong value or a setti
   "repeat": 0,
   "interpolate": true,
   "lit": true,
+  "shadow": true,
   "regions": { "number_0": [0, 0, 20, 24], "number_1": [20, 0, 12, 24] },
   "sequences": [
     { "name": "idle", "from": 0, "to": 7, "direction": "pingpong" },
@@ -73,6 +74,7 @@ file too (the scale decides the bounds). A broken file, a wrong value or a setti
 | `repeat` | whole number, 0 = forever | the file's | How often the whole animation plays. A finished sequence holds its last image. |
 | `interpolate` | `true`, `false` | `false` | Crossfades from an image to the next. Needs `r_interpolation 1`, which is the default. |
 | `lit` | `true`, `false` | `false` | Shades the sprite with the light of the map at its origin plus the dynamic lights that reach it (a flat sprite has no surface direction, so this is its brightness only, never above the texture's own). Right for smoke, dust and puffs that should darken in a dark room; leave it off for fire, glow and sparks. A lit sprite is drawn on its own, it does not batch with its neighbors. |
+| `shadow` | `true`, `false` | `false` | Casts a shadow, in the top-down shadow (`r_shadows`) and from the dynamic lights that cast shadows. Light passes through transparent pixels: an `alphaTest` sprite casts the shape of the pixels it draws, an `alpha` (or `additive`) sprite casts by each pixel's alpha, so a half transparent pixel casts about half a shadow. The shadow is the sprite as the light sees it, see [Shadows](#shadows). Right for monsters, trees and props; leave it off for fire, glow and sparks. |
 | `regions` | `{ "name": [x, y, width, height] }`, pixels | none | Named rectangles of the image, counted from its top left corner, for drawing a part of a sprite sheet on the screen (`region` of `DrawSprite`). An Aseprite file's slices are regions as well; the settings file wins on a name clash. A region that reaches outside the image is left out with a console message. It does nothing for a sprite in the world. |
 | `sequences` | list of `{ name, from, to, direction, repeat, fps, rotations }` | one sequence over all images | Each entry becomes one `frame` of the entity, in order, so `this.frame = 1` plays the second. `from` and `to` (both included) default to the first and last image, `direction` to `forward` (`reverse`, `pingpong` and `pingpongReverse` exist), `repeat` and `fps` to the settings above. `rotations` (a whole number, default 1) makes the sequence look different from each side, see [Rotations](#rotations-doom-style-sprites). |
 
@@ -178,6 +180,25 @@ yaw and the direction to the camera picks the view that is drawn:
 - **On the screen** a playback shows the front view until its `view` is set, see the playback's members below.
 - **No tool converts Doom's art yet.** A file with rotations has to be made by hand or with your own script, which
   writes each view as a block and the flipped pictures as images of their own.
+
+## Shadows
+
+A sprite with `"shadow": true` casts a shadow; nothing else changes for it, and game code does nothing new.
+
+- **The light is the viewer.** The quad of the shadow is turned to the light the way the drawn one is turned to the
+  camera: `parallel` and `parallelOriented` face the light, `parallelUpright` and `facingUpright` stay upright and turn
+  to it, `oriented` keeps the entity's angles. A sprite with [rotations](#rotations-doom-style-sprites) casts the view the light sees, so a
+  monster's shadow shows its side towards the light, not towards the camera.
+- **Upright sprites under a light from straight above cast nothing.** The top-down shadow comes straight down by default
+  (`r_shadow_pitch -90`), and an upright sprite is edge-on to it. It still casts from the dynamic lights, and from the
+  top-down shadow when `r_shadow_pitch` is slanted (for example `-60`). A `parallel` sprite lies flat for that light, at
+  the height of its origin, so it shadows only what is below it.
+- **The rules of every caster apply.** An entity with an `alpha` below 1, a light effect (`EF_DIMLIGHT`, ...) or
+  `EF_NOSHADOW` casts none, and the top-down shadow reaches only `r_shadow_max_depth` below its caster. Entities the
+  client owns cast no shadow of any model either: static decorations (`makeStatic`) and the game's client-only
+  entities. A sprite that should cast stays an entity of the server.
+- **Sprites receive no shadow.** A sprite is drawn as bright as its texture (or its light, when `lit`), whatever shadow
+  falls on it.
 
 ## On the screen: HUD elements and screen effects
 
@@ -345,5 +366,7 @@ Everything below is covered by unit tests, but has not been checked against the 
 - **GIF loop counts.** That a GIF with a loop count of N plays N + 1 times, the way browsers play it, has not been
   checked against a browser side by side.
 - **Half-Life sprites.** No real Half-Life `.spr` has been loaded, see [Half-Life sprites](#half-life-sprites).
+- **Shadows of sprites in a game.** Casting was checked in Chromium with a test sprite (point light and a slanted
+  top-down shadow), but not with a sprite that has rotations in a real game, and not with an `alphaTest` GIF.
 - **HUD elements in a game.** `LoadSprite` and `DrawSprite` have only been drawn by test pages, not by a game's HUD,
   see [On the screen](#on-the-screen-hud-elements-and-screen-effects).

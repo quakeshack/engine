@@ -65,6 +65,7 @@ export class ImageSpriteLoader extends ModelLoader {
     loadmodel.phase = sidecar.phase ?? SpritePhase.spawn;
     loadmodel.random = loadmodel.phase === SpritePhase.random;
     loadmodel.lit = sidecar.lit ?? false;
+    loadmodel.castsShadow = sidecar.shadow ?? false;
     loadmodel.width = geometry.images[0].width;
     loadmodel.height = geometry.images[0].height;
     loadmodel.boundingradius = geometry.radius;

@@ -39,6 +39,7 @@ void describe('SpriteSidecars', () => {
       phase: 'random',
       interpolate: true,
       lit: true,
+      shadow: true,
       fps: 12,
       repeat: 3,
       colorKey: { color: [0, 0, 0], tolerance: 16 },
@@ -58,6 +59,7 @@ void describe('SpriteSidecars', () => {
     assert.equal(sidecar.phase, SpritePhase.random);
     assert.equal(sidecar.interpolate, true);
     assert.equal(sidecar.lit, true);
+    assert.equal(sidecar.shadow, true);
     assert.equal(sidecar.fps, 12);
     assert.equal(sidecar.repeat, 3);
     assert.deepEqual(sidecar.colorKey, { color: [0, 0, 0], tolerance: 16 });
@@ -163,10 +165,10 @@ void describe('SpriteSidecars', () => {
     });
 
     void test('values of the wrong type', () => {
-      const { sidecar, warnings } = parse({ scale: '2', interpolate: 'yes', origin: [1], orientation: 3, lit: 1 });
+      const { sidecar, warnings } = parse({ scale: '2', interpolate: 'yes', origin: [1], orientation: 3, lit: 1, shadow: 'yes' });
 
-      assert.deepEqual([sidecar.scale, sidecar.interpolate, sidecar.origin, sidecar.orientation, sidecar.lit], [1, null, null, null, null]);
-      assert.equal(warnings.length, 5);
+      assert.deepEqual([sidecar.scale, sidecar.interpolate, sidecar.origin, sidecar.orientation, sidecar.lit, sidecar.shadow], [1, null, null, null, null, null]);
+      assert.equal(warnings.length, 6);
     });
 
     void test('a color key without a color', () => {

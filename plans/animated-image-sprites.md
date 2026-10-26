@@ -32,6 +32,9 @@ Follow-up: Doom-style rotations (a view per side, picked by the angle to the cam
 [doom-style-sprite-rotations.md](doom-style-sprite-rotations.md). Its rotations in the world and on the screen
 shipped on this branch (2026-10-24); the converter for Doom's art waits for a go-ahead.
 
+Follow-up: sprites cast shadows, light passing through their transparent pixels, in
+[sprite-shadows.md](sprite-shadows.md) (2026-10-25).
+
 **⏸ Parked (2026-10-24, maintainer's decision).** Everything planned has shipped and the work stops here. These were
 never checked against the real thing, and `docs/sprites.md` lists them under "Not tested yet":
 

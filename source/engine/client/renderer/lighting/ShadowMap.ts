@@ -471,6 +471,7 @@ export default class ShadowMap {
         casterFade,
         isPointLight,
         pointLightOrigin: cutoffOrigin,
+        lightDirection: ShadowMap.lightDir,
         pointNormalBias: ShadowMap.pointNormalBias?.value ?? 0,
       });
     }

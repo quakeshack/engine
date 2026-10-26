@@ -44,6 +44,8 @@ export interface SpriteSidecar {
   readonly interpolate: boolean | null;
   /** Whether the sprite is shaded by the light of the map at its origin. */
   readonly lit: boolean | null;
+  /** Whether the sprite casts a shadow, light passing through its transparent pixels. */
+  readonly shadow: boolean | null;
   /** Frames per second for every image, replacing the timing of the file. */
   readonly fps: number | null;
   /** Plays of the whole animation, 0 for forever, replacing the count of the file. */
@@ -64,7 +66,7 @@ const ORIENTATIONS: Readonly<Record<string, SpriteOrientation>> = {
   parallelOriented: SpriteOrientation.parallelOriented,
 };
 
-const SETTINGS = ['version', 'orientation', 'origin', 'scale', 'blend', 'filter', 'phase', 'interpolate', 'lit', 'fps', 'repeat', 'colorKey', 'sequences', 'regions'];
+const SETTINGS = ['version', 'orientation', 'origin', 'scale', 'blend', 'filter', 'phase', 'interpolate', 'lit', 'shadow', 'fps', 'repeat', 'colorKey', 'sequences', 'regions'];
 const SEQUENCE_SETTINGS = ['name', 'from', 'to', 'direction', 'repeat', 'fps', 'rotations'];
 const COLOR_KEY_SETTINGS = ['color', 'tolerance'];
 
@@ -83,6 +85,7 @@ export class SpriteSidecars {
     phase: null,
     interpolate: null,
     lit: null,
+    shadow: null,
     fps: null,
     repeat: null,
     colorKey: null,
@@ -128,6 +131,7 @@ export class SpriteSidecars {
       phase: reader.choice('phase', SpritePhase),
       interpolate: reader.boolean('interpolate'),
       lit: reader.boolean('lit'),
+      shadow: reader.boolean('shadow'),
       fps: reader.number('fps', { min: 0, exclusiveMin: true }),
       repeat: reader.number('repeat', { min: 0, integer: true }),
       colorKey: SpriteSidecars.#readColorKey(reader, name, con),

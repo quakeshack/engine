@@ -1,4 +1,4 @@
-import { ModelRenderer } from './ModelRenderer.ts';
+import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
 import { getEntityBloomEmissiveScale } from '../postprocess/BloomEffect.ts';
 import { eventBus } from '../../../common/EventBus.ts';
 import GL, { type GLTextureArray } from '../../GL.ts';
@@ -27,7 +27,8 @@ eventBus.subscribe('gl.shutdown', () => {
 
 /**
  * Renderer for sprite models (2D billboards like explosions, particles).
- * Handles camera-facing and oriented billboards using dynamic geometry.
+ * Handles camera-facing and oriented billboards using dynamic geometry. In the shadow passes the light is the viewer the
+ * quad is built for, so a sprite casts the shadow of what the light sees.
  */
 export class SpriteModelRenderer extends ModelRenderer {
   /** The array texture bound for the sprites streamed so far, to batch sprites that share one. */
@@ -54,6 +55,14 @@ export class SpriteModelRenderer extends ModelRenderer {
   /** Basis of the sprite being built. */
   static readonly #right = new Vector();
   static readonly #up = new Vector();
+
+  /** The viewer the sprite is built for, the camera or a light: its right and up vectors and the way from it to the sprite. */
+  static readonly #viewRight = new Vector();
+  static readonly #viewUp = new Vector();
+  static readonly #toSprite = new Vector();
+
+  /** Below this, the quad is edge-on to the light: the cosine between the quad's normal and the light's direction. */
+  static readonly #EDGE_ON = 0.01;
 
   /**
    * Get the model class this renderer handles.
@@ -140,6 +149,7 @@ export class SpriteModelRenderer extends ModelRenderer {
       SpriteModelRenderer.#blendMode = blendMode;
     }
 
+    SpriteModelRenderer.#viewFromCamera(entity);
     SpriteModelRenderer.#selectImage(spriteModel, entity);
 
     if (SpriteModelRenderer.#boundTexture !== asset.texture) {
@@ -149,6 +159,117 @@ export class SpriteModelRenderer extends ModelRenderer {
 
     SpriteModelRenderer.#setBasis(spriteModel.orientation, entity);
     SpriteModelRenderer.#emitQuad(entity.origin, SpriteModelRenderer.#sample);
+  }
+
+  /**
+   * Renders the shadow of a sprite whose settings ask for one (`castsShadow`). The quad and the view of a sequence with
+   * rotations are the ones the light sees; transparent pixels let the light through. An upright sprite under a light
+   * that points straight down is edge-on to it and casts nothing.
+   * @param model The sprite model.
+   * @param entity The entity casting the shadow.
+   * @param ctx The shadow pass being rendered.
+   */
+  override renderShadow(model: BaseModel, entity: ClientEdict, ctx: ShadowRenderContext): void {
+    const spriteModel = model as SpriteModel;
+    const asset = spriteModel.asset;
+
+    if (!spriteModel.castsShadow || asset === null || asset.texture === null || asset.frames.length === 0) {
+      return;
+    }
+
+    if (!SpriteModelRenderer.#viewFromLight(entity, ctx)) {
+      return;
+    }
+
+    SpriteModelRenderer.#setBasis(spriteModel.orientation, entity);
+
+    if (SpriteModelRenderer.#isEdgeOn()) {
+      return;
+    }
+
+    const program = GL.UseProgram('shadow-sprite', true)!;
+
+    // UseProgram only enables what the previous program did not have, and AliasModelRenderer.renderShadow disables its
+    // positions by hand afterwards: a sprite casting right after an alias model would draw with aPosition disabled
+    for (const attrib of program.attribs) {
+      gl.enableVertexAttribArray(attrib.location);
+    }
+
+    gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ctx.lightSpaceMatrix);
+    gl.uniform1f(program.uCasterFade!, ctx.casterFade);
+    gl.uniform1f(program.uBlendMode!, SpriteModelRenderer.#BLEND_MODES[asset.blend]);
+    asset.texture.bind(program.tTexture!, true);
+
+    SpriteModelRenderer.#selectImage(spriteModel, entity);
+    SpriteModelRenderer.#emitQuad(entity.origin, SpriteModelRenderer.#sample);
+
+    // the next caster may switch programs, and the stream is drawn with the program current at the flush
+    GL.StreamFlush();
+  }
+
+  /**
+   * Makes the camera the viewer the sprite is built for.
+   */
+  static #viewFromCamera(entity: ClientEdict): void {
+    const vieworg = Camera.refdef.vieworg;
+
+    SpriteModelRenderer.#viewRight.set(Camera.vright);
+    SpriteModelRenderer.#viewUp.set(Camera.vup);
+    SpriteModelRenderer.#toSprite.setTo(entity.origin[0] - vieworg[0], entity.origin[1] - vieworg[1], entity.origin[2] - vieworg[2]);
+  }
+
+  /**
+   * Makes the light of a shadow pass the viewer the sprite is built for, looking along the light's direction to the
+   * sprite with no roll, the way the camera's basis is built from its angles.
+   * @returns False when the light sits on the sprite's origin and has no direction to it.
+   */
+  static #viewFromLight(entity: ClientEdict, ctx: ShadowRenderContext): boolean {
+    let forwardX = ctx.lightDirection[0];
+    let forwardY = ctx.lightDirection[1];
+    let forwardZ = ctx.lightDirection[2];
+
+    if (ctx.isPointLight) {
+      forwardX = entity.origin[0] - ctx.pointLightOrigin[0];
+      forwardY = entity.origin[1] - ctx.pointLightOrigin[1];
+      forwardZ = entity.origin[2] - ctx.pointLightOrigin[2];
+    }
+
+    const length = Math.hypot(forwardX, forwardY, forwardZ);
+
+    if (length < 0.0001) {
+      return false;
+    }
+
+    forwardX /= length;
+    forwardY /= length;
+    forwardZ /= length;
+
+    // Quake's right for this forward; straight up or down has no horizontal part, so take the right of yaw 0
+    const horizontal = Math.hypot(forwardX, forwardY);
+    const rightX = horizontal < 0.0001 ? 0.0 : forwardY / horizontal;
+    const rightY = horizontal < 0.0001 ? -1.0 : -forwardX / horizontal;
+
+    SpriteModelRenderer.#viewRight.setTo(rightX, rightY, 0.0);
+    // up = right × forward
+    SpriteModelRenderer.#viewUp.setTo(rightY * forwardZ, -rightX * forwardZ, rightX * forwardY - rightY * forwardX);
+    SpriteModelRenderer.#toSprite.setTo(forwardX, forwardY, forwardZ);
+
+    return true;
+  }
+
+  /**
+   * @returns True when the quad on the current basis is seen edge-on by the viewer (or has no area) and would cover no
+   * pixel. Only the light's view is checked, its way to the sprite is a unit vector.
+   */
+  static #isEdgeOn(): boolean {
+    const r = SpriteModelRenderer.#right;
+    const u = SpriteModelRenderer.#up;
+    const toSprite = SpriteModelRenderer.#toSprite;
+    const normalX = r[1] * u[2] - r[2] * u[1];
+    const normalY = r[2] * u[0] - r[0] * u[2];
+    const normalZ = r[0] * u[1] - r[1] * u[0];
+
+    return Math.abs(normalX * toSprite[0] + normalY * toSprite[1] + normalZ * toSprite[2]) < SpriteModelRenderer.#EDGE_ON;
   }
 
   /**
@@ -173,7 +294,7 @@ export class SpriteModelRenderer extends ModelRenderer {
 
   /**
    * Picks the image an entity shows now into {@link SpriteModelRenderer.#sample}: its `frame` selects a frame, a
-   * sequence animates on the clock the model's phase names, and a sequence with rotations shows the view the camera
+   * sequence animates on the clock the model's phase names, and a sequence with rotations shows the view the viewer
    * sees it from.
    */
   static #selectImage(spriteModel: SpriteModel, entity: ClientEdict): void {
@@ -183,9 +304,9 @@ export class SpriteModelRenderer extends ModelRenderer {
     let view = 0;
 
     if ('images' in frame && frame.views.length > 1) {
-      const vieworg = Camera.refdef.vieworg;
+      const toSprite = SpriteModelRenderer.#toSprite;
 
-      view = SpriteAnimator.viewIndex(frame.views.length, entity.angles[1], vieworg[0] - entity.origin[0], vieworg[1] - entity.origin[1]);
+      view = SpriteAnimator.viewIndex(frame.views.length, entity.angles[1], -toSprite[0], -toSprite[1]);
     }
 
     switch (spriteModel.phase) {
@@ -204,21 +325,23 @@ export class SpriteModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Sets the right and up vectors the quad is built on.
+   * Sets the right and up vectors the quad is built on, for the current viewer.
    */
   static #setBasis(orientation: SpriteOrientation, entity: ClientEdict): void {
     const right = SpriteModelRenderer.#right;
     const up = SpriteModelRenderer.#up;
+    const viewRight = SpriteModelRenderer.#viewRight;
+    const viewUp = SpriteModelRenderer.#viewUp;
 
     switch (orientation) {
       case SpriteOrientation.parallelUpright:
-        right.setTo(Camera.vright[0], Camera.vright[1], Camera.vright[2]);
+        right.setTo(viewRight[0], viewRight[1], viewRight[2]);
         up.setTo(0.0, 0.0, 1.0);
         break;
       case SpriteOrientation.facingUpright: {
         // perpendicular to the direction towards the sprite, in the horizontal plane
-        const dx = entity.origin[0] - Camera.refdef.vieworg[0];
-        const dy = entity.origin[1] - Camera.refdef.vieworg[1];
+        const dx = SpriteModelRenderer.#toSprite[0];
+        const dy = SpriteModelRenderer.#toSprite[1];
         const length = Math.max(Math.hypot(dx, dy), 0.0001);
         right.setTo(dy / length, -dx / length, 0.0);
         up.setTo(0.0, 0.0, 1.0);
@@ -236,19 +359,19 @@ export class SpriteModelRenderer extends ModelRenderer {
         const cosine = Math.cos(roll);
         const sine = Math.sin(roll);
         right.setTo(
-          Camera.vright[0] * cosine + Camera.vup[0] * sine,
-          Camera.vright[1] * cosine + Camera.vup[1] * sine,
-          Camera.vright[2] * cosine + Camera.vup[2] * sine);
+          viewRight[0] * cosine + viewUp[0] * sine,
+          viewRight[1] * cosine + viewUp[1] * sine,
+          viewRight[2] * cosine + viewUp[2] * sine);
         up.setTo(
-          Camera.vright[0] * -sine + Camera.vup[0] * cosine,
-          Camera.vright[1] * -sine + Camera.vup[1] * cosine,
-          Camera.vright[2] * -sine + Camera.vup[2] * cosine);
+          viewRight[0] * -sine + viewUp[0] * cosine,
+          viewRight[1] * -sine + viewUp[1] * cosine,
+          viewRight[2] * -sine + viewUp[2] * cosine);
         break;
       }
       case SpriteOrientation.parallel:
       default:
-        right.setTo(Camera.vright[0], Camera.vright[1], Camera.vright[2]);
-        up.setTo(Camera.vup[0], Camera.vup[1], Camera.vup[2]);
+        right.setTo(viewRight[0], viewRight[1], viewRight[2]);
+        up.setTo(viewUp[0], viewUp[1], viewUp[2]);
         break;
     }
   }

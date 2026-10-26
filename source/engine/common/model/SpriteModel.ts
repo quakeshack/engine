@@ -22,6 +22,9 @@ export class SpriteModel extends BaseModel {
   /** Whether the light of the map at the sprite's origin shades it. */
   lit = false;
 
+  /** Whether the sprite casts a shadow; light passes through its transparent pixels. */
+  castsShadow = false;
+
   /** Bounding sphere radius. */
   boundingradius = 0;
 
@@ -75,6 +78,7 @@ export class SpriteModel extends BaseModel {
     this.orientation = SpriteOrientation.parallel;
     this.phase = SpritePhase.global;
     this.lit = false;
+    this.castsShadow = false;
     this.boundingradius = 0;
     this.width = 0;
     this.height = 0;
