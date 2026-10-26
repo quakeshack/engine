@@ -71,14 +71,14 @@ function streamProgram(identifier: string, uniforms: readonly string[]): GLProgr
  * @returns The context of a point-light shadow pass for a light at `origin`.
  */
 function pointLight(origin: Vector): ShadowRenderContext {
-  return { lightSpaceMatrix: new Float64Array(16), casterFade: 1, isPointLight: true, pointLightOrigin: origin, lightDirection: new Vector(0, 0, -1), pointNormalBias: 0 };
+  return { lightSpaceMatrix: new Float64Array(16), casterFade: 1, isPointLight: true, pointLightOrigin: origin, lightDirection: new Vector(0, 0, -1) };
 }
 
 /**
  * @returns The context of a top-down shadow pass whose light travels along `direction`.
  */
 function topDownLight(direction: Vector): ShadowRenderContext {
-  return { lightSpaceMatrix: new Float64Array(16), casterFade: 1, isPointLight: false, pointLightOrigin: new Vector(), lightDirection: direction, pointNormalBias: 0 };
+  return { lightSpaceMatrix: new Float64Array(16), casterFade: 1, isPointLight: false, pointLightOrigin: new Vector(), lightDirection: direction };
 }
 
 void describe('SpriteModelRenderer', () => {

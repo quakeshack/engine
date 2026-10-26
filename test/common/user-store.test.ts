@@ -254,4 +254,56 @@ void describe('BackendUserStore', () => {
       assert.equal(storage.length, 0);
     });
   });
+
+  void describe('removeLegacyNavigationMeshes', () => {
+    void test('removes the meshes older versions stored and leaves the player\'s files alone', async () => {
+      const backend = new MemoryBackend();
+      const store = new BackendUserStore(backend);
+
+      for (const path of ['id1/maps/e1m1.nav', 'hellwave/maps/hw_doom.nav', 'id1/config.cfg', 'id1/s0.json', 'id1/demo1.dem', 'id1/maps.nav', 'id1/maps/custom/x.nav']) {
+        await store.write(path, new Uint8Array([1]));
+      }
+
+      await store.write(BackendUserStore.MIGRATION_MARKER, new Uint8Array([1]));
+
+      assert.equal(await store.removeLegacyNavigationMeshes(), 2);
+      assert.deepEqual((await backend.keys()).sort(), [
+        BackendUserStore.MIGRATION_MARKER,
+        BackendUserStore.NAVIGATION_MESHES_MARKER,
+        'id1/config.cfg',
+        'id1/demo1.dem',
+        'id1/maps.nav',
+        'id1/maps/custom/x.nav',
+        'id1/s0.json',
+      ].sort());
+    });
+
+    void test('only ever runs once', async () => {
+      const store = new BackendUserStore(new MemoryBackend());
+
+      await store.removeLegacyNavigationMeshes();
+      await store.write('id1/maps/e1m1.nav', new Uint8Array([1]));
+
+      assert.equal(await store.removeLegacyNavigationMeshes(), 0);
+      assert.notEqual(await store.read('id1/maps/e1m1.nav'), null);
+    });
+
+    void test('finishes on the next start when a file could not be removed', async () => {
+      const backend = new FlakyBackend();
+      const store = new BackendUserStore(backend);
+      const originalDelete = backend.delete.bind(backend);
+
+      await store.write('id1/maps/e1m1.nav', new Uint8Array([1]));
+      backend.delete = () => Promise.reject(new Error('database closed'));
+
+      await quietly(async () => {
+        assert.equal(await store.removeLegacyNavigationMeshes(), 0);
+      });
+
+      backend.delete = originalDelete;
+
+      assert.equal(await store.removeLegacyNavigationMeshes(), 1, 'the marker was not set, so the second start finishes the job');
+      assert.equal(await store.read('id1/maps/e1m1.nav'), null);
+    });
+  });
 });

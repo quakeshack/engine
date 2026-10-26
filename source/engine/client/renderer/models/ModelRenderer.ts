@@ -14,8 +14,6 @@ export interface ShadowRenderContext {
   readonly pointLightOrigin: Float32Array;
   /** Unit vector the top-down shadow travels along, from the sky toward the ground; read when `isPointLight` is false. */
   readonly lightDirection: Float32Array;
-  /** Normal-offset bias value for point light shadow shaders. */
-  readonly pointNormalBias: number;
 }
 
 /**

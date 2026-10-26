@@ -116,6 +116,9 @@ class FrameUniforms {
       if (program.uPointShadowBias !== undefined) {
         gl.uniform1f(program.uPointShadowBias, ShadowMap.pointBias!.value);
       }
+      if (program.uPointShadowNormalBias !== undefined) {
+        gl.uniform1f(program.uPointShadowNormalBias, ShadowMap.pointNormalBias!.value);
+      }
     }
   }
 }

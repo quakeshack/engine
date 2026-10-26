@@ -6,7 +6,9 @@ The engine has an event bus. Each name, its arguments, whether a game sees it an
 are declared in `source/shared/EngineEvents.ts`: `EngineEventMap` types the arguments, `engineEventTable` carries the two
 flags. The bus is typed by that map, so a typo in a name or a wrong argument is a `tsc` error, and
 `test/common/event-map-docs.test.ts` fails when this file and the table disagree. A new event is added to the map, to the
-table and to a table below, in that order.
+table and to a table below, in that order. `clientGameEvents` and `forwardedServerEvents` are derived from the table,
+never edited by hand. Transport code that only has a name at run time (worker messages, the `eb_publish` command) uses
+`publishUntyped`; everything else uses `publish`.
 
 ### Common
 
@@ -119,7 +121,7 @@ Those events are only fired by the server-side navigation subsystem (`Navigation
 | nav.debug.emit-dot.temporarily | 1. position (Vector), 2. color, 3. ttl (seconds) | Navigation debug visualization requested a debug dot that should be cleared after `ttl` seconds. |
 | nav.debug.emit-dot.permanently | 1. position (Vector), 2. color | Same as `nav.debug.emit-dot.temporarily`, but the dot should persist indefinitely. |
 | nav.path.response | 1. request id, 2. path (array of points, or `null` when there is none) | The navigation worker answered a `nav.path.request`. |
-| nav.build | | The navigation mesh is probably out of date and should be rebuilt. `Navigation` listens for it; nothing publishes it at the moment (the worker's publish is commented out). |
+| nav.build | | The navigation worker found the stored mesh out of date (another file version, map build or walker size). The server thread rebuilds it once per map (`Navigation.rebuildOutdated`), keeps it as a generated file and publishes `nav.load` again. |
 
 ### Workers
 
@@ -128,7 +130,7 @@ events over the worker's own bus bridge. Not visible to games.
 
 | Event | Arguments | Description |
 | - | - | - |
-| worker.framework.init | 1. `WorkerFrameworkInitPayload`, 2. URLs | The main thread booted a worker. `WorkerFramework` sets the worker's realm up from it. |
+| worker.framework.init | 1. `WorkerFrameworkInitPayload` (search paths, game directory, game name, build config, game version), 2. URLs | The main thread booted a worker. `WorkerFramework` sets the worker's realm up from it; the build and game version make the worker use the same asset cache and generated files as the realm that spawned it. |
 | worker.test | 1. message or `null` | `DummyWorker` prints the message it received. For trying the worker plumbing out. |
 | worker.busy | 1. duration in milliseconds | `DummyWorker` busy-waits that long. For trying the worker plumbing out. |
 | worker.error | | `DummyWorker` throws. For trying the worker plumbing out. |

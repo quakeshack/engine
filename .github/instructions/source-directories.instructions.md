@@ -1,8 +1,7 @@
 ## Source Directories
 
-- `source/engine/` is split by realm: `common/` (shared by client and server), `client/` (rendering, input, audio), `server/`, `network/` (protocols and message handling).
-- `source/shared/` holds engine-agnostic code used by the engine and the games: math utilities, data structures, algorithms, and types declared in the engine that games need (re-exported).
-- `source/game/<mod>/` holds the game modules (`id1`, `hellwave` today; `baseq2` is planned). `id1` is a git submodule and `hellwave` is a separate embedded repo; both are committed from inside (`submodule-aware-commit`).
-- **Game code never imports engine files.** It uses only the public API the engine hands it (`ServerEngineAPI`/`ClientEngineAPI`).
-- The contract between the engine and a game lives in `source/shared/GameInterfaces.ts` (`GameModuleInterface`, `ServerGameInterface`, `ClientGameInterface`, ...); see `docs/game-module-contract.md`. A game's API classes declare `implements` on the instance interfaces and its `main.ts` asserts `satisfies GameModuleInterface`, so `npm run typecheck` reports drift between the two sides.
-- **Engine-level docs, instructions and skills stay game-agnostic** (`docs/`, `.github/instructions/`, `.claude/skills/`). A reference to a concrete game is an illustrative example and is labeled as one; game-specific behavior, event lists and walkthroughs belong with that game. `source/game/id1/` has its own `CLAUDE.md` and `.github/instructions/`, which load automatically for sessions working under that path; `hellwave` gets one the same way once it has enough agent-facing conventions of its own.
+- `source/engine/` by realm: `common/` (client and server), `client/` (rendering, input, audio), `server/`, `network/` (protocols, messages).
+- `source/shared/`: engine-agnostic code for engine and games (math, data structures, algorithms, re-exported engine types games need).
+- `source/game/<mod>/`: game modules (`id1`, `hellwave`; `baseq2` planned). Both are separate repos, committed from inside (`submodule-aware-commit`). `id1` has its own `CLAUDE.md`.
+- **Game code never imports engine files**, only the API the engine hands it (`ServerEngineAPI`/`ClientEngineAPI`). The contract is `source/shared/GameInterfaces.ts` (`docs/game-module-contract.md`); `npm run typecheck` reports drift between the two sides.
+- **Engine-level docs, instructions and skills stay game-agnostic.** A concrete game is an illustrative example, labeled as one; game-specific behavior belongs with that game.

@@ -63,6 +63,7 @@ void describe('FrameUniforms.Upload', () => {
     maxDepth: ShadowMap.maxDepth,
     range: ShadowMap.range,
     pointBias: ShadowMap.pointBias,
+    pointNormalBias: ShadowMap.pointNormalBias,
     pointLightActiveCount: ShadowMap.pointLightActiveCount,
     vieworg: Camera.refdef.vieworg.copy(),
     rotation: Camera.rotation,
@@ -104,6 +105,7 @@ void describe('FrameUniforms.Upload', () => {
     ShadowMap.maxDepth = fakeCvar(512);
     ShadowMap.range = fakeCvar(2048);
     ShadowMap.pointBias = fakeCvar(0.05);
+    ShadowMap.pointNormalBias = fakeCvar(2.5);
     ShadowMap.pointLightActiveCount = 0;
     Camera.refdef.vieworg.setTo(1.0, 2.0, 3.0);
     Camera.rotation = [1, 0, 0, 0, 1, 0, 0, 0, 1];
@@ -125,6 +127,7 @@ void describe('FrameUniforms.Upload', () => {
     ShadowMap.maxDepth = previous.maxDepth;
     ShadowMap.range = previous.range;
     ShadowMap.pointBias = previous.pointBias;
+    ShadowMap.pointNormalBias = previous.pointNormalBias;
     ShadowMap.pointLightActiveCount = previous.pointLightActiveCount;
     Camera.refdef.vieworg.set(previous.vieworg);
     Camera.rotation = previous.rotation;
@@ -211,6 +214,17 @@ void describe('FrameUniforms.Upload', () => {
 
     // the map spans 2 * range world units: 512 / (2 * 2048)
     assert.deepEqual(calls[1], ['uniform1f', 'uShadowMaxDepthNDC', 0.125]);
+  });
+
+  void test('uploads both point-light shadow biases', () => {
+    GL.programs = [fakeProgram('uPointShadowBias', 'uPointShadowNormalBias')];
+
+    FrameUniforms.Upload();
+
+    assert.deepEqual(calls.slice(1), [
+      ['uniform1f', 'uPointShadowBias', 0.05],
+      ['uniform1f', 'uPointShadowNormalBias', 2.5],
+    ]);
   });
 
   void test('switches the point-light shadows on from the number of active lights', () => {

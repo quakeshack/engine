@@ -31,7 +31,6 @@ out vec3 vLightVec;
 out vec3 vDynamicLightVec;
 out vec3 vTangent;
 out vec3 vBitangent;
-out mat3 vAngles;
 
 out vec3 vViewVec;
 out vec4 vShadowCoord;
@@ -71,7 +70,6 @@ void main(void) {
   vNormal = normalize(transformedNormal);
   vTangent = normalize(uAngles * aTangent);
   vBitangent = normalize(uAngles * aBitangent);
-  vAngles = uAngles;
 
   // Compute both lighting paths, select based on uniform
   // This avoids branching at the cost of a few extra ops (which is faster on GPU)

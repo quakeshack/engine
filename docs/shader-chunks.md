@@ -51,7 +51,7 @@ through it, so `ERROR: 2:41: 'x' : undeclared identifier` is reported as
 | :--- | :--- | :--- |
 | `depth.glsl` | `uPerspective`, `linearizeDepth` | `fog-volume`, `turbulent`, `underwater-fog` (.frag) |
 | `hash.glsl` | `hash2D` | `shadow-alias`, `shadow-brush`, `shadow-sprite` (.frag) |
-| `shadow-point.glsl` | `samplePointShadowPCF` (pure) | `brush.frag`, `shadow-entity.glsl` |
+| `shadow-point.glsl` | `uPointShadowBias`, `uPointShadowNormalBias`, `samplePointShadowMap(map, position, normal, light, far)` (normal offset and PCF in the receiver's plane, the only point shadow bias there is) | `brush.frag`, `shadow-entity.glsl` |
 | `shadow-entity.glsl` | entity shadow uniforms, `vWorldPos`, `sampleLocalShadow`, `samplePointShadow` | `alias`, `mesh`, `player` (.frag) |
 | `sprite-texel.glsl` | the sprite array texture and `uBlendMode`, `sampleSpriteTexel(texCoord, blend)` (crossfade of two premultiplied layers, alpha test), `spriteIsAdditive()` | `sprite`, `pic-sprite`, `shadow-sprite` (.frag) |
 | `fog-vertex.glsl` | `uFogParams`, `vFog` (out), `computeFog(dist)` | `alias`, `mesh`, `player`, `brush`, `turbulent`, `sprite`, `decal`, `particle` (.vert) |

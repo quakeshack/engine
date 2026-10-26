@@ -21,7 +21,6 @@ uniform float uPointLightRadius0;
 uniform float uPointLightRadius1;
 uniform float uPointLightRadius2;
 uniform float uPointShadowEnabled;
-uniform float uPointShadowBias;
 
 // World position of the fragment, read by samplePointShadow().
 in vec3 vWorldPos;
@@ -55,29 +54,14 @@ float sampleLocalShadow(sampler2DShadow shadowMap, vec4 shadowCoordH) {
  * Point-light shadow test for one slot, occluded by its own cube depth map.
  * Radius is floored well above the near plane so the depth reconstruction
  * never divides by zero for an unused (zero-radius) slot.
+ * @param normal World-space surface normal of the fragment.
  */
-float samplePointShadow(samplerCubeShadow shadowMap, vec3 lightPos, float lightRadius) {
-  vec3 fragToLight = vWorldPos - lightPos;
-  float fragDist = length(fragToLight);
-  vec3 absFTL = abs(fragToLight);
-  float viewZ = max(absFTL.x, max(absFTL.y, absFTL.z));
-  float n = 1.0;
+float samplePointShadow(samplerCubeShadow shadowMap, vec3 lightPos, float lightRadius, vec3 normal) {
+  float fragDist = length(vWorldPos - lightPos);
   float f = max(lightRadius, 2.0);
-  // Window-space depth stored by the cube face projection (kept in sync with
-  // ShadowMap.buildPointFaceMatrix). viewZ is clamped to the near plane to
-  // avoid a division by zero when a fragment coincides with the light origin.
-  float clampedViewZ = max(viewZ, n);
-  float refDepth = f * (clampedViewZ - n) / ((f - n) * clampedViewZ);
-  // Constant bias applied in normalized depth space (post-projection) rather
-  // than world space: the near/far mapping is hyperbolic, so a fixed
-  // world-unit offset is only effective close to the light and vanishes for
-  // casters further out within the same radius, leaving acne everywhere else.
-  refDepth = clamp(refDepth - uPointShadowBias, 0.0, 1.0);
-  float cubeShadow = samplePointShadowPCF(shadowMap, fragToLight, refDepth, fragDist);
-  // The surface dlight attenuation falls off linearly and reaches exactly
-  // zero at fragDist == f (radius), so the shadow test must stay active for
-  // that whole range or occluded surfaces bleed unshadowed light in the band
-  // between the old, premature cutoff and the light's true edge.
-  float ptFade = 1.0 - smoothstep(f * 0.85, f, fragDist);
-  return mix(1.0, cubeShadow, ptFade * step(fragDist, f) * step(0.5, uPointShadowEnabled));
+  float cubeShadow = samplePointShadowMap(shadowMap, vWorldPos, normal, lightPos, f);
+  // The dynamic light falls off linearly and reaches zero at fragDist == f
+  // (radius), so the shadow test stays fully active over that whole range:
+  // fading it out towards the edge lets the light through walls in a ring.
+  return mix(1.0, cubeShadow, step(fragDist, f) * step(0.5, uPointShadowEnabled));
 }

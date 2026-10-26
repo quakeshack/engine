@@ -164,6 +164,15 @@ export default class NodeCOM extends COM {
     return true;
   }
 
+  /**
+   * Writes a generated file next to the content it was derived from: the dedicated server has no
+   * separate store, and a rebuilt file is meant to replace the outdated one on disk.
+   * @returns whether the file was written
+   */
+  override async WriteGeneratedFile(filename: string, data: Uint8Array): Promise<boolean> {
+    return await this.WriteFile(filename, data, data.length);
+  }
+
   override async WriteTextFile(filename: string, data: string): Promise<boolean> {
     const filepath = `data/${this.searchpaths[this.searchpaths.length - 1].filename}/${filename.toLowerCase()}`;
 

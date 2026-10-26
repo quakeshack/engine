@@ -12,7 +12,6 @@ import M from '../Menu.ts';
 import R from '../R.ts';
 import S from '../Sound.ts';
 import Frame from '../renderer/frame/Frame.ts';
-import DynamicLights from '../renderer/lighting/DynamicLights.ts';
 import PostProcess from '../renderer/postprocess/PostProcess.ts';
 import rendererCvars from '../renderer/resources/RendererCvars.ts';
 import Camera from '../renderer/scene/Camera.ts';
@@ -123,7 +122,6 @@ export default class ScreenFrame {
     if (clientStaticState.signon < 4) {
       return;
     }
-    DynamicLights.Push();
     R.RenderView();
   }
 

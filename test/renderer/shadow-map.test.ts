@@ -62,9 +62,6 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     const program = {
       uOrigin: null,
       uAngles: null,
-      uLightPos: null,
-      uLightRadius: null,
-      uNormalBias: null,
       uLightSpaceMatrix: null,
     };
 
@@ -89,7 +86,6 @@ void describe('ShadowMap.renderPointLightShadow', () => {
 
     ShadowMap.pointTarget = createFakeRenderTarget('shadow-point');
     ShadowMap.pointDepthCubes = [{}] as unknown as typeof ShadowMap.pointDepthCubes;
-    ShadowMap.pointNormalBias = createCvarStub(1.5);
     ShadowMap.pointLightOrigins = [pointLightOrigin];
     ShadowMap.pointLightRadii = [pointLightRadius];
     ShadowMap.pointLightActiveCount = 1;
@@ -168,9 +164,6 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     const program = {
       uOrigin: null,
       uAngles: null,
-      uLightPos: null,
-      uLightRadius: null,
-      uNormalBias: null,
       uLightSpaceMatrix: null,
     };
 
@@ -195,7 +188,6 @@ void describe('ShadowMap.renderPointLightShadow', () => {
 
     ShadowMap.pointTarget = createFakeRenderTarget('shadow-point');
     ShadowMap.pointDepthCubes = [{}, {}, {}] as unknown as typeof ShadowMap.pointDepthCubes;
-    ShadowMap.pointNormalBias = createCvarStub(1.5);
     ShadowMap.pointLightOrigins = origins;
     ShadowMap.pointLightRadii = radii;
     ShadowMap.pointLightActiveCount = 3;
@@ -275,9 +267,6 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     const program = {
       uOrigin: null,
       uAngles: null,
-      uLightPos: null,
-      uLightRadius: null,
-      uNormalBias: null,
       uLightSpaceMatrix: null,
     };
 
@@ -311,7 +300,6 @@ void describe('ShadowMap.renderPointLightShadow', () => {
 
     ShadowMap.pointTarget = createFakeRenderTarget('shadow-point');
     ShadowMap.pointDepthCubes = [{}] as unknown as typeof ShadowMap.pointDepthCubes;
-    ShadowMap.pointNormalBias = createCvarStub(1.5);
     ShadowMap.pointLightOrigins = [new Vector(0, 0, 0)];
     ShadowMap.pointLightRadii = [128];
     ShadowMap.pointLightActiveCount = 1;

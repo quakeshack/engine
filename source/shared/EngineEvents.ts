@@ -1,7 +1,7 @@
 import type { ClientDamageEvent, ClientSerializableType, HostAlertEvent } from './GameInterfaces.ts';
 import type CvarValue from '../engine/common/Cvar.ts';
 import type { QSocket } from '../engine/network/NetworkDrivers.ts';
-import type { URLs } from '../engine/build-config';
+import type { BuildConfig, URLs } from '../engine/build-config';
 import type { SearchPath } from '../engine/common/Com.ts';
 import type Vector from './Vector.ts';
 
@@ -11,8 +11,17 @@ export type EventPosition = Vector | readonly [number, number, number];
 /** What the navigation worker answers a path request with: the points of the path, or `null` when there is none. */
 export type EventPath = EventPosition[] | null;
 
-/** The first argument of `worker.framework.init`: the search paths, the game directory's paths and the game name. */
-export type WorkerFrameworkInitPayload = [SearchPath[], SearchPath[] | null, string];
+/**
+ * The first argument of `worker.framework.init`: the search paths, the game directory's paths, the game name, and the
+ * build and game version of the spawning realm, which name the asset cache and the generated files the worker shares.
+ */
+export type WorkerFrameworkInitPayload = [
+  searchpaths: SearchPath[],
+  gamedir: SearchPath[] | null,
+  game: string,
+  buildConfig: BuildConfig | undefined,
+  gameVersion: string | null,
+];
 
 /** The first argument of `vid.resize`. */
 export interface ViewportResizeEvent {

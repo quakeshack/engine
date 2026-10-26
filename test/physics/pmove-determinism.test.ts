@@ -454,7 +454,7 @@ function createBareServer(): Server {
     net: {} as ServerDependencies['net'],
     mod: {} as ServerDependencies['mod'],
     view: { CalcRoll: () => 0 },
-    files: { LoadFile: () => Promise.resolve(null), WriteFile: () => Promise.resolve(true) },
+    files: { LoadFile: () => Promise.resolve(null), WriteGeneratedFile: () => Promise.resolve(true) },
     engineVersion: () => 'test',
     gameEdition: () => ({ registered: true, hipnotic: false, rogue: false }),
     dedicated: true,

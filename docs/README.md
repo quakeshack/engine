@@ -4,7 +4,7 @@ This directory contains documentation for the QuakeShack engine codebase and fea
 
 ## Table of Contents
 
-- [Asset Layer](asset-layer.md) - How content files and user files (saves, config, demos) are stored in the browser: Cache Storage, Web Locks, IndexedDB, cache names and the `localStorage` migration.
+- [Asset Layer](asset-layer.md) - How content files, user files (saves, config, demos) and generated files (navigation meshes) are stored in the browser: Cache Storage, Web Locks, IndexedDB, cache names, what a version change deletes and the `localStorage` migration.
 - [Server in a Web Worker](server-worker.md) - Running the server of a browser game in its own worker: the data and control channels, when a server frame runs, the realm of the worker and what does not work yet.
 - [Browser Verification Technique](browser-verification.md) - How to drive a live headless-browser smoke test of the client (no chromium-cli/playwright dependency) for verifying UI/frontend changes.
 - [BSPX Support](bspx.md) - Details on supported BSPX extensions and lumps for advanced mapping features.

@@ -5,9 +5,9 @@ description: Use when adding a test fixture (data/ path read via import.meta.url
 
 # Dockerfile / test-fixture sync
 
-`build-and-deploy.instructions.md` states the policy directly: the `Dockerfile`'s `test`
-stage "only has access to files it explicitly `COPY`s (plus what `.dockerignore` allows
-through) — it does not run `npm test` against the full working tree." Adding a fixture or a
+The `Dockerfile`'s `test` and `builder` stages only have access to files they explicitly
+`COPY` (plus what `.dockerignore` lets through); they do not run against the full working
+tree. Adding a fixture or a
 new top-level file locally passes every local `npm test`/`npm run build:production` run —
 the drift only surfaces later, in CI, as a Docker-only failure that's confusing to debug
 without already knowing this rule.

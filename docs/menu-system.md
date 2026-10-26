@@ -557,5 +557,5 @@ how) a game module chooses to present them (see [`events.md`](events.md#host) fo
 All of the above follow the project's standard mock pattern
 (`engineMocks.X = {...}`, see `test/support/engineMocks.ts`) for engine-level tests, and the
 `createMockClientEngine()` fixture (`source/game/id1/test/client/fixtures.ts`) for game-level
-ones — see [Unit Tests](../.github/instructions/unit-tests.instructions.md) for the general
+ones — see [Unit Tests](../.claude/rules/unit-tests.md) for the general
 convention.

@@ -386,7 +386,8 @@ export default class PostProcess {
    *
    * The copy is made now: a pass that depends on depth drawn after this call asks again. Bind the returned texture
    * to a sampler unit, and put another texture on that unit when the pass is done if the unit is one that a later
-   * draw expects to hold something of its own.
+   * draw expects to hold something of its own (unit 7, for one, is `tSpecular` of the brush shader). Development builds
+   * assert that no pass samples a texture attached to its target; `r_framegraph` shows the pass that did.
    * @returns The depth texture of {@link PostProcess.depthCopy}.
    */
   static copySceneDepth(): GLRenderTexture {
