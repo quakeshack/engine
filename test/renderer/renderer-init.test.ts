@@ -117,6 +117,7 @@ void describe('R.Init', () => {
       'r_fog_density',
       'r_fog_mode',
       'r_underwater_fog_density',
+      'r_refraction',
     ]);
   });
 

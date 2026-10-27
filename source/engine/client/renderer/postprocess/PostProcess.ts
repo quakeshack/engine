@@ -31,7 +31,8 @@ eventBus.subscribe('gl.shutdown', () => {
  * the default framebuffer (screen).
  *
  * Passes that need the depth of the scene while it is drawn (turbulent surfaces, fog volumes) sample the copy that
- * {@link PostProcess.copySceneDepth} makes, and are NOT part of the post-resolve effect pipeline.
+ * {@link PostProcess.copySceneDepth} makes, and passes that refract what is behind them sample the copy of its color
+ * that {@link PostProcess.copySceneColor} makes. Neither is part of the post-resolve effect pipeline.
  */
 export default class PostProcess {
   // ─── Scene target (depth-aware rendering) ────────────────────────
@@ -45,6 +46,15 @@ export default class PostProcess {
    * is attached to the framebuffer that is drawn into.
    */
   static depthCopy: RenderTarget | null = null;
+
+  /**
+   * Color target whose two textures hold a copy of the color and the emissive drawn into the scene so far, made by
+   * {@link PostProcess.copySceneColor} for the passes that refract what is behind them.
+   */
+  static colorCopy: RenderTarget | null = null;
+
+  /** The second texture {@link PostProcess.copySceneColor} reads, for the frame graph; reused by every copy. */
+  static readonly #colorCopyExtraInputs: GLRenderTexture[] = [];
 
   /** Current scene FBO width in pixels. */
   static width = 0;
@@ -265,6 +275,13 @@ export default class PostProcess {
       depth: { storage: 'texture', filter: 'nearest' },
     });
 
+    // Where the color and emissive of the scene are copied to for the passes that refract, see copySceneColor().
+    PostProcess.colorCopy = new RenderTarget({
+      name: 'scene-color-copy',
+      color: [{ storage: 'texture', filter: 'linear' }, { storage: 'texture', filter: 'linear' }],
+      depth: null,
+    });
+
     // Turbulent boundary depth target — depth-only, resized in resize().
     PostProcess.turbulentBoundary = new RenderTarget({
       name: 'turbulent-boundary',
@@ -294,6 +311,7 @@ export default class PostProcess {
 
     PostProcess.scene!.resize(width, height);
     PostProcess.depthCopy!.resize(width, height);
+    PostProcess.colorCopy!.resize(width, height);
     PostProcess.turbulentBoundary!.resize(width, height);
 
     // Multisampled renderbuffers (if enabled)
@@ -409,10 +427,54 @@ export default class PostProcess {
   }
 
   /**
-   * Resolve one multisampled color attachment into a texture-backed attachment 0.
-   * Some browsers reject `drawBuffers([COLOR_ATTACHMENT1])` during blits, so the
-   * destination attachment is temporarily rebound to slot 0 for the resolve.
-   * @param readAttachment Source MSAA color attachment.
+   * Copies the color and the emissive of what is being drawn into the scene so far into the two textures of
+   * {@link PostProcess.colorCopy}, so a pass can sample what is behind it while it goes on drawing. Like
+   * {@link PostProcess.copySceneDepth}, the copy comes from the multisampled target when the frame is multisampled
+   * (the blit resolves it), the frame stays in the target it was in, and the copy is a snapshot: a pass that has to
+   * see what was drawn after this call asks again. Put another texture on the units the copy was bound to when the
+   * pass is done if a later draw expects something of its own there.
+   * @returns The target whose `colorTexture(0)` holds the color and `colorTexture(1)` the emissive.
+   */
+  static copySceneColor(): RenderTarget {
+    const source = RenderTarget.bound;
+    const copy = PostProcess.colorCopy!;
+    const width = PostProcess.width;
+    const height = PostProcess.height;
+    const extraInputs = PostProcess.#colorCopyExtraInputs;
+
+    console.assert(source !== null && (source === PostProcess.scene || source === PostProcess.msaaTarget), 'the scene is the target while its color is copied');
+
+    // a multisampled scene has its color in renderbuffers, which are not textures and not inputs of the pass
+    const fromTextures = source === PostProcess.scene;
+    extraInputs.length = 0;
+    if (fromTextures) {
+      extraInputs.push(PostProcess.emissiveTexture!);
+    }
+
+    Frame.beginPass('scene-color-copy', copy, fromTextures ? PostProcess.colorTexture : null, extraInputs);
+    source!.bindForRead();
+    copy.bindForDraw();
+
+    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT0, copy.colorTexture(0), width, height);
+    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT1, copy.colorTexture(1), width, height);
+
+    // _resolveMSAAColorAttachment leaves the last texture on attachment 0, put both back where they belong
+    copy.colorTexture(0).attachToFramebuffer(gl.COLOR_ATTACHMENT0);
+    copy.colorTexture(1).attachToFramebuffer(gl.COLOR_ATTACHMENT1);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+    gl.readBuffer(gl.COLOR_ATTACHMENT0);
+    Frame.endPass();
+
+    source!.bind();
+
+    return copy;
+  }
+
+  /**
+   * Blit one color attachment of the read framebuffer into a texture-backed attachment 0 of the draw framebuffer,
+   * resolving it when the source is multisampled. Some browsers reject `drawBuffers([COLOR_ATTACHMENT1])` during
+   * blits, so the destination texture is temporarily rebound to slot 0; the caller puts the attachments back.
+   * @param readAttachment Source color attachment.
    * @param targetTexture Destination texture.
    * @param width Resolve width in pixels.
    * @param height Resolve height in pixels.
@@ -659,6 +721,8 @@ export default class PostProcess {
     // Scene targets
     PostProcess.depthCopy?.free();
     PostProcess.depthCopy = null;
+    PostProcess.colorCopy?.free();
+    PostProcess.colorCopy = null;
     PostProcess.scene?.free();
     PostProcess.scene = null;
 

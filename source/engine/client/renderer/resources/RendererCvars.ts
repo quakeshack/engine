@@ -84,6 +84,9 @@ export class RendererCvars {
   /** `r_bloom_debug`: bloom debug preview mode. */
   bloomDebug: Cvar = null!;
 
+  /** `r_refraction`: strength scale of the refraction of liquids and glass, 0 turns it off. */
+  refraction: Cvar = null!;
+
   /**
    * Creates the variables, in the order `cvarlist` shows them. Called once by `R.Init()` when the renderer starts.
    */
@@ -117,6 +120,8 @@ export class RendererCvars {
 
     // fog controls for underwater fog effect (post-process)
     this.underwater_fog_density = new Cvar('r_underwater_fog_density', '0.01', Cvar.FLAG.CHEAT, 'Fog density exponent for the underwater fog effect.');
+
+    this.refraction = new Cvar('r_refraction', '1', Cvar.FLAG.ARCHIVE, 'Refraction of translucent liquids and glass that opt in: 0 = off, other values scale its strength.');
   }
 }
 

@@ -1,6 +1,6 @@
 # Screen-space refraction for translucent liquids and glass
 
-**Status:** Planned (2026-10), forks settled, Phase 1 next. Water and glass ship together in this pass.
+**Status:** Phase 1 shipped (2026-10); Phase 2 (water) next. Water and glass ship together in this pass.
 
 ## Context
 
@@ -157,6 +157,22 @@ All phases ship in this pass; each ends with typecheck, lint and tests green and
    brush-entity paths.
 3. **Glass:** `MF_REFRACT`, the `brush-surface.glsl` chunk split, `brush-refract`, `RefractiveWorldLeaf`, the brush
    entity path, the capture request, docs.
+
+### What actually shipped in Phase 1
+
+- `PostProcess.colorCopy` (`scene-color-copy`, two linear color textures, no depth), resized with the scene and freed
+  on shutdown, and `PostProcess.copySceneColor()`. It returns the target rather than a pair of textures:
+  `colorTexture(0)` is the color, `colorTexture(1)` the emissive, and there is nothing to allocate per call. Both
+  attachments go through `_resolveMSAAColorAttachment`, whose JSDoc now says it copies any color attachment and
+  only resolves when the source is multisampled; the copy puts its attachments back and restores the read buffer of
+  the source afterwards. The frame graph records the pass with the scene color and emissive as inputs.
+- `r_refraction` (archived, default `1`) in `RendererCvars`, registered last.
+- `TransparentPass.PlanSceneCopies(items, isRefractive, copyBefore)`: one copy before each run of refracting items.
+- **Deviation:** `TransparentPass.Render` does not call it yet. With no refractive item there is nothing to decide,
+  and a predicate that always answers false would be a stub; Phase 2 wires it together with the first real
+  predicate.
+- Tests: `test/renderer/post-process-color-copy.test.ts` (blits, attachments restored, MSAA source, never a scene
+  texture) and `PlanSceneCopies` in `transparent-sorting.test.ts`.
 
 ## Testing
 

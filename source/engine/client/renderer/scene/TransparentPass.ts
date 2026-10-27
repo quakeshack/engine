@@ -116,6 +116,31 @@ class TransparentPass {
   }
 
   /**
+   * Decides before which items of a sorted pass the scene color is copied for the items that refract what is behind
+   * them. A copy is made before the first item of every run of refracting items, because everything drawn before the
+   * run has to show through it, and not again within a run: a full-screen blit per refracting item would be too much
+   * on maps full of liquid, and the price is that a refracting item does not see another one of its run behind it.
+   * @param items The items in drawing order.
+   * @param isRefractive Whether an item refracts.
+   * @param copyBefore Filled with one entry per item, true where the copy is made before drawing it.
+   * @returns `copyBefore`.
+   */
+  static PlanSceneCopies<T extends SortKindDistance>(items: readonly T[], isRefractive: (item: T) => boolean, copyBefore: boolean[]): boolean[] {
+    let previousRefractive = false;
+
+    copyBefore.length = items.length;
+
+    for (let i = 0; i < items.length; i++) {
+      const refractive = isRefractive(items[i]);
+
+      copyBefore[i] = refractive && !previousRefractive;
+      previousRefractive = refractive;
+    }
+
+    return copyBefore;
+  }
+
+  /**
    * Computes the sort distance of an entity. A brush entity sorts by its bounds, like the world surfaces it
    * ranks against, because its origin is usually not where its geometry is. The other models sort by the
    * distance of their origin, because model bounds are not uniformly available here.

@@ -68,3 +68,42 @@ void describe('TransparentPass.Compare', () => {
     assert.deepEqual(items, [farParticle, nearFog]);
   });
 });
+
+void describe('TransparentPass.PlanSceneCopies', () => {
+  /**
+   * Plans the copies for items described by whether they refract.
+   * @param refracts One entry per item.
+   * @returns Where the copies are made.
+   */
+  function plan(refracts: boolean[]): boolean[] {
+    const items = refracts.map((refractive, i) => ({ dist: 100 - i, kind: TransparentKind.Turbulent, refractive }));
+
+    return TransparentPass.PlanSceneCopies(items, (item) => item.refractive, []);
+  }
+
+  void test('copies nothing when nothing refracts', () => {
+    assert.deepEqual(plan([false, false, false]), [false, false, false]);
+  });
+
+  void test('copies before the first refracting item, so what was drawn before it shows through', () => {
+    assert.deepEqual(plan([false, false, true]), [false, false, true]);
+  });
+
+  void test('copies once for a run of refracting items', () => {
+    assert.deepEqual(plan([true, true, true]), [true, false, false]);
+  });
+
+  void test('copies again after anything that does not refract was drawn in between', () => {
+    assert.deepEqual(plan([true, false, true, true, false, true]), [true, false, true, false, false, true]);
+  });
+
+  void test('reuses the array it is given, leaving nothing of a longer earlier pass', () => {
+    const copyBefore = [true, true, true, true];
+    const items = [{ dist: 1, kind: TransparentKind.Particle }];
+
+    const result = TransparentPass.PlanSceneCopies(items, () => false, copyBefore);
+
+    assert.equal(result, copyBefore);
+    assert.deepEqual(result, [false]);
+  });
+});
