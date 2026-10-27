@@ -1,6 +1,6 @@
 # Screen-space refraction for translucent liquids and glass
 
-**Status:** Planned (2026-10), not started. Water and glass ship together in this pass.
+**Status:** Planned (2026-10), forks settled, Phase 1 next. Water and glass ship together in this pass.
 
 ## Context
 
@@ -34,11 +34,16 @@ Translucent liquids and glass are plain alpha blends today: what is behind them 
   behind water, particles behind glass and so on show up in the refraction. No early-Source "stuff behind the glass
   is missing" artifacts.
 - Passing refraction through the game-driven effects field is out of scope for now.
+- **Seen from below too:** a surface refracts when the camera is in the liquid as well, on top of the `warp` effect.
+- **Strength is a number:** `_qs_waterrefraction` takes a strength (`"1"` is the default strength, `"0"` or absent is
+  off, `"0.5"` is half); qsmat stays at the flag for now.
+- **Glass receives no shadows:** a translucent surface passes light through, so `brush-refract` drops all shadow
+  samplers, the directional one included.
 
 ## Goals
 
 - Refraction on translucent turbulent surfaces of maps that set `_qs_waterrefraction`, on world and brush-entity
-  turbulents alike.
+  turbulents alike, seen from above and from below.
 - Refraction on surfaces whose material has `MF_REFRACT`, distorted by the material's normal map.
 - No foreground bleeding: an offset sample that lands on geometry in front of the surface falls back to the
   unshifted one.
@@ -51,7 +56,7 @@ Translucent liquids and glass are plain alpha blends today: what is behind them 
   dispersion.
 - Refraction driven by the game (entity keys, `effects` bits, network protocol changes).
 - Refraction on alias models, sprites or particles.
-- A per-material refraction strength (see Open questions).
+- A per-material refraction strength in qsmat.
 
 ## Design
 
@@ -89,7 +94,7 @@ Translucent liquids and glass are plain alpha blends today: what is behind them 
 
 ### C. Water (`turbulent.frag`, `turbulent.vert`, `BrushModelRenderer`)
 
-- New uniforms `uRefraction` (strength, 0 = off for this draw) and sampler `tSceneColor`, `tSceneEmissive` (8 → 10
+- New uniforms `uRefraction` (strength: `_qs_waterrefraction` times `r_refraction`, 0 = off for this draw) and sampler `tSceneColor`, `tSceneEmissive` (8 → 10
   samplers, well within budget).
 - Offset: the gradient of the same `sin` waves the texture warp uses (analytic, so no extra texture), turned into a
   screen-space offset and scaled by `uRefraction / linearDepth` so distant water does not shimmer more than near water.
@@ -103,7 +108,8 @@ Translucent liquids and glass are plain alpha blends today: what is behind them 
 - The same per-draw switch is used in `_renderWorldTurbulentBatch` and `_renderTurbulentSurfaces`. The brush-entity
   path does not bind `tDepth` today (so entity water also has no depth fog); it gets the same bindings as the world
   path, which also fixes that.
-- Camera underwater: see Open questions.
+- Camera in the liquid: refraction stays on. The depth fog keeps its `uCameraInside` switch (the underwater fog
+  effect covers that case), but the refracted sample is used either way.
 
 ### D. Glass (`MF_REFRACT`)
 
@@ -113,8 +119,8 @@ Translucent liquids and glass are plain alpha blends today: what is behind them 
 - New program `brush-refract`. `brush.frag` cannot take two more samplers with room to spare (see Context), so:
   - move the body of `brush.frag` into a chunk (`include/brush-surface.glsl`) that returns the lit color and emissive,
     and keep `brush.frag` a thin entry that writes them, as before;
-  - `brush-refract.frag` includes the same chunk, drops the three point-light shadow cube samplers (glass keeps the
-    directional shadow) and adds `tSceneColor`, `tSceneEmissive`, `tDepth` (14 − 3 + 3 = 14 samplers).
+  - `brush-refract.frag` includes the same chunk, drops all four shadow samplers (glass passes light through and
+    receives no shadows) and adds `tSceneColor`, `tSceneEmissive`, `tDepth` (14 − 4 + 3 = 13 samplers).
 - Offset from the material's tangent-space normal map (the `tNormal` path that already exists), projected to screen
   space; foreground rejection and composition as in C, with the texel alpha as the mix factor.
 - Without a normal map the glass is flat and shows no distortion. That is physically correct for flat glass, and
@@ -134,7 +140,8 @@ needs nothing new: turbulents already request capture.
 
 - `r_refraction` (archived, default `1`): `0` off; any other value scales the strength. Conventions in
   `docs/console.md`.
-- `BSP.ts` worldspawn info gets `_qs_waterrefraction?: string`.
+- `BSP.ts` worldspawn info gets `_qs_waterrefraction?: string`, parsed as a number; anything not a positive number
+  is off.
 - Docs: `docs/qsmat-format.md` (`MF_REFRACT`, normal map requirement, example), `docs/volumetric-fog.md` or a new
   `docs/refraction.md` for `_qs_waterrefraction`, `docs/post-process-effects.md` for `copySceneColor` and the copy
   scheduling, the `PostProcess` class JSDoc.
@@ -168,11 +175,5 @@ All phases ship in this pass; each ends with typecheck, lint and tests green and
 
 ## Open questions
 
-1. **Camera underwater:** refract the surface seen from below as well (on top of the `warp` effect, which already
-   distorts everything), or skip refraction while `uCameraInside`? Recommendation: skip it in this pass; the warp
-   already sells it and stacking both tends to look muddy.
-2. **Strength:** one global strength (`r_refraction` as the scale) for now, or also a per-material `refraction` number
-   in qsmat and a value for `_qs_waterrefraction` (e.g. `"0.5"` instead of `"1"`)? Recommendation: let
-   `_qs_waterrefraction` take a number (`"1"` = default strength) and leave qsmat at the flag for now.
-3. **Glass shader:** dropping the point-light shadow cubes in `brush-refract` (recommended above) vs. keeping all
-   samplers and using all 16 units, which fails on GPUs at the WebGL2 minimum.
+None; the three raised with the plan (camera underwater, strength, glass shadows) are settled under Decisions
+already made.
