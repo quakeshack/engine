@@ -2,7 +2,7 @@
 
 A JavaScript/TypeScript port of the Quake 1 engine for the browser (WebGL/WebAudio) and Node.js, integrated with Cloudflare services.
 
-Be a good boy scout: leave what you touch cleaner than before. Follow the conventions below, run `eslint --fix`, write unit tests for what you work on, keep all tests passing, update JSDoc when changing public APIs. American English.
+Be a good boy scout: leave what you touch cleaner than before. Follow the conventions below, run `eslint --fix`, write unit tests that would catch a real bug in what you work on (not copies of the source), keep all tests passing, update JSDoc when changing public APIs. American English.
 
 ## Commands
 

@@ -2,12 +2,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import test from 'node:test';
 
-import DedicatedLauncherTs from '../../source/engine/main-dedicated.ts';
-
-void test('main-dedicated exports a launcher with a static Launch method', () => {
-  assert.equal(typeof DedicatedLauncherTs.Launch, 'function');
-});
-
 void test('dedicated entrypoint forwards build-time base directory overrides to the launcher', async () => {
   const entrypoint = await fs.readFile(new URL('../../dedicated.ts', import.meta.url), 'utf8');
 

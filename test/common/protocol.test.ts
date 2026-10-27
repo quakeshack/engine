@@ -4,16 +4,9 @@ import { describe, test } from 'node:test';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
 
 void describe('Protocol', () => {
-  void test('keeps the expected command and flag bit values', () => {
+  // A version change breaks every connected peer, so it has to be a deliberate edit here too.
+  void test('stays at protocol version 42', () => {
     assert.equal(Protocol.version, 42);
-    assert.equal(Protocol.u.classname, 1 << 0);
-    assert.equal(Protocol.su.moveack, 1 << 8);
-    assert.equal(Protocol.clc.stringcmd, 4);
-    assert.equal(Protocol.cm.CM_IMPULSE, 1 << 6);
-    assert.equal(Protocol.pf.PF_VELOCITY, 1 << 12);
-    assert.equal(Protocol.button.attack, 1);
-    assert.equal(Protocol.svc.clientevent, 108);
-    assert.equal(Protocol.serializableTypes.null, 6);
   });
 
   void test('copies and resets user commands without aliasing vectors', () => {

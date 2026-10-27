@@ -49,6 +49,17 @@ withMockEngine({
 }, () => { ... });
 ```
 
+## Deciding what to test
+
+Before writing a test, name the bug it catches: the input and the wrong result, or the invariant that breaks. If you can't, or the test could be written by copying values from the source file without knowing what the code is for, leave it out (`.claude/rules/unit-tests.md` lists the usual kinds of filler).
+
+- **Behavior over declarations**: drive the code through its public path (a method, a state handler, the engine boundary) and assert the observable effect: what it returns, what state changes, what it spawns or sends.
+- **Edges and history**: boundaries, empty and invalid input, the case that once broke. Say in a comment which bug a regression test pins, as `shader-programs.test.ts` does for `r_shadow_point_bias`.
+- **One rule, one test**: a whole-codebase invariant (every uniform is registered, only `RenderTarget` binds framebuffers) beats a copy for each instance.
+- **Data with something unusual**: a test on game data (a state graph, a light sequence) covers what is unusual (a transition into another sequence, a repeated or skipped frame, a death that ends) and leaves out the regular parts a shared helper builds.
+- **Saved state**: the exact list of serialized fields is a save-game contract, so `assert.deepEqual(serializableFieldsOf(X), [...])` is worth having. `Array.isArray` or `Object.isFrozen` on it is not.
+- **Mocks**: assert what the code did with its collaborators only when that call is the behavior (a sound played, an entity spawned). A test that mocks everything and checks the mocks were called tests the mocks.
+
 ## Writing a new test
 
 1. **One file per production module**: `ServerPhysics` is `test/physics/server-physics.test.ts`, `Mod` is `test/common/model-cache.test.ts`. A game's tests live with its repo (`source/game/<mod>/test/...`).
