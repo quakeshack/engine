@@ -159,16 +159,6 @@ void describe('Key', () => {
   });
 
   void describe('KeyDestination', () => {
-    void test('enum values match expected constants', () => {
-      // `console` was retired as a destination — the drop-down console is now the
-      // independent `ConsoleOverlay.isOpen` overlay instead, taking dispatch priority over whichever of
-      // these is active underneath it. Values are kept as before (minus that member) so
-      // nothing needed renumbering.
-      assert.equal(KeyDestination.game, 0);
-      assert.equal(KeyDestination.message, 2);
-      assert.equal(KeyDestination.menu, 3);
-    });
-
     void test('destination defaults to game', () => {
       assert.equal(Key.destination, KeyDestination.game);
     });

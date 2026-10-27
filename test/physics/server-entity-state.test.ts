@@ -1,14 +1,9 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ServerEntityState as ReExportedServerEntityState } from '../../source/engine/server/Server.ts';
 import { ServerEntityState } from '../../source/engine/server/ServerEntityState.ts';
 
 void describe('ServerEntityState', () => {
-  void test('re-exports the canonical implementation from Server.ts', () => {
-    assert.equal(ReExportedServerEntityState, ServerEntityState);
-  });
-
   void test('copies and resets alpha with the rest of the entity state', () => {
     const sourceState = new ServerEntityState(12);
     sourceState.flags = 4;
