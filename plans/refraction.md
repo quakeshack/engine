@@ -1,6 +1,6 @@
 # Screen-space refraction for translucent liquids and glass
 
-**Status:** Phases 1 and 2 shipped (2026-10); Phase 3 (glass) next. Open: the duplicate liquid draws found in Phase 2. Water and glass ship together in this pass.
+**Status:** Phases 1 and 2 shipped (2026-10), and the duplicate liquid draws found in Phase 2 are fixed; Phase 3 (glass) next. Water and glass ship together in this pass.
 
 ## Context
 
@@ -212,6 +212,22 @@ blended again: `_lavaalpha 0.5` looks practically opaque (mean difference 0.4/25
 by accident, because every duplicate replaces the pixel from the same copy, so the same map looks clearly more
 transparent with refraction on than off. This predates refraction and is a separate fix (draw each liquid face once
 per frame); it changes how every map with translucent liquids looks.
+
+**Fixed** (decided with the developer: the overdraw was never intended). `_buildWorldModelDisplayLists` packs every
+liquid face once, in a batch with the faces of its texture that the same set of leafs lists; each of those leafs
+refers to the one batch (`cmds` and `turbulentChains` hold the same objects), and `getWorldTurbulentChains` hands a
+batch out once per call. A face cannot simply belong to one leaf: on a map compiled without transparent water the
+view from the air sees only the air leaf, from inside only the water leaf. The world's dead per-leaf liquid paths
+(`renderWorldTurbolents`, `renderWorldTurbulentLeaf`, `getWorldTurbulentLeaves`, world pass 1) are gone. Browser
+pass against the previous build: `_lavaalpha 0.5` without refraction is now one 50% layer and matches the refracted
+view (mean difference 0.02 to 0.08), opaque liquids are unchanged from above and below (0.02 to 0.06), and the lava
+view on `start` went from 68 to 41 draw calls.
+
+**Same problem left for Phase 3:** translucent world surfaces that are not liquids (`{` fences, MF_TRANSPARENT
+qsmat materials, the glass of Phase 3) sit in the per-leaf opaque chains and are drawn once per visible listing leaf
+by `renderWorldTransparentLeaf`. The `RefractiveWorldLeaf` items of design D have to be built the same way as the
+liquid batches (packed once, shared by the listing leafs, handed out once per frame), and the plain transparent
+world leafs should move to it too.
 
 ## Testing
 

@@ -1,4 +1,4 @@
-/** The WebGL constants a test of the render targets needs, by name. */
+/** The WebGL constants the tests of the render targets and the display lists need, by name. */
 const CONSTANTS: Readonly<Record<string, number>> = {
   NONE: 0,
   FRAMEBUFFER: 0x8D40,
@@ -38,6 +38,9 @@ const CONSTANTS: Readonly<Record<string, number>> = {
   CULL_FACE: 0x0B44,
   LESS: 0x0201,
   VIEWPORT: 0x0BA2,
+  ARRAY_BUFFER: 0x8892,
+  STATIC_DRAW: 0x88E4,
+  FLOAT: 0x1406,
 };
 
 /** What `createRecordingContext` returns. */
@@ -113,6 +116,8 @@ export function createRecordingContext(): RecordingContext {
     createFramebuffer: create('framebuffer'),
     createRenderbuffer: create('renderbuffer'),
     createTexture: create('texture'),
+    createBuffer: create('buffer'),
+    createVertexArray: create('vertex array'),
   };
 
   const gl = new Proxy({}, {

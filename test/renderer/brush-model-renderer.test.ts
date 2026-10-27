@@ -12,6 +12,12 @@ import PostProcess from '../../source/engine/client/renderer/postprocess/PostPro
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { patchMembers } from '../support/clientState.ts';
+import GL from '../../source/engine/client/GL.ts';
+import Camera from '../../source/engine/client/renderer/scene/Camera.ts';
+import Visibility from '../../source/engine/client/renderer/scene/Visibility.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
+import { createRecordingContext } from '../support/recordingContext.ts';
 import type { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import type { Face } from '../../source/engine/common/model/BaseModel.ts';
 import type R from '../../source/engine/client/R.ts';
@@ -652,5 +658,109 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
     renderer.prepareLiquidRefraction(null);
 
     assert(!renderer.refractsEntity(model, createEntity(model, 0.5)));
+  });
+});
+
+void describe('BrushModelRenderer world liquids listed by several leafs', () => {
+  const previousContext = GL.gl;
+
+  beforeEach(() => {
+    const recording = createRecordingContext();
+    GL.gl = recording.gl;
+    publishGlReady(recording.gl);
+  });
+
+  afterEach(() => {
+    eventBus.publish('gl.shutdown');
+    GL.gl = previousContext;
+  });
+
+  /**
+   * Builds a liquid triangle at a height.
+   * @param z Its height.
+   * @returns The face.
+   */
+  function createWaterFace(z: number): Face {
+    return {
+      texture: 0,
+      styles: [],
+      lightofs: -1,
+      normal: new Vector(0, 0, 1),
+      verts: [[0, 0, z, 0, 0, 0, 0], [64, 0, z, 1, 0, 0, 0], [64, 64, z, 1, 1, 0, 0]],
+    } as unknown as Face;
+  }
+
+  /**
+   * Builds a world of three leafs: the surface face is listed by leaf 0 (air) and leaf 1 (water), as Quake lists a
+   * face in every leaf it borders, and the bottom face only by leaf 2.
+   * @returns The world, after its display lists were built.
+   */
+  function buildWorld(): BrushModel {
+    const water = new BaseMaterial('*water1', 64, 64);
+    water.flags = MaterialFlags.MF_TURBULENT;
+
+    const model = createRenderedWorld([
+      { firstMarkSurface: 0, numMarkSurfaces: 1 },
+      { firstMarkSurface: 1, numMarkSurfaces: 1 },
+      { firstMarkSurface: 2, numMarkSurfaces: 1 },
+    ], {
+      textures: [water],
+      faces: [createWaterFace(0), createWaterFace(-64)],
+      marksurfaces: [0, 0, 1],
+      firstface: 0,
+      numfaces: 2,
+    });
+    const renderer = new BrushModelRenderer();
+
+    renderer['_getTurbulentFallbackLight'] = () => [0.5, 0.5, 0.5];
+    renderer['_buildWorldModelDisplayLists'](model);
+
+    return model;
+  }
+
+  void test('a face listed by two leafs is packed once, and both leafs refer to the same batch', () => {
+    const state = WorldRenderState.of(buildWorld());
+
+    assert.equal(state.turbulentChains[0].length, 1);
+    assert.equal(state.turbulentChains[0][0], state.turbulentChains[1][0]);
+    assert.equal(state.turbulentChains[0][0].vertexCount, 3);
+    assert.notEqual(state.turbulentChains[2][0], state.turbulentChains[0][0]);
+    // the bottom face follows the surface face in the buffer, it was not packed a second time in between
+    assert.equal(state.turbulentChains[2][0].firstVertex, 3);
+  });
+
+  void test('a batch is drawn once when several of the leafs that list it are visible', () => {
+    const model = buildWorld();
+    const state = WorldRenderState.of(model);
+    const restore = patchMembers(Camera, { CullBox: () => false });
+
+    try {
+      state.visframes.fill(Visibility.visframecount);
+
+      const items = new BrushModelRenderer().getWorldTurbulentChains(model, new Vector(0, 0, 0));
+
+      assert.equal(items.length, 2);
+      assert.notEqual(items[0].chain, items[1].chain);
+    } finally {
+      restore();
+    }
+  });
+
+  void test('a face on a leaf boundary is drawn when only the other leaf is visible', () => {
+    const model = buildWorld();
+    const state = WorldRenderState.of(model);
+    const restore = patchMembers(Camera, { CullBox: () => false });
+
+    try {
+      state.visframes.fill(Visibility.visframecount - 1);
+      state.visframes[1] = Visibility.visframecount;
+
+      const items = new BrushModelRenderer().getWorldTurbulentChains(model, new Vector(0, 0, 0));
+
+      assert.equal(items.length, 1);
+      assert.equal(items[0].chain, state.turbulentChains[0][0]);
+    } finally {
+      restore();
+    }
   });
 });

@@ -171,6 +171,9 @@ export class BrushModelRenderer extends ModelRenderer {
   /** The depth copy a fog volume pass samples, kept so that it can be bound again after a light probe was uploaded. */
   _fogVolumeDepth: GLRenderTexture | null = null;
 
+  /** The turbulent batches `getWorldTurbulentChains` has handed out in this call, reused by every call. */
+  static readonly #seenTurbulentChains = new Set<WorldTurbulentChainInfo>();
+
   /**
    * How strongly translucent liquids refract in the transparent pass being drawn, 0 when they do not. Set by
    * {@link BrushModelRenderer.prepareLiquidRefraction} for the pass and back to 0 after it, so nothing outside the
@@ -446,7 +449,8 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * Render a single brush model entity.
    * Handles frustum culling, transforms, lighting, and both opaque and turbulent surfaces.
-   * @param pass Rendering pass (0=opaque, 1=turbulent, 2=transparent)
+   * @param pass Rendering pass: 0 opaque, 1 only the liquids of a brush entity, 2 transparent (for a brush entity also
+   * its liquids). The liquids of the world come from `getWorldTurbulentChains()` instead.
    */
   render(model: BaseModel, entity: ClientEdict, pass = 0): void {
     const clmodel = model as BrushModel;
@@ -454,10 +458,9 @@ export class BrushModelRenderer extends ModelRenderer {
 
     // Check if this is the world entity (entity 0)
     if (e === clientRuntimeState.clientEntities.getEntity(0)) {
+      // the liquids of the world are drawn by the sorted transparent pass, see getWorldTurbulentChains()
       if (pass === 0) {
         this.renderWorld(clmodel);
-      } else if (pass === 1 && rendererCvars.drawturbulents.value) {
-        this.renderWorldTurbolents(clmodel);
       } else if (pass === 2) {
         this.renderWorldTransparent(clmodel);
       }
@@ -880,63 +883,16 @@ export class BrushModelRenderer extends ModelRenderer {
   // ─── World turbulent rendering ────────────────────────────────────
 
   /**
-   * Render the world (entity 0) turbulent surfaces.
-   * Note: method name preserves original typo for API compatibility.
-   */
-  renderWorldTurbolents(clmodel: BrushModel): void {
-    this.beginWorldTurbulentPass(clmodel);
-    const state = WorldRenderState.of(clmodel);
-
-    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
-      if ((state.visframes[leaf] !== Visibility.visframecount) || (state.waterchains[leaf] === state.cmds[leaf].length)) {
-        continue;
-      }
-
-      BrushModelRenderer.#loadLeafBounds(state, leaf);
-
-      if (Camera.CullBox(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs)) {
-        continue;
-      }
-
-      this.renderWorldTurbulentLeaf(clmodel, leaf);
-    }
-    this.endWorldTurbulentPass();
-  }
-
-  /**
-   * Collect visible world leafs that contain turbulent surfaces, sorted by
-   * distance from the given viewpoint (farthest first).
-   * @returns Leaf entries with view distances for farthest-first rendering.
-   */
-  getWorldTurbulentLeaves(clmodel: BrushModel, vieworg: Float32Array | number[]): { leaf: number; dist: number }[] {
-    const items: { leaf: number; dist: number }[] = [];
-    const state = WorldRenderState.of(clmodel);
-
-    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
-      if ((state.visframes[leaf] !== Visibility.visframecount) || (state.waterchains[leaf] === state.cmds[leaf].length)) {
-        continue;
-      }
-
-      BrushModelRenderer.#loadLeafBounds(state, leaf);
-
-      if (Camera.CullBox(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs)) {
-        continue;
-      }
-      const dist = this._getBoundsDistanceToView(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs, vieworg);
-      items.push({ leaf, dist });
-    }
-    return items;
-  }
-
-  /**
    * Collect visible world turbulent draw batches with tight bounds so fog and
    * semi-transparent liquids can share the same sorted space.
    * @returns Turbulent chain entries with view distances for back-to-front sorting.
    */
   getWorldTurbulentChains(clmodel: BrushModel, vieworg: Float32Array | number[]): { chain: WorldTurbulentChainInfo; dist: number }[] {
     const items: { chain: WorldTurbulentChainInfo; dist: number }[] = [];
+    const seen = BrushModelRenderer.#seenTurbulentChains;
 
     const state = WorldRenderState.of(clmodel);
+    seen.clear();
 
     for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
       if ((state.visframes[leaf] !== Visibility.visframecount) || (state.waterchains[leaf] === state.cmds[leaf].length)) {
@@ -951,6 +907,13 @@ export class BrushModelRenderer extends ModelRenderer {
 
       for (let j = 0; j < state.turbulentChains[leaf].length; j++) {
         const chain = state.turbulentChains[leaf][j];
+
+        // a batch on the boundary of leafs is referred to by each of them, and is drawn once
+        if (seen.has(chain)) {
+          continue;
+        }
+        seen.add(chain);
+
         if (Camera.CullBox(chain.mins!, chain.maxs!)) {
           continue;
         }
@@ -962,12 +925,15 @@ export class BrushModelRenderer extends ModelRenderer {
       }
     }
 
+    // do not keep the batches of a map alive after it is gone
+    seen.clear();
+
     return items;
   }
 
   /**
-   * Setup GL state for world turbulent leaf rendering.
-   * Call once before one or more `renderWorldTurbulentLeaf` calls.
+   * Setup GL state for world turbulent rendering.
+   * Call once before one or more `renderWorldTurbulentChain` calls.
    */
   beginWorldTurbulentPass(clmodel: BrushModel): void {
     GL.BindVAO(clmodel.turbulentVAO!);
@@ -993,20 +959,6 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Render a single leaf's turbulent surfaces.
-   * Must be called between `beginWorldTurbulentPass` and `endWorldTurbulentPass`.
-   */
-  renderWorldTurbulentLeaf(clmodel: BrushModel, leaf: number): void {
-    const state = WorldRenderState.of(clmodel);
-    const chains = state.cmds[leaf];
-
-    for (let j = state.waterchains[leaf]; j < chains.length; j++) {
-      const cmds = chains[j];
-      this._renderWorldTurbulentBatch(clmodel, cmds[0], cmds[1], cmds[2]);
-    }
-  }
-
-  /**
    * Render a single pre-sorted world turbulent draw batch.
    * Must be called between `beginWorldTurbulentPass` and `endWorldTurbulentPass`.
    */
@@ -1014,7 +966,7 @@ export class BrushModelRenderer extends ModelRenderer {
     this._renderWorldTurbulentBatch(clmodel, chain.texture, chain.firstVertex, chain.vertexCount);
   }
 
-  /** Cleanup GL state after world turbulent leaf rendering. */
+  /** Cleanup GL state after world turbulent rendering. */
   endWorldTurbulentPass(): void {
     gl.disable(gl.BLEND);
     gl.depthMask(true);
@@ -2094,28 +2046,32 @@ export class BrushModelRenderer extends ModelRenderer {
     m.waterchain = m.skychain + verts * 12;
     verts = 0;
 
-    // Build turbulent surfaces (water, lava, slime)
+    // Build turbulent surfaces (water, lava, slime). Quake lists a face in every leaf it borders, and a blended liquid
+    // drawn once per listing leaf is blended over itself. So a face is packed once, in a batch with the faces of its
+    // texture that the same leafs list, and each of those leafs refers to that batch: getWorldTurbulentChains draws it
+    // once however many of them are visible. It cannot belong to one leaf only, the leaf on the other side may be the
+    // only one the view sees (a map compiled without transparent water).
+    const liquidFaceLeafs = BrushModelRenderer.#collectLiquidFaceLeafs(m);
     for (let i = 0; i < m.textures.length; i++) {
       const texture = m.textures[i] as BaseMaterial;
       if (!(texture.flags & MaterialFlags.MF_TURBULENT)) {
         continue;
       }
-      for (let j = 0; j < leafs.count; j++) {
+      for (const batch of BrushModelRenderer.#groupFacesByLeafs(m, i, liquidFaceLeafs)) {
         const chain = [i, verts, 0];
         const chainMins = new Vector(Infinity, Infinity, Infinity);
         const chainMaxs = new Vector(-Infinity, -Infinity, -Infinity);
-        for (let k = 0; k < leafs.numMarkSurfaces[j]; k++) {
-          const surf = m.faces[m.marksurfaces[leafs.firstMarkSurfaces[j] + k]];
-          if (surf.texture !== i) {
-            continue;
-          }
+        for (const faceIndex of batch.faces) {
+          const surf = m.faces[faceIndex];
           styles[0] = styles[1] = styles[2] = styles[3] = 0.0;
           for (let l = 0; l < surf.styles.length; l++) {
             styles[l] = surf.styles[l] * 0.015625 + 0.0078125;
           }
           const hasLightmap = this._surfaceHasTurbulentLightmap(m, surf);
           console.assert(surf.verts !== null && Array.isArray(surf.verts));
-          this._expandLeafBoundsForSurface(state, j, surf.verts!);
+          for (const leaf of batch.leafs) {
+            this._expandLeafBoundsForSurface(state, leaf, surf.verts!);
+          }
           this._expandBounds(chainMins, chainMaxs, surf.verts!);
           chain[2] += surf.verts!.length;
           for (let l = 0; l < surf.verts!.length; l++) {
@@ -2132,14 +2088,17 @@ export class BrushModelRenderer extends ModelRenderer {
           }
         }
         if (chain[2] !== 0) {
-          state.cmds[j].push(chain);
-          state.turbulentChains[j].push({
+          const info: WorldTurbulentChainInfo = {
             texture: i,
             firstVertex: chain[1],
             vertexCount: chain[2],
             mins: chainMins,
             maxs: chainMaxs,
-          });
+          };
+          for (const leaf of batch.leafs) {
+            state.cmds[leaf].push(chain);
+            state.turbulentChains[leaf].push(info);
+          }
           verts += chain[2];
         }
       }
@@ -2153,6 +2112,62 @@ export class BrushModelRenderer extends ModelRenderer {
 
     m.opaqueVAO = this._createBrushVAO(m.cmds as WebGLBuffer, 0);
     m.turbulentVAO = this._createBrushVAO(m.cmds as WebGLBuffer, m.waterchain);
+  }
+
+  /**
+   * Which leafs list each liquid face of the world.
+   * @returns The leafs of every turbulent face, by face index, in leaf order and without repeats.
+   */
+  static #collectLiquidFaceLeafs(model: BrushModel): Map<number, number[]> {
+    const leafs = model.leafTable;
+    const faceLeafs = new Map<number, number[]>();
+
+    for (let leaf = 0; leaf < leafs.count; leaf++) {
+      for (let k = 0; k < leafs.numMarkSurfaces[leaf]; k++) {
+        const faceIndex = model.marksurfaces[leafs.firstMarkSurfaces[leaf] + k];
+        const texture = model.textures[model.faces[faceIndex].texture] as BaseMaterial;
+
+        if ((texture.flags & MaterialFlags.MF_TURBULENT) === 0) {
+          continue;
+        }
+
+        const listing = faceLeafs.get(faceIndex);
+
+        if (listing === undefined) {
+          faceLeafs.set(faceIndex, [leaf]);
+        } else if (listing[listing.length - 1] !== leaf) {
+          listing.push(leaf);
+        }
+      }
+    }
+
+    return faceLeafs;
+  }
+
+  /**
+   * Groups the liquid faces of one texture by the leafs that list them: the faces of a group are visible together,
+   * so they are drawn as one batch.
+   * @returns The groups, in the order their first face is listed.
+   */
+  static #groupFacesByLeafs(model: BrushModel, textureIndex: number, faceLeafs: Map<number, number[]>): { leafs: number[]; faces: number[] }[] {
+    const groups = new Map<string, { leafs: number[]; faces: number[] }>();
+
+    for (const [faceIndex, leafs] of faceLeafs) {
+      if (model.faces[faceIndex].texture !== textureIndex) {
+        continue;
+      }
+
+      const key = leafs.join(',');
+      const group = groups.get(key);
+
+      if (group === undefined) {
+        groups.set(key, { leafs, faces: [faceIndex] });
+      } else {
+        group.faces.push(faceIndex);
+      }
+    }
+
+    return [...groups.values()];
   }
 
   /** @private */
