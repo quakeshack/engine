@@ -3,8 +3,8 @@ import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
 import { eventBus } from '../../../common/EventBus.ts';
 import GL, { type GLProgramInfo, type GLRenderTexture, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE, GLVolumeTexture } from '../../GL.ts';
 import { getEntityBloomEmissiveScale } from '../postprocess/BloomEffect.ts';
-import { MaterialFlags, type BaseMaterial } from './Materials.ts';
-import { BrushModel, type FogVolumeInfo, type WorldTurbulentChainInfo } from '../../../common/model/BSP.ts';
+import { MaterialFlags, PBRMaterial, type BaseMaterial } from './Materials.ts';
+import { BrushModel, type FogVolumeInfo, type WorldSurfaceBatch } from '../../../common/model/BSP.ts';
 import { WorldRenderState } from '../../../common/model/WorldRenderState.ts';
 import type { Face, BaseModel } from '../../../common/model/BaseModel.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
@@ -171,17 +171,34 @@ export class BrushModelRenderer extends ModelRenderer {
   /** The depth copy a fog volume pass samples, kept so that it can be bound again after a light probe was uploaded. */
   _fogVolumeDepth: GLRenderTexture | null = null;
 
-  /** The turbulent batches `getWorldTurbulentChains` has handed out in this call, reused by every call. */
-  static readonly #seenTurbulentChains = new Set<WorldTurbulentChainInfo>();
+  /** The batches `#collectVisibleBatches` has handed out in this call, reused by every call. */
+  static readonly #seenBatches = new Set<WorldSurfaceBatch>();
 
   /**
    * How strongly translucent liquids refract in the transparent pass being drawn, 0 when they do not. Set by
-   * {@link BrushModelRenderer.prepareLiquidRefraction} for the pass and back to 0 after it, so nothing outside the
+   * {@link BrushModelRenderer.prepareRefraction} for the pass and back to 0 after it, so nothing outside the
    * pass samples a scene copy that was not made for it.
    */
   #liquidRefraction = 0.0;
 
+  /** How strongly translucent `MF_REFRACT` surfaces refract in the transparent pass being drawn, like `#liquidRefraction`. */
+  #glassRefraction = 0.0;
+
   // ─── Static methods ───────────────────────────────────────────────
+
+  /**
+   * Whether a map has materials that refract what is behind them (`MF_REFRACT`), so the scene has to be captured.
+   * @returns True when one of its textures has the flag.
+   */
+  static HasRefractingMaterials(model: BrushModel): boolean {
+    for (let i = 0; i < model.textures.length; i++) {
+      if (((model.textures[i] as BaseMaterial).flags & MaterialFlags.MF_REFRACT) !== 0) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 
   /**
    * How strongly a map's translucent liquids refract.
@@ -458,11 +475,10 @@ export class BrushModelRenderer extends ModelRenderer {
 
     // Check if this is the world entity (entity 0)
     if (e === clientRuntimeState.clientEntities.getEntity(0)) {
-      // the liquids of the world are drawn by the sorted transparent pass, see getWorldTurbulentChains()
+      // the translucent surfaces and liquids of the world are drawn by the sorted transparent pass, see
+      // getWorldTransparentBatches() and getWorldTurbulentChains()
       if (pass === 0) {
         this.renderWorld(clmodel);
-      } else if (pass === 2) {
-        this.renderWorldTransparent(clmodel);
       }
       return;
     }
@@ -513,7 +529,11 @@ export class BrushModelRenderer extends ModelRenderer {
     } else if (pass === 2) {
       GL.BindVAO(clmodel.opaqueVAO!);
       RenderStats.c_brush_vbos++;
-      this._renderTransparentSurfaces(clmodel, e, viewMatrix);
+      this._renderTransparentSurfaces(clmodel, e, viewMatrix, false);
+      // glass behind the other translucent surfaces of the entity does not see them, the scene was copied before it
+      if (this.#hasRefractingGlass(clmodel, e)) {
+        this._renderTransparentSurfaces(clmodel, e, viewMatrix, true);
+      }
       GL.UnbindVAO();
 
       // Liquids of a brush entity have their own vertex array and program. Nothing draws an entity in pass 1, so
@@ -533,21 +553,35 @@ export class BrushModelRenderer extends ModelRenderer {
   // ─── Refraction ───────────────────────────────────────────────────
 
   /**
-   * Sets how strongly translucent liquids refract in the transparent pass that is about to be drawn, or turns it off
-   * after the pass. Refraction needs the scene capture: the liquids sample the copies of the scene made during it.
+   * Sets how strongly translucent liquids and `MF_REFRACT` surfaces refract in the transparent pass that is about to
+   * be drawn, or turns it off after the pass. Refraction needs the scene capture: the surfaces sample the copies of
+   * the scene made during it. Liquids refract when the map asks for it, `MF_REFRACT` surfaces whenever `r_refraction`
+   * is on.
    * @param worldmodel The world of the pass, `null` after the pass.
    */
-  prepareLiquidRefraction(worldmodel: BrushModel | null): void {
-    this.#liquidRefraction = worldmodel !== null && PostProcess.active
+  prepareRefraction(worldmodel: BrushModel | null): void {
+    const active = worldmodel !== null && PostProcess.active;
+
+    this.#liquidRefraction = active
       ? BrushModelRenderer.ResolveLiquidRefraction(worldmodel.worldspawnInfo._qs_waterrefraction, rendererCvars.refraction.value)
       : 0.0;
+    this.#glassRefraction = active ? Math.max(0.0, rendererCvars.refraction.value) : 0.0;
+  }
+
+  /**
+   * Whether a translucent world batch refracts in this pass, so it is drawn by `brush-refract` and the scene has to
+   * be copied before it.
+   * @returns True for an `MF_REFRACT` material while refraction is on.
+   */
+  refractsWorldBatch(clmodel: BrushModel, batch: WorldSurfaceBatch): boolean {
+    return this.#glassRefraction > 0.0 && ((clmodel.textures[batch.texture] as BaseMaterial).flags & MaterialFlags.MF_REFRACT) !== 0;
   }
 
   /**
    * Whether a turbulent chain of the world refracts in this pass, so the scene has to be copied before it is drawn.
    * @returns True when it is drawn translucent and the map's liquids refract.
    */
-  refractsWorldTurbulentChain(clmodel: BrushModel, chain: WorldTurbulentChainInfo): boolean {
+  refractsWorldTurbulentChain(clmodel: BrushModel, chain: WorldSurfaceBatch): boolean {
     const worldspawn = clientRuntimeState.clientEntities.getEntity(0);
 
     return this.#liquidRefraction > 0.0 && this.#turbulentAlpha(clmodel.textures[chain.texture] as BaseMaterial, worldspawn) < 1.0;
@@ -558,7 +592,15 @@ export class BrushModelRenderer extends ModelRenderer {
    * @returns True when one of its liquids is drawn translucent and the map's liquids refract.
    */
   refractsEntity(model: BaseModel, entity: ClientEdict): boolean {
-    if (this.#liquidRefraction === 0.0 || !(model instanceof BrushModel) || rendererCvars.drawturbulents.value === 0) {
+    if (!(model instanceof BrushModel)) {
+      return false;
+    }
+
+    if (this.#hasRefractingGlass(model, entity)) {
+      return true;
+    }
+
+    if (this.#liquidRefraction === 0.0 || rendererCvars.drawturbulents.value === 0) {
       return false;
     }
 
@@ -572,6 +614,56 @@ export class BrushModelRenderer extends ModelRenderer {
     }
 
     return false;
+  }
+
+  /**
+   * Whether a chain of a brush entity is glass that refracts in this pass: an `MF_REFRACT` material that is drawn
+   * translucent, because the material or the entity is.
+   * @returns True when it is drawn by `brush-refract`.
+   */
+  #refractsGlassChain(material: BaseMaterial, entity: ClientEdict): boolean {
+    return this.#glassRefraction > 0.0
+      && (material.flags & MaterialFlags.MF_REFRACT) !== 0
+      && (material.flags & (MaterialFlags.MF_TURBULENT | MaterialFlags.MF_SKIP)) === 0
+      && ((material.flags & MaterialFlags.MF_TRANSPARENT) !== 0 || entity.alpha < 1.0);
+  }
+
+  /**
+   * Whether a brush entity has glass that refracts in this pass.
+   * @returns True when one of its chains does.
+   */
+  #hasRefractingGlass(clmodel: BrushModel, entity: ClientEdict): boolean {
+    for (let i = 0; i < clmodel.chains.length; i++) {
+      if (this.#refractsGlassChain(clmodel.textures[clmodel.chains[i][0]] as BaseMaterial, entity)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * `brush-refract` bends what is behind the surface along its normal map. A PBR material binds its own or a flat one;
+   * any other material binds none without a deluxemap, so it gets the flat one here and does not bend.
+   */
+  static #bindGlassNormal(material: BaseMaterial, program: GLProgramInfo): void {
+    if (program.tSceneColor === undefined || material instanceof PBRMaterial) {
+      return;
+    }
+
+    DefaultTextures.flatnormalmap.bind(program.tNormal!);
+  }
+
+  /**
+   * Binds what `brush-refract` samples of the scene: the depth and color copies the transparent pass made before the
+   * refracting run, and the strength. Undo with `_unbindSceneInputs`.
+   */
+  #bindRefractionInputs(program: GLProgramInfo, strength: number): void {
+    PostProcess.depthCopy!.depthTexture!.bind(program.tDepth!);
+    PostProcess.colorCopy!.colorTexture(0).bind(program.tSceneColor!);
+    PostProcess.colorCopy!.colorTexture(1).bind(program.tSceneEmissive!);
+    gl.uniform2f(program.uScreenSize!, PostProcess.width, PostProcess.height);
+    gl.uniform1f(program.uRefraction!, strength);
   }
 
   /**
@@ -622,12 +714,13 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Puts empty textures on the units the scene inputs of the turbulent shader were bound to. The brush shader reads
-   * its specular, normal and deluxe maps from the same units, and a material that has none does not rebind them:
-   * without this the scene copies would be sampled as the maps of the surfaces that follow.
+   * Puts empty textures on the units the scene inputs of a program (`turbulent`, `brush-refract`) were bound to.
+   * Other programs read their own maps from the same units (the brush shader its specular, normal and deluxe maps),
+   * and a material that has none does not rebind them: without this the scene copies would be sampled as the maps
+   * of the surfaces that follow. A program without scene inputs (`brush`) leaves the units alone.
    */
-  _unbindTurbulentSceneInputs(program: GLProgramInfo): void {
-    if (!PostProcess.active) {
+  _unbindSceneInputs(program: GLProgramInfo): void {
+    if (!PostProcess.active || program.tSceneColor === undefined) {
       return;
     }
 
@@ -747,72 +840,14 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Render the world (entity 0) transparent surfaces with alpha blending.
+   * Sets up a program of the brush family for the translucent world batches.
+   * @returns The program in use.
    */
-  renderWorldTransparent(clmodel: BrushModel): void {
-    this.beginWorldTransparentPass(clmodel);
-    const state = WorldRenderState.of(clmodel);
-
-    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
-      if (state.visframes[leaf] !== Visibility.visframecount || state.skychains[leaf] === 0) {
-        continue;
-      }
-
-      BrushModelRenderer.#loadLeafBounds(state, leaf);
-
-      if (Camera.CullBox(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs)) {
-        continue;
-      }
-
-      this.renderWorldTransparentLeaf(clmodel, leaf);
-    }
-    this.endWorldTransparentPass();
-  }
-
-  /**
-   * Collect visible world leafs that contain transparent surfaces, with
-   * squared distance from the given viewpoint for back-to-front sorting.
-   * @returns Leaf entries with squared view distances for back-to-front sorting.
-   */
-  getWorldTransparentLeaves(clmodel: BrushModel, vieworg: Float32Array | number[]): { leaf: number; dist: number }[] {
-    const items: { leaf: number; dist: number }[] = [];
-    const state = WorldRenderState.of(clmodel);
-
-    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
-      if (state.visframes[leaf] !== Visibility.visframecount || state.skychains[leaf] === 0) {
-        continue;
-      }
-
-      BrushModelRenderer.#loadLeafBounds(state, leaf);
-
-      if (Camera.CullBox(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs)) {
-        continue;
-      }
-      let hasTransparent = false;
-      for (let j = 0; j < state.skychains[leaf]; j++) {
-        if ((clmodel.textures[state.cmds[leaf][j][0]] as BaseMaterial).flags & MaterialFlags.MF_TRANSPARENT) {
-          hasTransparent = true;
-          break;
-        }
-      }
-      if (!hasTransparent) {
-        continue;
-      }
-      const dist = this._getBoundsDistanceToView(BrushModelRenderer.#leafMins, BrushModelRenderer.#leafMaxs, vieworg);
-      items.push({ leaf, dist });
-    }
-    return items;
-  }
-
-  /**
-   * Setup GL state for world transparent leaf rendering.
-   * Call once before one or more `renderWorldTransparentLeaf` calls.
-   */
-  beginWorldTransparentPass(clmodel: BrushModel): void {
+  #beginWorldBlendedPass(clmodel: BrushModel, programName: 'brush' | 'brush-refract'): GLProgramInfo {
     GL.BindVAO(clmodel.opaqueVAO!);
     RenderStats.c_brush_vbos++;
 
-    const program = GL.UseProgram('brush')!;
+    const program = GL.UseProgram(programName)!;
     this._worldTransparentProgram = program;
     this._worldTransparentModel = clmodel;
 
@@ -837,44 +872,66 @@ export class BrushModelRenderer extends ModelRenderer {
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    return program;
   }
 
   /**
-   * Render a single leaf's transparent surfaces.
-   * Must be called between `beginWorldTransparentPass` and `endWorldTransparentPass`.
+   * Collect the visible translucent world batches that are not liquids (fences, glass), with their distance from the
+   * viewpoint for back-to-front sorting. Like the liquids, every batch is handed out once.
+   * @returns Batch entries with view distances.
    */
-  renderWorldTransparentLeaf(clmodel: BrushModel, leaf: number): void {
-    const worldspawn = clientRuntimeState.clientEntities.getEntity(0);
-    const program = this._worldTransparentProgram!;
-    const hasDeluxemap = this._worldTransparentHasDeluxemap;
-    const state = WorldRenderState.of(clmodel);
-
-    for (let j = 0; j < state.skychains[leaf]; j++) {
-      const cmds = state.cmds[leaf][j];
-      const material = clmodel.textures[cmds[0]] as BaseMaterial;
-
-      if (material.flags & MaterialFlags.MF_SKIP) {
-        continue;
-      }
-      if (!(material.flags & MaterialFlags.MF_TRANSPARENT)) {
-        continue;
-      }
-
-      RenderStats.c_brush_verts += cmds[2];
-      RenderStats.c_brush_tris += cmds[2] / 3;
-
-      MaterialBinder.Emit(material, worldspawn);
-      MaterialBinder.Bind(material, program, hasDeluxemap);
-
-      gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
-      RenderStats.c_brush_draws++;
-    }
+  getWorldTransparentBatches(clmodel: BrushModel, vieworg: Float32Array | number[]): { batch: WorldSurfaceBatch; dist: number }[] {
+    return this.#collectVisibleBatches(WorldRenderState.of(clmodel), WorldRenderState.of(clmodel).transparentBatches, vieworg);
   }
 
-  /** Cleanup GL state after world transparent leaf rendering. */
+  /**
+   * Setup GL state for drawing translucent world batches with the `brush` program.
+   * Call once before one or more `renderWorldTransparentBatch` calls.
+   */
+  beginWorldTransparentPass(clmodel: BrushModel): void {
+    this.#beginWorldBlendedPass(clmodel, 'brush');
+  }
+
+  /**
+   * Setup GL state for drawing translucent world batches that refract, with the `brush-refract` program, which
+   * samples the copies of the scene the transparent pass made before them.
+   * Call once before one or more `renderWorldTransparentBatch` calls.
+   */
+  beginWorldRefractivePass(clmodel: BrushModel): void {
+    const program = this.#beginWorldBlendedPass(clmodel, 'brush-refract');
+
+    this.#bindRefractionInputs(program, this.#glassRefraction);
+  }
+
+  /**
+   * Render a single translucent world batch.
+   * Must be called between `beginWorldTransparentPass` or `beginWorldRefractivePass` and `endWorldTransparentPass`.
+   */
+  renderWorldTransparentBatch(clmodel: BrushModel, batch: WorldSurfaceBatch): void {
+    const worldspawn = clientRuntimeState.clientEntities.getEntity(0);
+    const material = clmodel.textures[batch.texture] as BaseMaterial;
+
+    if (material.flags & MaterialFlags.MF_SKIP) {
+      return;
+    }
+
+    RenderStats.c_brush_verts += batch.vertexCount;
+    RenderStats.c_brush_tris += batch.vertexCount / 3;
+
+    MaterialBinder.Emit(material, worldspawn);
+    MaterialBinder.Bind(material, this._worldTransparentProgram!, this._worldTransparentHasDeluxemap);
+    BrushModelRenderer.#bindGlassNormal(material, this._worldTransparentProgram!);
+
+    gl.drawArrays(gl.TRIANGLES, batch.firstVertex, batch.vertexCount);
+    RenderStats.c_brush_draws++;
+  }
+
+  /** Cleanup GL state after world transparent rendering. */
   endWorldTransparentPass(): void {
     gl.disable(gl.BLEND);
     GL.UnbindVAO();
+    this._unbindSceneInputs(this._worldTransparentProgram!);
     this._worldTransparentProgram = null;
     this._worldTransparentModel = null;
     this._worldTransparentHasDeluxemap = false;
@@ -887,15 +944,25 @@ export class BrushModelRenderer extends ModelRenderer {
    * semi-transparent liquids can share the same sorted space.
    * @returns Turbulent chain entries with view distances for back-to-front sorting.
    */
-  getWorldTurbulentChains(clmodel: BrushModel, vieworg: Float32Array | number[]): { chain: WorldTurbulentChainInfo; dist: number }[] {
-    const items: { chain: WorldTurbulentChainInfo; dist: number }[] = [];
-    const seen = BrushModelRenderer.#seenTurbulentChains;
+  getWorldTurbulentChains(clmodel: BrushModel, vieworg: Float32Array | number[]): { batch: WorldSurfaceBatch; dist: number }[] {
+    return this.#collectVisibleBatches(WorldRenderState.of(clmodel), WorldRenderState.of(clmodel).turbulentChains, vieworg);
+  }
 
-    const state = WorldRenderState.of(clmodel);
+  /**
+   * Collects the batches of the visible leafs that are in the view, once each: a batch on the boundary of leafs is
+   * referred to by each of them.
+   * @returns Batch entries with view distances.
+   */
+  #collectVisibleBatches(state: WorldRenderState, batchesOfLeafs: WorldSurfaceBatch[][], vieworg: Float32Array | number[]): { batch: WorldSurfaceBatch; dist: number }[] {
+    const items: { batch: WorldSurfaceBatch; dist: number }[] = [];
+    const seen = BrushModelRenderer.#seenBatches;
+
     seen.clear();
 
-    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
-      if ((state.visframes[leaf] !== Visibility.visframecount) || (state.waterchains[leaf] === state.cmds[leaf].length)) {
+    for (let leaf = 0; leaf < batchesOfLeafs.length; leaf++) {
+      const batches = batchesOfLeafs[leaf];
+
+      if (state.visframes[leaf] !== Visibility.visframecount || batches.length === 0) {
         continue;
       }
 
@@ -905,23 +972,19 @@ export class BrushModelRenderer extends ModelRenderer {
         continue;
       }
 
-      for (let j = 0; j < state.turbulentChains[leaf].length; j++) {
-        const chain = state.turbulentChains[leaf][j];
+      for (let j = 0; j < batches.length; j++) {
+        const batch = batches[j];
 
-        // a batch on the boundary of leafs is referred to by each of them, and is drawn once
-        if (seen.has(chain)) {
+        if (seen.has(batch)) {
           continue;
         }
-        seen.add(chain);
+        seen.add(batch);
 
-        if (Camera.CullBox(chain.mins!, chain.maxs!)) {
+        if (Camera.CullBox(batch.mins, batch.maxs)) {
           continue;
         }
 
-        items.push({
-          chain,
-          dist: this._getBoundsDistanceToView(chain.mins!, chain.maxs!, vieworg),
-        });
+        items.push({ batch, dist: this._getBoundsDistanceToView(batch.mins, batch.maxs, vieworg) });
       }
     }
 
@@ -962,7 +1025,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * Render a single pre-sorted world turbulent draw batch.
    * Must be called between `beginWorldTurbulentPass` and `endWorldTurbulentPass`.
    */
-  renderWorldTurbulentChain(clmodel: BrushModel, chain: WorldTurbulentChainInfo): void {
+  renderWorldTurbulentChain(clmodel: BrushModel, chain: WorldSurfaceBatch): void {
     this._renderWorldTurbulentBatch(clmodel, chain.texture, chain.firstVertex, chain.vertexCount);
   }
 
@@ -971,7 +1034,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.disable(gl.BLEND);
     gl.depthMask(true);
     GL.UnbindVAO();
-    this._unbindTurbulentSceneInputs(this._worldTurbulentProgram!);
+    this._unbindSceneInputs(this._worldTurbulentProgram!);
     this._worldTurbulentProgram = null;
     this._worldTurbulentModel = null;
   }
@@ -1377,9 +1440,12 @@ export class BrushModelRenderer extends ModelRenderer {
     }
   }
 
-  /** @private */
-  _renderTransparentSurfaces(clmodel: BrushModel, e: ClientEdict, viewMatrix: number[]): void {
-    const program = GL.UseProgram('brush')!;
+  /**
+   * Draws the translucent surfaces of a brush entity that are not liquids.
+   * @param refractive True for the glass that refracts in this pass (drawn by `brush-refract`), false for the rest.
+   */
+  _renderTransparentSurfaces(clmodel: BrushModel, e: ClientEdict, viewMatrix: number[], refractive: boolean): void {
+    const program = GL.UseProgram(refractive ? 'brush-refract' : 'brush')!;
     this._applyEntityLighting(program, clmodel, e);
 
     gl.uniform3fv(program.uOrigin!, e.lerp.origin);
@@ -1396,10 +1462,15 @@ export class BrushModelRenderer extends ModelRenderer {
     LightStyles.lightstyle_texture_b.bind(program.tLightStyleB!);
     const hasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
+    if (refractive) {
+      this.#bindRefractionInputs(program, this.#glassRefraction);
+    }
+
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
     if (!clmodel.chains || clmodel.chains.length === 0) {
+      this._unbindSceneInputs(program);
       gl.disable(gl.BLEND);
       return;
     }
@@ -1409,6 +1480,11 @@ export class BrushModelRenderer extends ModelRenderer {
       const material = clmodel.textures[chain[0]] as BaseMaterial;
 
       if (material.flags & MaterialFlags.MF_SKIP) {
+        continue;
+      }
+
+      // refracting glass is drawn by the second call, with its own program
+      if (this.#refractsGlassChain(material, e) !== refractive) {
         continue;
       }
 
@@ -1426,11 +1502,13 @@ export class BrushModelRenderer extends ModelRenderer {
 
       MaterialBinder.Emit(material, e);
       MaterialBinder.Bind(material, program, hasDeluxemap);
+      BrushModelRenderer.#bindGlassNormal(material, program);
 
       gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
       RenderStats.c_brush_draws++;
     }
 
+    this._unbindSceneInputs(program);
     gl.disable(gl.BLEND);
   }
 
@@ -1451,7 +1529,7 @@ export class BrushModelRenderer extends ModelRenderer {
     this._bindTurbulentSceneInputs(program);
 
     if (!clmodel.chains || clmodel.chains.length === 0) {
-      this._unbindTurbulentSceneInputs(program);
+      this._unbindSceneInputs(program);
       gl.depthMask(true);
       gl.disable(gl.BLEND);
       return;
@@ -1481,7 +1559,7 @@ export class BrushModelRenderer extends ModelRenderer {
       RenderStats.c_brush_draws++;
     }
 
-    this._unbindTurbulentSceneInputs(program);
+    this._unbindSceneInputs(program);
     gl.depthMask(true);
     gl.disable(gl.BLEND);
   }
@@ -1964,10 +2042,10 @@ export class BrushModelRenderer extends ModelRenderer {
     let verts = 0;
     let cutoff = 0;
 
-    // Build opaque surfaces (non-sky, non-turbulent) organized by leaf
+    // Build opaque surfaces (non-sky, non-turbulent, non-translucent) organized by leaf
     for (let i = 0; i < m.textures.length; i++) {
       const texture = m.textures[i] as BaseMaterial;
-      if ((texture.flags & MaterialFlags.MF_SKY) || (texture.flags & MaterialFlags.MF_TURBULENT)) {
+      if (texture.flags & (MaterialFlags.MF_SKY | MaterialFlags.MF_TURBULENT | MaterialFlags.MF_TRANSPARENT)) {
         continue;
       }
       for (let j = 0; j < leafs.count; j++) {
@@ -1977,31 +2055,9 @@ export class BrushModelRenderer extends ModelRenderer {
           if (surf.texture !== i) {
             continue;
           }
-          styles[0] = styles[1] = styles[2] = styles[3] = 0.0;
-          for (let l = 0; l < surf.styles.length; l++) {
-            styles[l] = surf.styles[l] * 0.015625 + 0.0078125;
-          }
           console.assert(surf.verts !== null && Array.isArray(surf.verts));
           this._expandLeafBoundsForSurface(state, j, surf.verts!);
-          chain[2] += surf.verts!.length;
-          for (let l = 0; l < surf.verts!.length; l++) {
-            const vert = surf.verts![l];
-            const vertexIndex = cmds.length / Mesh.VERTEX_STRIDE;
-            cmds.push(vert[0], vert[1], vert[2]);
-            cmds.push(vert[3], vert[4], vert[5], vert[6]);
-            cmds.push(styles[0], styles[1], styles[2], styles[3]);
-            if (vert.length > 9) {
-              cmds.push(vert[7], vert[8], vert[9]);
-            } else {
-              cmds.push(surf.normal[0], surf.normal[1], surf.normal[2]);
-            }
-            if (vert.length > 15) {
-              cmds.push(vert[10], vert[11], vert[12], vert[13], vert[14], vert[15]);
-              precomputedVertices.add(vertexIndex);
-            } else {
-              cmds.push(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-            }
-          }
+          chain[2] += BrushModelRenderer.#pushOpaqueVertices(cmds, surf, styles, precomputedVertices);
         }
         if (chain[2] !== 0) {
           state.cmds[j].push(chain);
@@ -2011,6 +2067,37 @@ export class BrushModelRenderer extends ModelRenderer {
         }
       }
     }
+
+    // Build translucent surfaces (fences, glass): packed once and shared by the leafs that list them, for the reason
+    // the liquids below are, and kept out of the per-leaf chains the opaque and shadow passes walk.
+    const translucentFaceLeafs = BrushModelRenderer.#collectFaceLeafs(m, MaterialFlags.MF_TRANSPARENT, MaterialFlags.MF_SKY | MaterialFlags.MF_TURBULENT);
+    for (let i = 0; i < m.textures.length; i++) {
+      const texture = m.textures[i] as BaseMaterial;
+      if ((texture.flags & MaterialFlags.MF_TRANSPARENT) === 0 || (texture.flags & (MaterialFlags.MF_SKY | MaterialFlags.MF_TURBULENT)) !== 0) {
+        continue;
+      }
+      for (const group of BrushModelRenderer.#groupFacesByLeafs(m, i, translucentFaceLeafs)) {
+        const firstVertex = verts;
+        const batchMins = new Vector(Infinity, Infinity, Infinity);
+        const batchMaxs = new Vector(-Infinity, -Infinity, -Infinity);
+        for (const faceIndex of group.faces) {
+          const surf = m.faces[faceIndex];
+          console.assert(surf.verts !== null && Array.isArray(surf.verts));
+          for (const leaf of group.leafs) {
+            this._expandLeafBoundsForSurface(state, leaf, surf.verts!);
+          }
+          this._expandBounds(batchMins, batchMaxs, surf.verts!);
+          verts += BrushModelRenderer.#pushOpaqueVertices(cmds, surf, styles, precomputedVertices);
+        }
+        if (verts !== firstVertex) {
+          const batch: WorldSurfaceBatch = { texture: i, firstVertex, vertexCount: verts - firstVertex, mins: batchMins, maxs: batchMaxs };
+          for (const leaf of group.leafs) {
+            state.transparentBatches[leaf].push(batch);
+          }
+        }
+      }
+    }
+
     cutoff = cmds.length;
     m.skychain = verts * 80;
     verts = 0;
@@ -2051,7 +2138,7 @@ export class BrushModelRenderer extends ModelRenderer {
     // texture that the same leafs list, and each of those leafs refers to that batch: getWorldTurbulentChains draws it
     // once however many of them are visible. It cannot belong to one leaf only, the leaf on the other side may be the
     // only one the view sees (a map compiled without transparent water).
-    const liquidFaceLeafs = BrushModelRenderer.#collectLiquidFaceLeafs(m);
+    const liquidFaceLeafs = BrushModelRenderer.#collectFaceLeafs(m, MaterialFlags.MF_TURBULENT, MaterialFlags.MF_NONE);
     for (let i = 0; i < m.textures.length; i++) {
       const texture = m.textures[i] as BaseMaterial;
       if (!(texture.flags & MaterialFlags.MF_TURBULENT)) {
@@ -2088,7 +2175,7 @@ export class BrushModelRenderer extends ModelRenderer {
           }
         }
         if (chain[2] !== 0) {
-          const info: WorldTurbulentChainInfo = {
+          const info: WorldSurfaceBatch = {
             texture: i,
             firstVertex: chain[1],
             vertexCount: chain[2],
@@ -2115,10 +2202,12 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Which leafs list each liquid face of the world.
-   * @returns The leafs of every turbulent face, by face index, in leaf order and without repeats.
+   * Which leafs list each face of the world whose material has a flag.
+   * @param flag The flag the material must have.
+   * @param exclude Flags the material must not have.
+   * @returns The leafs of every such face, by face index, in leaf order and without repeats.
    */
-  static #collectLiquidFaceLeafs(model: BrushModel): Map<number, number[]> {
+  static #collectFaceLeafs(model: BrushModel, flag: MaterialFlags, exclude: MaterialFlags): Map<number, number[]> {
     const leafs = model.leafTable;
     const faceLeafs = new Map<number, number[]>();
 
@@ -2127,7 +2216,7 @@ export class BrushModelRenderer extends ModelRenderer {
         const faceIndex = model.marksurfaces[leafs.firstMarkSurfaces[leaf] + k];
         const texture = model.textures[model.faces[faceIndex].texture] as BaseMaterial;
 
-        if ((texture.flags & MaterialFlags.MF_TURBULENT) === 0) {
+        if ((texture.flags & flag) === 0 || (texture.flags & exclude) !== 0) {
           continue;
         }
 
@@ -2145,7 +2234,39 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Groups the liquid faces of one texture by the leafs that list them: the faces of a group are visible together,
+   * Writes the vertices of an opaque-layout surface (position, texture and lightmap coordinates, lightstyles, normal,
+   * tangent and bitangent when the BSP has them).
+   * @returns The number of vertices written.
+   */
+  static #pushOpaqueVertices(cmds: number[], surf: Face, styles: number[], precomputedVertices: Set<number>): number {
+    styles[0] = styles[1] = styles[2] = styles[3] = 0.0;
+    for (let l = 0; l < surf.styles.length; l++) {
+      styles[l] = surf.styles[l] * 0.015625 + 0.0078125;
+    }
+    for (let l = 0; l < surf.verts!.length; l++) {
+      const vert = surf.verts![l];
+      const vertexIndex = cmds.length / Mesh.VERTEX_STRIDE;
+      cmds.push(vert[0], vert[1], vert[2]);
+      cmds.push(vert[3], vert[4], vert[5], vert[6]);
+      cmds.push(styles[0], styles[1], styles[2], styles[3]);
+      if (vert.length > 9) {
+        cmds.push(vert[7], vert[8], vert[9]);
+      } else {
+        cmds.push(surf.normal[0], surf.normal[1], surf.normal[2]);
+      }
+      if (vert.length > 15) {
+        cmds.push(vert[10], vert[11], vert[12], vert[13], vert[14], vert[15]);
+        precomputedVertices.add(vertexIndex);
+      } else {
+        cmds.push(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+      }
+    }
+
+    return surf.verts!.length;
+  }
+
+  /**
+   * Groups the faces of one texture by the leafs that list them: the faces of a group are visible together,
    * so they are drawn as one batch.
    * @returns The groups, in the order their first face is listed.
    */

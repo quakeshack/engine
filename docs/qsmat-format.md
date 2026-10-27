@@ -48,6 +48,7 @@ The `flags` array can contain the following strings:
 | `MF_TRANSPARENT` | Use alpha blending for this material. Useful for glass, grating, etc. Note that textures starting with `{` are automatically marked as transparent by the engine. |
 | `MF_SKY` | Marks the surface as a sky surface. |
 | `MF_TURBULENT` | Applies turbulent deformation (like water/slime/lava). Textures starting with `*` or `!` are automatically marked as turbulent. |
+| `MF_REFRACT` | The surface refracts what is behind it, bent along its `normal` map (see [Refraction](refraction.md)). It needs a translucent surface: `MF_TRANSPARENT` with alpha in the `diffuse` image, or a brush entity with `alpha` below 1. Without a normal map the surface is flat glass and bends nothing. It applies to surfaces that are not liquids; liquids refract with the worldspawn key `_qs_waterrefraction`. |
 | `MF_FULLBRIGHT` | Renders the surface unlit, ignoring lightmaps. Useful for emissive/glowing surfaces. Unlike `luminance`, this applies the diffuse texture itself as the emissive layer rather than a separate map. |
 
 ### Width and Height
@@ -96,7 +97,8 @@ fail.
     },
     "GLASS": {
       "diffuse": "textures/windows/glass_d.png",
-      "flags": ["MF_TRANSPARENT"]
+      "normal": "textures/windows/glass_n.png",
+      "flags": ["MF_TRANSPARENT", "MF_REFRACT"]
     }
   }
 }

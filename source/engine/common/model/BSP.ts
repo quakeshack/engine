@@ -67,7 +67,11 @@ export interface BrushRange {
   readonly numBrushes: number;
 }
 
-export interface WorldTurbulentChainInfo {
+/**
+ * Surfaces of one texture in the world that the same leafs list, drawn together: the liquids and the translucent
+ * surfaces, which must be drawn once however many of their leafs are visible.
+ */
+export interface WorldSurfaceBatch {
   /** Texture index used by the draw batch. */
   readonly texture: number;
 

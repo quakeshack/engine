@@ -55,6 +55,22 @@ class ShaderPrograms {
           ],
           ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB', 'tLuminance', 'tSpecular', 'tNormal', 'tDeluxemap', 'tShadowMap', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2'])),
 
+      // Translucent brush surfaces that refract what is behind them (MF_REFRACT); no shadow maps, see brush-refract.frag.
+      // A sampler gets the unit of its index. tShadowMap is not sampled here and only keeps unit 10 as `brush` has it:
+      // WebGL rejects a draw whose 2D shadow sampler finds a texture without compare mode, and the scene copies bound
+      // to 11 to 13 meet only the cube shadow samplers of the other programs there, which read another target.
+      Promise.resolve(GL.CreateProgram('brush-refract',
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uLightstyleInterpolation', 'uAlpha', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uHaveDeluxemap', 'uLightSpaceMatrix', 'uShadowEnabled', 'uShadowDarkness', 'uShadowMapSize', 'uShadowMaxDepthNDC', 'uShadowLightDir', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightColor0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightColor1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointLightColor2', 'uPointShadowEnabled', 'uPointShadowBias', 'uPointShadowNormalBias', 'uBloomEmissiveScale', 'uBloomDlightScale', 'uBloomSpecularScale', 'uRefraction', 'uScreenSize'],
+          [
+            ['aPosition', gl.FLOAT, 3],
+            ['aTexCoord', gl.FLOAT, 4],
+            ['aLightStyle', gl.FLOAT, 4],
+            ['aNormal', gl.FLOAT, 3],
+            ['aTangent', gl.FLOAT, 3],
+            ['aBitangent', gl.FLOAT, 3],
+          ],
+          ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB', 'tLuminance', 'tSpecular', 'tNormal', 'tDeluxemap', 'tShadowMap', 'tDepth', 'tSceneColor', 'tSceneEmissive'])),
+
       // rendering dynamic lights
       Promise.resolve(GL.CreateProgram('dlight',
           ['uOrigin', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uRadius', 'uGamma'],

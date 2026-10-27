@@ -9,24 +9,7 @@ precision highp samplerCubeShadow;
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 fragEmissive;
 
-uniform float uGamma;
-uniform float uInterpolation;
-uniform float uLightstyleInterpolation;
-uniform float uAlpha;
-uniform float uBloomEmissiveScale;
-uniform float uBloomDlightScale;
-uniform float uBloomSpecularScale;
-
-uniform sampler2D tTextureA;
-uniform sampler2D tTextureB;
-uniform sampler2DArray tLightmap;
-uniform sampler2D tDlight;
-uniform sampler2D tLightStyleA;
-uniform sampler2D tLightStyleB;
-uniform sampler2D tLuminance;
-uniform sampler2D tNormal;
-uniform sampler2D tSpecular;
-uniform sampler2DArray tDeluxemap;
+#include "brush-shading.glsl"
 
 // Shadow mapping
 uniform sampler2DShadow tShadowMap;
@@ -43,37 +26,7 @@ uniform vec3 uShadowLightDir;
 uniform samplerCubeShadow tPointShadowMap0;
 uniform samplerCubeShadow tPointShadowMap1;
 uniform samplerCubeShadow tPointShadowMap2;
-uniform vec3 uPointLightPos0;
-uniform vec3 uPointLightPos1;
-uniform vec3 uPointLightPos2;
-uniform float uPointLightRadius0;
-uniform float uPointLightRadius1;
-uniform float uPointLightRadius2;
-uniform vec3 uPointLightColor0;
-uniform vec3 uPointLightColor1;
-uniform vec3 uPointLightColor2;
 uniform float uPointShadowEnabled;
-
-uniform bool uPerformDotLighting;
-uniform bool uHaveDeluxemap;
-
-uniform vec3 uAmbientLight;
-uniform vec3 uShadeLight;
-uniform vec3 uDynamicShadeLight;
-
-in vec4 vTexCoord;
-in vec4 vLightStyle;
-in float vLightDot;
-in float vDynamicLightDot;
-#include "fog-fragment.glsl"
-in vec3 vNormal;
-in vec3 vLightVec;
-in vec3 vDynamicLightVec;
-in vec3 vTangent;
-in vec3 vBitangent;
-in vec3 vViewVec;
-in vec4 vShadowCoord;
-in vec3 vWorldPos;
 
 /**
  * 5×5 Gaussian-weighted PCF for smooth top-down shadow edges. Each tap uses
@@ -145,14 +98,7 @@ float sampleLocalShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoordH) {
  * light (excluded from R.AddDynamicLights — see uPointLightPos0/1/2 wiring
  * in R.ts) so each shadow-casting light's brightness and occlusion stay
  * independent instead of a single shadow darkening every light's combined
- * contribution at once.
- *
- * The linear falloff and 2.0/255.0 scale reproduce the brightness curve of
- * the baked surface dlight (see R.AddDynamicLights: byte = clamp((radius -
- * dist) * 2 * color, 0, 255)), just evaluated per-fragment against the true
- * 3D distance instead of the baked texel-space approximation. Radius is
- * floored well above the near plane so the depth reconstruction never
- * divides by zero for an unused (zero-radius) slot.
+ * contribution at once. The light itself is pointLightAttenuation().
  */
 vec3 samplePointLightContribution(samplerCubeShadow shadowMap, vec3 lightPos, float lightRadius, vec3 lightColor) {
   float fragDist = length(vWorldPos - lightPos);
@@ -163,45 +109,10 @@ vec3 samplePointLightContribution(samplerCubeShadow shadowMap, vec3 lightPos, fl
   // towards the edge lets the light through walls in a ring.
   float pointShadow = mix(1.0, cubeShadow, step(fragDist, f) * step(0.5, uPointShadowEnabled));
 
-  vec3 atten = clamp((f - fragDist) * (2.0 / 255.0) * lightColor, 0.0, 1.0);
-  return atten * pointShadow;
+  return pointLightAttenuation(lightPos, lightRadius, lightColor) * pointShadow;
 }
 
 void main(void) {
-  // Combine texture samples at the start
-  vec4 textureA = texture(tTextureA, vTexCoord.xy);
-  vec4 textureB = texture(tTextureB, vTexCoord.xy);
-  vec4 luminance = texture(tLuminance, vTexCoord.xy);
-
-  // interpolation
-  vec4 texel = mix(textureA, textureB, uInterpolation);
-
-  // Pre-calculate lightstyle constant
-  const float LIGHTSTYLE_SCALE = 43.828125;
-
-  // Optimize lightstyle sampling - use texture lookups more efficiently
-  vec4 lightstyleA = vec4(
-    texture(tLightStyleA, vec2(vLightStyle.x, 0.0)).r,
-    texture(tLightStyleA, vec2(vLightStyle.y, 0.0)).r,
-    texture(tLightStyleA, vec2(vLightStyle.z, 0.0)).r,
-    texture(tLightStyleA, vec2(vLightStyle.w, 0.0)).r
-  );
-  vec4 lightstyleB = vec4(
-    texture(tLightStyleB, vec2(vLightStyle.x, 0.0)).r,
-    texture(tLightStyleB, vec2(vLightStyle.y, 0.0)).r,
-    texture(tLightStyleB, vec2(vLightStyle.z, 0.0)).r,
-    texture(tLightStyleB, vec2(vLightStyle.w, 0.0)).r
-  );
-  vec4 lightstyle = mix(lightstyleA, lightstyleB, uLightstyleInterpolation) * LIGHTSTYLE_SCALE;
-
-  // Sample lightmap layers (R, G, B each in a separate array layer). Each
-  // column holds the four lightstyles of one color channel, so a row vector of
-  // per-style weights times this matrix sums the styles per channel.
-  vec4 lightmapR = texture(tLightmap, vec3(vTexCoord.zw, 0.0));
-  vec4 lightmapG = texture(tLightmap, vec3(vTexCoord.zw, 1.0));
-  vec4 lightmapB = texture(tLightmap, vec3(vTexCoord.zw, 2.0));
-  mat3x4 lightmapStyles = mat3x4(lightmapR, lightmapG, lightmapB);
-
   // Top-down shadow — modulates the lightmap; fades smoothly to fully-lit at
   // coverage edge. 5×5 Gaussian-weighted PCF for smooth shadow edges.
   float shadow = sampleLocalShadowPCF(tShadowMap, vShadowCoord);
@@ -232,122 +143,11 @@ void main(void) {
   float dlightFill = clamp(max(pointDlight.r, max(pointDlight.g, pointDlight.b)), 0.0, 1.0);
   shadow = max(shadow, dlightFill);
 
-  vec3 surfaceDlight = texture(tDlight, vTexCoord.zw).rgb + pointDlight;
+  vec3 color;
+  vec3 emissive;
+  float alpha;
+  shadeBrushSurface(shadow, pointDlight, color, emissive, alpha);
 
-  // Every lightstyle is shaded as a light of its own, against its own baked
-  // direction, and the styles are summed afterwards. Blending the directions
-  // first would swing the shading direction whenever one style flickers, which
-  // makes the bump-mapped surface look as if its geometry were moving.
-  vec4 styleBump = vec4(1.0);
-  vec4 styleSpecular = vec4(0.0);
-  float dlightBump = 1.0;
-  float dynSpecFactor = 0.0;
-
-  if (uPerformDotLighting) {
-    float dynamicStrength = clamp(max(uDynamicShadeLight.r, max(uDynamicShadeLight.g, uDynamicShadeLight.b)), 0.0, 1.0);
-
-    // Sample normal and specular maps once
-    vec3 normalPoint = texture(tNormal, vTexCoord.xy).xyz;
-    float specIntensity = texture(tSpecular, vTexCoord.xy).r;
-
-    // Convert normal from [0,1] to [-1,1] and invert X,Y in one operation
-    vec3 normalMap = normalize(vec3(
-      -(normalPoint.x * 2.0 - 1.0),
-      -(normalPoint.y * 2.0 - 1.0),
-      normalPoint.z * 2.0 - 1.0
-    ));
-
-    // Gram-Schmidt orthogonalize tangent against normal (inline to avoid extra variables)
-    vec3 n = normalize(vNormal);
-    vec3 t = normalize(vTangent - n * dot(n, vTangent));
-    vec3 b = normalize(vBitangent - n * dot(n, vBitangent) - t * dot(t, vBitangent));
-
-    // Build TBN transform and apply to normal
-    vec3 N = normalize(t * normalMap.x + b * normalMap.y + n * normalMap.z);
-    vec3 V = normalize(vViewVec);
-
-    // Per-style light directions in the face's texture space (s, -t, normal),
-    // the basis ericw-tools writes the LIGHTINGDIR lump in. Without a
-    // deluxemap, every style shares the direction the vertex shader has.
-    vec3 fallbackLight = normalize(vLightVec);
-    vec4 lightS = vec4(dot(fallbackLight, t));
-    vec4 lightT = vec4(-dot(fallbackLight, b));
-    vec4 lightN = vec4(dot(fallbackLight, n));
-
-    if (uHaveDeluxemap) {
-      // Each component is stored as (v + 1) * 128 in a byte.
-      const float DELUXEMAP_DECODE = 255.0 / 128.0;
-      lightS = texture(tDeluxemap, vec3(vTexCoord.zw, 0.0)) * DELUXEMAP_DECODE - 1.0;
-      lightT = texture(tDeluxemap, vec3(vTexCoord.zw, 1.0)) * DELUXEMAP_DECODE - 1.0;
-      lightN = texture(tDeluxemap, vec3(vTexCoord.zw, 2.0)) * DELUXEMAP_DECODE - 1.0;
-    }
-
-    // t, b and n are orthonormal, so a dot product with a style's world-space
-    // direction is the same combination of the basis projections, and its
-    // length is the length of the texture-space vector.
-    vec4 styleInvLength = inversesqrt(max(lightS * lightS + lightT * lightT + lightN * lightN, 0.0001));
-    vec4 styleNdotL = (lightS * dot(N, t) - lightT * dot(N, b) + lightN * dot(N, n)) * styleInvLength;
-    vec4 styleVdotL = (lightS * dot(V, t) - lightT * dot(V, b) + lightN * dot(V, n)) * styleInvLength;
-    // N·H with H = normalize(L + V), where |L + V|² = 2 + 2 L·V.
-    vec4 styleNdotH = (styleNdotL + dot(N, V)) * inversesqrt(max(2.0 + 2.0 * styleVdotL, 0.0001));
-
-    // Add dynamic light contribution
-    float dynLightDot = max(dot(N, vDynamicLightVec), 0.0) * dynamicStrength;
-    vec3 dynH = normalize(vDynamicLightVec + V);
-    dynSpecFactor = specIntensity * pow(max(dot(N, dynH), 0.0), 16.0) * dynamicStrength;
-
-    // The lightmap already holds the cosine against the flat surface, so the
-    // bumped normal only rescales it by how much more or less it faces the
-    // light than the flat surface does. A flat normal reproduces the lightmap
-    // exactly, also where the baked direction is grazing (multiplying by N·L
-    // there counts the cosine twice and leaves dark blotches). The softening
-    // term keeps that ratio bounded at grazing angles.
-    const float GRAZING_SOFTENING = 0.25;
-    const float MAX_BUMP_GAIN = 2.0;
-    vec4 styleFlatNdotL = lightN * styleInvLength;
-    vec4 styleGain = (max(styleNdotL, 0.0) + GRAZING_SOFTENING) / (max(styleFlatNdotL, 0.0) + GRAZING_SOFTENING);
-    styleGain = min(styleGain, MAX_BUMP_GAIN);
-
-    // Blend between full lighting and bump-modified lighting, which keeps
-    // surfaces facing away from a light from going completely black while
-    // still letting the bump mapping show.
-    const float minAmbient = 0.5;
-    styleBump = minAmbient + (1.0 - minAmbient) * pow(styleGain + dynLightDot, vec4(0.7));
-    styleSpecular = specIntensity * pow(max(styleNdotH, 0.0), vec4(16.0));
-
-    // Dynamic lights have no direction here, so they take the bump shading of
-    // the baked lights, weighted by how bright each style was baked rather
-    // than by its current value, so a flickering style does not move it either.
-    vec4 styleWeight = max(lightmapR, max(lightmapG, lightmapB));
-    dlightBump = (dot(styleWeight, styleBump) + 0.0001) / (dot(styleWeight, vec4(1.0)) + 0.0001);
-  }
-
-  vec3 shadedLightmap = (lightstyle * styleBump) * lightmapStyles;
-  vec3 specularLightmap = (lightstyle * styleSpecular) * lightmapStyles;
-
-  // Pre-calculate common factors to avoid redundant calculations
-  vec3 shadeAmbient = vLightDot * uShadeLight + uAmbientLight + vDynamicLightDot * uDynamicShadeLight;
-  vec3 lightingFactor = (shadedLightmap * shadow + surfaceDlight * dlightBump) * shadeAmbient;
-  vec3 emissiveMask = clamp(luminance.rgb + vec3(uBloomEmissiveScale), 0.0, 1.0);
-  // Static specular is attenuated by the shadow maps; dynamic specular is
-  // attenuated via surfaceDlight, which already has the point shadows baked in.
-  vec3 specularColor = specularLightmap * shadow + dynSpecFactor * surfaceDlight;
-
-  // Combine lighting in one operation per channel
-  vec3 emissiveColor = texel.rgb * emissiveMask;
-  vec3 finalColor = texel.rgb * lightingFactor + specularColor + emissiveColor;
-
-  // Apply gamma correction using pow on vec3 (single operation instead of 3)
-  finalColor = pow(finalColor, vec3(uGamma));
-
-  // Apply fog
-  finalColor = mix(uFogColor, finalColor, vFog);
-
-  fragColor = vec4(finalColor, texel.a * uAlpha);
-
-  emissiveColor += texel.rgb * surfaceDlight * uBloomDlightScale;
-  emissiveColor += specularColor * uBloomSpecularScale;
-  emissiveColor = pow(emissiveColor, vec3(uGamma));
-  emissiveColor = mix(uFogColor, emissiveColor, vFog);
-  fragEmissive = vec4(emissiveColor, texel.a * uAlpha);
+  fragColor = vec4(color, alpha);
+  fragEmissive = vec4(emissive, alpha);
 }

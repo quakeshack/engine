@@ -6,7 +6,7 @@ import { BrushModelRenderer, resolveBrushBloomContributionStrength } from '../..
 import { SimpleSkyBox } from '../../source/engine/client/renderer/scene/Sky.ts';
 import { createRenderedWorld } from '../support/bspTree.ts';
 import { WorldRenderState } from '../../source/engine/common/model/WorldRenderState.ts';
-import { BrushModel, type WorldTurbulentChainInfo } from '../../source/engine/common/model/BSP.ts';
+import { BrushModel, type WorldSurfaceBatch } from '../../source/engine/common/model/BSP.ts';
 import { BaseMaterial, MaterialFlags } from '../../source/engine/client/renderer/models/Materials.ts';
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
@@ -351,7 +351,7 @@ void describe('BrushModelRenderer.getWorldTurbulentChains', () => {
       const items = renderer.getWorldTurbulentChains(model, new Vector(0, 0, 0));
 
       assert.equal(items.length, 1);
-      assert.equal(items[0].chain, chain);
+      assert.equal(items[0].batch, chain);
       assert.equal(items[0].dist, 96);
     } finally {
       restoreEngineMocks();
@@ -564,7 +564,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
     const renderer = new BrushModelRenderer();
     const model = createEntityModel(MaterialFlags.MF_TURBULENT);
 
-    renderer.prepareLiquidRefraction(createWorld('1'));
+    renderer.prepareRefraction(createWorld('1'));
 
     assert(renderer.refractsEntity(model, createEntity(model, 0.5)));
   });
@@ -573,7 +573,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
     const renderer = new BrushModelRenderer();
     const model = createEntityModel(MaterialFlags.MF_TURBULENT);
 
-    renderer.prepareLiquidRefraction(createWorld('1'));
+    renderer.prepareRefraction(createWorld('1'));
 
     assert(!renderer.refractsEntity(model, createEntity(model, 1.0)));
   });
@@ -582,7 +582,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
     const renderer = new BrushModelRenderer();
     const model = createEntityModel(MaterialFlags.MF_TRANSPARENT);
 
-    renderer.prepareLiquidRefraction(createWorld('1'));
+    renderer.prepareRefraction(createWorld('1'));
 
     assert(!renderer.refractsEntity(model, createEntity(model, 0.5)));
   });
@@ -591,7 +591,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
     const renderer = new BrushModelRenderer();
     const model = createEntityModel(MaterialFlags.MF_TURBULENT);
 
-    renderer.prepareLiquidRefraction(createWorld(undefined));
+    renderer.prepareRefraction(createWorld(undefined));
 
     assert(!renderer.refractsEntity(model, createEntity(model, 0.5)));
   });
@@ -601,7 +601,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
     const model = createEntityModel(MaterialFlags.MF_TURBULENT);
 
     PostProcess.active = false;
-    renderer.prepareLiquidRefraction(createWorld('1'));
+    renderer.prepareRefraction(createWorld('1'));
 
     assert(!renderer.refractsEntity(model, createEntity(model, 0.5)));
   });
@@ -611,7 +611,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
    * @param wateralpha The `_wateralpha` value, `undefined` for opaque water.
    * @returns The world and its water chain.
    */
-  function createWaterWorld(wateralpha: string | undefined): { world: BrushModel; chain: WorldTurbulentChainInfo } {
+  function createWaterWorld(wateralpha: string | undefined): { world: BrushModel; chain: WorldSurfaceBatch } {
     const world = createWorld('1');
     const water = new BaseMaterial('*water1', 64, 64);
 
@@ -628,7 +628,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
     const restore = patchMembers(clientRuntimeState, { worldmodel: world });
 
     try {
-      renderer.prepareLiquidRefraction(world);
+      renderer.prepareRefraction(world);
 
       assert(renderer.refractsWorldTurbulentChain(world, chain));
     } finally {
@@ -642,7 +642,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
     const restore = patchMembers(clientRuntimeState, { worldmodel: world });
 
     try {
-      renderer.prepareLiquidRefraction(world);
+      renderer.prepareRefraction(world);
 
       assert(!renderer.refractsWorldTurbulentChain(world, chain));
     } finally {
@@ -654,8 +654,8 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
     const renderer = new BrushModelRenderer();
     const model = createEntityModel(MaterialFlags.MF_TURBULENT);
 
-    renderer.prepareLiquidRefraction(createWorld('1'));
-    renderer.prepareLiquidRefraction(null);
+    renderer.prepareRefraction(createWorld('1'));
+    renderer.prepareRefraction(null);
 
     assert(!renderer.refractsEntity(model, createEntity(model, 0.5)));
   });
@@ -740,7 +740,7 @@ void describe('BrushModelRenderer world liquids listed by several leafs', () => 
       const items = new BrushModelRenderer().getWorldTurbulentChains(model, new Vector(0, 0, 0));
 
       assert.equal(items.length, 2);
-      assert.notEqual(items[0].chain, items[1].chain);
+      assert.notEqual(items[0].batch, items[1].batch);
     } finally {
       restore();
     }
@@ -758,9 +758,195 @@ void describe('BrushModelRenderer world liquids listed by several leafs', () => 
       const items = new BrushModelRenderer().getWorldTurbulentChains(model, new Vector(0, 0, 0));
 
       assert.equal(items.length, 1);
-      assert.equal(items[0].chain, state.turbulentChains[0][0]);
+      assert.equal(items[0].batch, state.turbulentChains[0][0]);
     } finally {
       restore();
     }
+  });
+});
+
+void describe('BrushModelRenderer translucent world surfaces', () => {
+  const previousContext = GL.gl;
+  let restores: Array<() => void> = [];
+
+  beforeEach(() => {
+    const recording = createRecordingContext();
+    GL.gl = recording.gl;
+    publishGlReady(recording.gl);
+    restores = [
+      patchMembers(rendererCvars, { refraction: { value: 1 } }),
+      patchMembers(PostProcess, { active: true }),
+      patchMembers(Camera, { CullBox: () => false }),
+    ];
+  });
+
+  afterEach(() => {
+    for (const restore of restores.reverse()) {
+      restore();
+    }
+    eventBus.publish('gl.shutdown');
+    GL.gl = previousContext;
+  });
+
+  /**
+   * Builds a triangle facing up at a height.
+   * @param texture Its texture index.
+   * @param z Its height.
+   * @returns The face.
+   */
+  function createFace(texture: number, z: number): Face {
+    return {
+      texture,
+      styles: [],
+      lightofs: -1,
+      normal: new Vector(0, 0, 1),
+      verts: [[0, 0, z, 0, 0, 0, 0], [64, 0, z, 1, 0, 0, 0], [64, 64, z, 1, 1, 0, 0]],
+    } as unknown as Face;
+  }
+
+  /**
+   * Builds a material.
+   * @param name Its name.
+   * @param flags Its flags.
+   * @returns The material.
+   */
+  function createMaterial(name: string, flags: MaterialFlags): BaseMaterial {
+    const material = new BaseMaterial(name, 64, 64);
+    material.flags = flags;
+    return material;
+  }
+
+  /**
+   * Builds a world of two leafs with a floor in leaf 0, a fence and a window listed by both leafs (they sit on the
+   * boundary), and builds its display lists.
+   * @returns The world.
+   */
+  function buildWorld(): BrushModel {
+    const model = createRenderedWorld([
+      { firstMarkSurface: 0, numMarkSurfaces: 3 },
+      { firstMarkSurface: 3, numMarkSurfaces: 2 },
+    ], {
+      textures: [
+        createMaterial('floor', MaterialFlags.MF_NONE),
+        createMaterial('{fence', MaterialFlags.MF_TRANSPARENT),
+        createMaterial('window', MaterialFlags.MF_TRANSPARENT | MaterialFlags.MF_REFRACT),
+      ],
+      faces: [createFace(0, 0), createFace(1, 32), createFace(2, 64)],
+      marksurfaces: [0, 1, 2, 1, 2],
+      firstface: 0,
+      numfaces: 3,
+    });
+
+    new BrushModelRenderer()['_buildWorldModelDisplayLists'](model);
+
+    return model;
+  }
+
+  void test('translucent surfaces are not among the chains the opaque and shadow passes draw', () => {
+    const state = WorldRenderState.of(buildWorld());
+
+    assert.deepEqual(state.cmds[0].map((chain) => chain[0]), [0]);
+    assert.equal(state.skychains[0], 1);
+    assert.deepEqual(state.cmds[1], []);
+  });
+
+  void test('a translucent face listed by two leafs is one batch both leafs refer to', () => {
+    const state = WorldRenderState.of(buildWorld());
+
+    assert.equal(state.transparentBatches[0].length, 2);
+    assert.equal(state.transparentBatches[0][0], state.transparentBatches[1][0]);
+    assert.equal(state.transparentBatches[0][1], state.transparentBatches[1][1]);
+  });
+
+  void test('a translucent batch is drawn once when both leafs are visible', () => {
+    const model = buildWorld();
+
+    WorldRenderState.of(model).visframes.fill(Visibility.visframecount);
+
+    const items = new BrushModelRenderer().getWorldTransparentBatches(model, new Vector(0, 0, 0));
+
+    assert.deepEqual(items.map((item) => item.batch.texture).sort(), [1, 2]);
+  });
+
+  void test('a window refracts while refraction is on, a fence never does', () => {
+    const model = buildWorld();
+    const renderer = new BrushModelRenderer();
+    const [fence, window] = WorldRenderState.of(model).transparentBatches[0];
+
+    renderer.prepareRefraction(model);
+
+    assert(!renderer.refractsWorldBatch(model, fence));
+    assert(renderer.refractsWorldBatch(model, window));
+  });
+
+  void test('a window does not refract when the player turned refraction off', () => {
+    const model = buildWorld();
+    const renderer = new BrushModelRenderer();
+    const window = WorldRenderState.of(model).transparentBatches[0][1];
+
+    restores.push(patchMembers(rendererCvars, { refraction: { value: 0 } }));
+    renderer.prepareRefraction(model);
+
+    assert(!renderer.refractsWorldBatch(model, window));
+  });
+});
+
+void describe('BrushModelRenderer glass of brush entities', () => {
+  let restores: Array<() => void> = [];
+
+  beforeEach(() => {
+    restores = [
+      patchMembers(rendererCvars, { refraction: { value: 1 }, drawturbulents: { value: 1 } }),
+      patchMembers(PostProcess, { active: true }),
+    ];
+  });
+
+  afterEach(() => {
+    for (const restore of restores.reverse()) {
+      restore();
+    }
+  });
+
+  /**
+   * Builds an inline brush model with one chain of a material.
+   * @param flags The material's flags.
+   * @returns The model.
+   */
+  function createModel(flags: MaterialFlags): BrushModel {
+    const model = new BrushModel('*1');
+    const material = new BaseMaterial('window', 64, 64);
+
+    material.flags = flags;
+    model.submodel = true;
+    model.textures.push(material);
+    model.chains.push([0, 0, 6]);
+
+    return model;
+  }
+
+  /**
+   * Prepares a renderer for a pass on a map that does not ask its liquids to refract: glass refracts anyway.
+   * @returns The renderer.
+   */
+  function createRenderer(): BrushModelRenderer {
+    const renderer = new BrushModelRenderer();
+
+    renderer.prepareRefraction(new BrushModel('maps/test.bsp'));
+
+    return renderer;
+  }
+
+  void test('translucent glass of an opaque entity refracts', () => {
+    const model = createModel(MaterialFlags.MF_TRANSPARENT | MaterialFlags.MF_REFRACT);
+
+    assert(createRenderer().refractsEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict));
+  });
+
+  void test('an opaque refracting material refracts only when the entity is translucent', () => {
+    const model = createModel(MaterialFlags.MF_REFRACT);
+    const renderer = createRenderer();
+
+    assert(!renderer.refractsEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict));
+    assert(renderer.refractsEntity(model, { model, alpha: 0.5 } as unknown as ClientEdict));
   });
 });

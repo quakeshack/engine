@@ -50,7 +50,10 @@ through it, so `ERROR: 2:41: 'x' : undeclared identifier` is reported as
 | Chunk | Contents | Included by |
 | :--- | :--- | :--- |
 | `depth.glsl` | `uPerspective`, `linearizeDepth` | `fog-volume`, `turbulent`, `underwater-fog` (.frag) |
-| `refraction.glsl` | `tSceneColor`, `tSceneEmissive`, `uRefraction`, `refractedScreenUV(depth, uv, distortion, surfaceDepth)` (shift, falling back where the sample is in front of the surface), `composeRefraction(scene, uv, surface, alpha)`; includes `depth.glsl` | `turbulent.frag` |
+| `refraction.glsl` | `tSceneColor`, `tSceneEmissive`, `uRefraction`, `refractedScreenUV(depth, uv, distortion, surfaceDepth)` (shift, falling back where the sample is in front of the surface), `composeRefraction(scene, uv, surface, alpha)`; includes `depth.glsl` | `turbulent`, `brush-refract` (.frag) |
+| `brush-vertex.glsl` | the vertex stage of a brush surface, `emitBrushVertex()` | `brush`, `brush-refract` (.vert) |
+| `brush-fragment-inputs.glsl` | the uniforms, samplers (no shadow maps) and inputs of the brush fragment stage | `brush-shading.glsl` |
+| `brush-shading.glsl` | `pointLightAttenuation(position, radius, color)`, `shadeBrushSurface(shadow, pointDlight, color, emissive, alpha)` (everything but the shadows); includes `brush-fragment-inputs.glsl` | `brush`, `brush-refract` (.frag) |
 | `hash.glsl` | `hash2D` | `shadow-alias`, `shadow-brush` (.frag) |
 | `shadow-point.glsl` | `uPointShadowBias`, `uPointShadowNormalBias`, `samplePointShadowMap(map, position, normal, light, far)` (normal offset and PCF in the receiver's plane, the only point shadow bias there is) | `brush.frag`, `shadow-entity.glsl` |
 | `shadow-entity.glsl` | entity shadow uniforms, `vWorldPos`, `sampleLocalShadow`, `samplePointShadow` | `alias`, `mesh`, `player` (.frag) |

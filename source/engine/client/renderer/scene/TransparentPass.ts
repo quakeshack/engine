@@ -1,6 +1,6 @@
 import type Vector from '../../../../shared/Vector.ts';
 import { eventBus } from '../../../common/EventBus.ts';
-import { BrushModel, type FogVolumeInfo, type WorldTurbulentChainInfo } from '../../../common/model/BSP.ts';
+import { BrushModel, type FogVolumeInfo, type WorldSurfaceBatch } from '../../../common/model/BSP.ts';
 import { SpriteModel } from '../../../common/model/SpriteModel.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
@@ -28,13 +28,14 @@ eventBus.subscribe('gl.shutdown', () => {
  * What a blended thing is, which decides how it is drawn and how it ranks against another at the same depth.
  */
 export enum TransparentKind {
-  WorldLeaf = 0,
+  WorldSurface = 0,
   Turbulent = 1,
   FogVolume = 2,
   Entity = 3,
   Sprite = 4,
   Decal = 5,
   Particle = 6,
+  RefractiveWorldSurface = 7,
 }
 
 /**
@@ -49,7 +50,7 @@ export interface SortKindDistance {
  * One blended thing of a frame, with what it takes to draw it.
  */
 export interface TransparentItem extends SortKindDistance {
-  readonly data: number | WorldTurbulentChainInfo | FogVolumeInfo | ClientEdict | Particle | Decal;
+  readonly data: WorldSurfaceBatch | FogVolumeInfo | ClientEdict | Particle | Decal;
 }
 
 /** Depths closer than this count as equal, so fog and the water that shares its boundary rank by kind. */
@@ -88,7 +89,8 @@ class TransparentPass {
         return 7;
       case TransparentKind.Turbulent:
         return 6;
-      case TransparentKind.WorldLeaf:
+      case TransparentKind.WorldSurface:
+      case TransparentKind.RefractiveWorldSurface:
         return 5;
       case TransparentKind.Entity:
         return 4;
@@ -185,15 +187,19 @@ class TransparentPass {
     if (worldmodel !== null) {
       console.assert(brushRenderer !== null, 'brush renderer required');
 
-      const worldLeaves = brushRenderer!.getWorldTransparentLeaves(worldmodel, vieworg);
-      for (let i = 0; i < worldLeaves.length; i++) {
-        items.push({ dist: worldLeaves[i].dist, kind: TransparentKind.WorldLeaf, data: worldLeaves[i].leaf });
+      brushRenderer!.prepareRefraction(worldmodel);
+
+      const worldSurfaces = brushRenderer!.getWorldTransparentBatches(worldmodel, vieworg);
+      for (let i = 0; i < worldSurfaces.length; i++) {
+        const batch = worldSurfaces[i].batch;
+        const kind = brushRenderer!.refractsWorldBatch(worldmodel, batch) ? TransparentKind.RefractiveWorldSurface : TransparentKind.WorldSurface;
+        items.push({ dist: worldSurfaces[i].dist, kind, data: batch });
       }
 
       if (rendererCvars.drawturbulents.value !== 0) {
         const turbulentChains = brushRenderer!.getWorldTurbulentChains(worldmodel, vieworg);
         for (let i = 0; i < turbulentChains.length; i++) {
-          items.push({ dist: turbulentChains[i].dist, kind: TransparentKind.Turbulent, data: turbulentChains[i].chain });
+          items.push({ dist: turbulentChains[i].dist, kind: TransparentKind.Turbulent, data: turbulentChains[i].batch });
         }
       }
 
@@ -282,7 +288,6 @@ class TransparentPass {
 
     items.sort(TransparentPass.Compare);
 
-    TransparentPass.#brushRenderer?.prepareLiquidRefraction(TransparentPass.#worldmodel);
     const copyBefore = TransparentPass.PlanSceneCopies(items, TransparentPass.#isRefractive, TransparentPass.#copyBefore);
 
     gl.depthMask(false);
@@ -323,7 +328,7 @@ class TransparentPass {
     gl.disable(gl.BLEND);
     gl.depthMask(true);
 
-    TransparentPass.#brushRenderer?.prepareLiquidRefraction(null);
+    TransparentPass.#brushRenderer?.prepareRefraction(null);
 
     // do not keep the frame's entities and particles alive
     items.length = 0;
@@ -347,8 +352,10 @@ class TransparentPass {
     }
 
     switch (item.kind) {
+      case TransparentKind.RefractiveWorldSurface:
+        return true;
       case TransparentKind.Turbulent:
-        return worldmodel !== null && brushRenderer.refractsWorldTurbulentChain(worldmodel, item.data as WorldTurbulentChainInfo);
+        return worldmodel !== null && brushRenderer.refractsWorldTurbulentChain(worldmodel, item.data as WorldSurfaceBatch);
       case TransparentKind.Entity: {
         const entity = item.data as ClientEdict;
         return entity.model !== null && brushRenderer.refractsEntity(entity.model, entity);
@@ -366,7 +373,8 @@ class TransparentPass {
     const spriteRenderer = TransparentPass.#spriteRenderer;
 
     switch (TransparentPass.#activeKind) {
-      case TransparentKind.WorldLeaf:
+      case TransparentKind.WorldSurface:
+      case TransparentKind.RefractiveWorldSurface:
         brushRenderer?.endWorldTransparentPass();
         GL.StreamFlush();
         break;
@@ -411,13 +419,21 @@ class TransparentPass {
     gl.depthMask(false);
 
     switch (kind) {
-      case TransparentKind.WorldLeaf:
+      case TransparentKind.WorldSurface:
         if (brushRenderer === null || worldmodel === null) {
           return false;
         }
         gl.enable(gl.CULL_FACE);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         brushRenderer.beginWorldTransparentPass(worldmodel);
+        return true;
+      case TransparentKind.RefractiveWorldSurface:
+        if (brushRenderer === null || worldmodel === null) {
+          return false;
+        }
+        gl.enable(gl.CULL_FACE);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        brushRenderer.beginWorldRefractivePass(worldmodel);
         return true;
       case TransparentKind.Turbulent:
         if (brushRenderer === null || worldmodel === null) {
@@ -477,17 +493,18 @@ class TransparentPass {
     const spriteRenderer = TransparentPass.#spriteRenderer;
 
     switch (item.kind) {
-      case TransparentKind.WorldLeaf:
+      case TransparentKind.WorldSurface:
+      case TransparentKind.RefractiveWorldSurface:
         if (brushRenderer === null || worldmodel === null) {
           break;
         }
-        brushRenderer.renderWorldTransparentLeaf(worldmodel, item.data as number);
+        brushRenderer.renderWorldTransparentBatch(worldmodel, item.data as WorldSurfaceBatch);
         break;
       case TransparentKind.Turbulent:
         if (brushRenderer === null || worldmodel === null) {
           break;
         }
-        brushRenderer.renderWorldTurbulentChain(worldmodel, item.data as WorldTurbulentChainInfo);
+        brushRenderer.renderWorldTurbulentChain(worldmodel, item.data as WorldSurfaceBatch);
         break;
       case TransparentKind.FogVolume:
         if (brushRenderer === null || worldmodel === null) {

@@ -39,7 +39,7 @@ void describe('TransparentPass.Compare', () => {
       TransparentKind.Decal,
       TransparentKind.Sprite,
       TransparentKind.Entity,
-      TransparentKind.WorldLeaf,
+      TransparentKind.WorldSurface,
       TransparentKind.Turbulent,
       TransparentKind.FogVolume,
     ];
@@ -50,7 +50,7 @@ void describe('TransparentPass.Compare', () => {
     assert.deepEqual(items.map((item) => item.kind), [
       TransparentKind.FogVolume,
       TransparentKind.Turbulent,
-      TransparentKind.WorldLeaf,
+      TransparentKind.WorldSurface,
       TransparentKind.Entity,
       TransparentKind.Sprite,
       TransparentKind.Decal,

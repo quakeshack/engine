@@ -220,9 +220,10 @@ class R {
     }
 
     // Enable post-process FBO (and thus depth texture) whenever turbulents, fog
-    // volumes, or underwater fog are active so shaders can sample scene depth.
+    // volumes, underwater fog or refracting materials are active so shaders can sample scene depth and color.
     PostProcess.requestSceneCapture(rendererCvars.drawturbulents.value !== 0 || worldmodel.fogVolumes.length > 0
-      || (waterfogEnabled && isUnderwater && rendererCvars.drawturbulents.value !== 0));
+      || (waterfogEnabled && isUnderwater && rendererCvars.drawturbulents.value !== 0)
+      || (rendererCvars.refraction.value > 0 && BrushModelRenderer.HasRefractingMaterials(worldmodel)));
   }
 
   /**

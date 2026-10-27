@@ -1,10 +1,10 @@
 # Refraction
 
-Translucent liquids can refract what is behind them: instead of blending over the scene, the surface shows a copy of
-it, shifted along the slope of the waves that warp the liquid's texture. Water, slime, lava and teleporters all take
-part, in the world and in brush entities (`func_door`, `func_wall`, ...).
+Translucent liquids and glass can refract what is behind them: instead of blending over the scene, the surface shows
+a copy of it, shifted. Liquids shift it along the slope of the waves that warp their texture, glass along its normal
+map. Both work in the world and in brush entities (`func_door`, `func_wall`, ...).
 
-## For mappers
+## Liquids
 
 Refraction is opt-in per map. Set `_qs_waterrefraction` on `worldspawn` to a strength:
 
@@ -24,10 +24,28 @@ Refraction is opt-in per map. Set `_qs_waterrefraction` on `worldspawn` to a str
 - It works seen from above and from inside the liquid. Together with `_qs_waterfog` (see
   [Volumetric Fog](volumetric-fog.md)) the depth absorption follows the shifted bottom.
 
+## Glass
+
+A material refracts when its `.qsmat.json` entry has the flag `MF_REFRACT` (see [QSMAT](qsmat-format.md)):
+
+```json
+"WINDOW1": {
+  "diffuse": "textures/windows/window1_d.png",
+  "normal": "textures/windows/window1_n.png",
+  "flags": ["MF_TRANSPARENT", "MF_REFRACT"]
+}
+```
+
+- The surface has to be translucent: `MF_TRANSPARENT` and an alpha channel in the `diffuse` image (its alpha is how
+  much of the glass covers what is behind it), or a brush entity with `alpha` below 1.
+- The normal map bends the view; without one the glass is flat and bends nothing, which is what flat glass does.
+- Glass receives no shadows, it lets the light through. Dynamic lights still light it.
+- It needs no worldspawn key; `r_refraction` turns it off.
+
 ## For players
 
-`r_refraction` (archived, default `1`) scales the strength the map asks for; `0` turns refraction off and the liquids
-are blended as without it.
+`r_refraction` (archived, default `1`) scales the strength the map asks for (glass has strength 1); `0` turns
+refraction off and liquids and glass are blended as without it.
 
 ## How it works
 
@@ -36,10 +54,15 @@ are blended as without it.
   the color and emissive (`PostProcess.copySceneColor`) drawn so far, so whatever was drawn before the run, other
   translucent things included, shows through it. Within a run nothing is copied again: a refracting surface does not
   see another refracting surface of its run behind it (water seen through water).
-- `BrushModelRenderer` decides which items refract (`refractsWorldTurbulentChain`, `refractsEntity`) with the same
-  alpha the draw uses, so a liquid samples a copy only when one was made for it. The strength is set for the pass by
-  `prepareLiquidRefraction` and back to 0 after it.
-- The turbulent shader samples the copies through `include/refraction.glsl`. A shifted sample that lands on something
+- `BrushModelRenderer` decides which items refract (`refractsWorldTurbulentChain`, `refractsWorldBatch`,
+  `refractsEntity`) with the same alpha the draw uses, so a surface samples a copy only when one was made for it. The
+  strengths are set for the pass by `prepareRefraction` and back to 0 after it. Refracting world glass is its own
+  item kind (`RefractiveWorldSurface`), drawn by the `brush-refract` program.
+- The world's liquids and translucent surfaces are packed once per face, in batches shared by the leafs that list
+  them, and handed out once per frame, so a face on a leaf boundary is not blended over itself.
+- Within a brush entity, glass is drawn after its other translucent surfaces and does not see them through itself:
+  the scene was copied before the entity.
+- The `turbulent` and `brush-refract` shaders sample the copies through `include/refraction.glsl`. A shifted sample that lands on something
   in front of the surface falls back to the unshifted one, so near geometry does not bleed into the liquid. The
   emissive buffer is refracted too, so bloom of what is behind the surface is kept.
 - Refraction needs the scene capture, which every frame with liquids has. Without it nothing refracts.

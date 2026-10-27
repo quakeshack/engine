@@ -1,6 +1,6 @@
 # Screen-space refraction for translucent liquids and glass
 
-**Status:** Phases 1 and 2 shipped (2026-10), and the duplicate liquid draws found in Phase 2 are fixed; Phase 3 (glass) next. Water and glass ship together in this pass.
+**Status:** Done (2026-10): Phases 1 to 3 shipped, and the duplicate liquid and translucent draws found on the way are fixed. Water and glass ship together in this pass.
 
 ## Context
 
@@ -228,6 +228,40 @@ qsmat materials, the glass of Phase 3) sit in the per-leaf opaque chains and are
 by `renderWorldTransparentLeaf`. The `RefractiveWorldLeaf` items of design D have to be built the same way as the
 liquid batches (packed once, shared by the listing leafs, handed out once per frame), and the plain transparent
 world leafs should move to it too.
+
+### What actually shipped in Phase 3
+
+- `MaterialFlags.MF_REFRACT = 32`, set by qsmat (`QSMatLoader` resolves flag names through the enum, nothing else to
+  change there). Glass refracts with strength `r_refraction`, no worldspawn key. The flag on liquids does nothing:
+  liquids follow `_qs_waterrefraction` (the plan had "or the material has `MF_REFRACT`"; dropped, one rule per kind
+  of surface is easier to explain).
+- Shaders: `brush.vert` became the chunk `brush-vertex.glsl` (`emitBrushVertex()`), shared with `brush-refract.vert`.
+  The fragment stage became `brush-fragment-inputs.glsl` and `brush-shading.glsl` (`shadeBrushSurface(shadow,
+  pointDlight, ...)`, `pointLightAttenuation()`); `brush.frag` keeps its shadow sampling and calls it.
+  `brush-refract.frag` passes shadow 1 and the unshadowed point lights (the developer: glass lets the light through,
+  so no shadows, but dynamic lights still light it) and takes the distortion from the normal map's xy.
+  Browser pass: `capture.mjs` before/after on `start`, three captures a side, no view flagged and 0 differing pixels
+  outside the noise mask in every view that could be masked.
+- Sampler units: `brush-refract` lists `tShadowMap` at index 10 although it does not sample it, so the scene copies
+  land on 11 to 13. WebGL rejects a draw whose 2D shadow sampler finds a texture without compare mode, and 10 is
+  `brush`'s; on 11 to 13 the other programs only have cube shadow samplers, which read another target. The copies
+  are put back to the empty texture after the pass (`_unbindSceneInputs`, renamed from the turbulent-only version).
+  Verified in the browser: with shadows and point shadows on, the units `brush` reads are identical before and after
+  a glass draw.
+- World translucent surfaces (`MF_TRANSPARENT`, not liquids) left the per-leaf opaque chains: they are packed once in
+  batches shared by their leafs (`WorldRenderState.transparentBatches`), like the liquids, with the vertex layout
+  of the opaque surfaces factored into `#pushOpaqueVertices`. `WorldTurbulentChainInfo` is now `WorldSurfaceBatch`.
+  `TransparentKind.WorldLeaf` became `WorldSurface` (one item per batch instead of per leaf, sorted by tight bounds)
+  plus `RefractiveWorldSurface` for the batches that refract, drawn by `beginWorldRefractivePass`. The dead world
+  pass-2 path (`renderWorldTransparent`, `getWorldTransparentLeaves`, `renderWorldTransparentLeaf`) is gone.
+- Brush entities: `_renderTransparentSurfaces(..., refractive)` runs twice in pass 2 when the entity has refracting
+  glass, the second time with `brush-refract`; glass therefore does not see the entity's other translucent surfaces
+  through itself. A material that is not PBR gets the flat normal map bound, so it never bends by accident.
+- `R.PreRenderScene` requests the scene capture when `r_refraction` is on and the map has an `MF_REFRACT` material.
+- Browser pass on brush-entity glass built in the page (no qsmat file): flat normal = plain alpha blend (0.3/255),
+  `r_refraction 0` identical (0.03), a wavy normal map bends what is behind the pane, a monster in front stays crisp;
+  MSAA 0 and 4, no frame violations or WebGL errors. Not covered: the qsmat file path itself, and the bending of
+  world glass in numbers (the test pane stood in front of animated sky).
 
 ## Testing
 

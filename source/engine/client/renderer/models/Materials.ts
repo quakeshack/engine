@@ -7,6 +7,7 @@ export enum MaterialFlags {
   MF_TURBULENT = 4,
   MF_SKIP = 8,
   MF_FULLBRIGHT = 16,
+  MF_REFRACT = 32,
 }
 
 /**

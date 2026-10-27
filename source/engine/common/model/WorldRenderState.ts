@@ -1,4 +1,4 @@
-import type { BrushModel, WorldTurbulentChainInfo } from './BSP.ts';
+import type { BrushModel, WorldSurfaceBatch } from './BSP.ts';
 
 /**
  * What the renderer keeps per node and leaf of one view of a map: which of them the last marking revealed, the draw
@@ -28,7 +28,13 @@ export class WorldRenderState {
   readonly cmds: number[][][];
 
   /** Tight turbulent draw batches of each leaf for sorted world rendering. */
-  readonly turbulentChains: WorldTurbulentChainInfo[][];
+  readonly turbulentChains: WorldSurfaceBatch[][];
+
+  /**
+   * Tight batches of the translucent surfaces of each leaf that are not liquids (fences, glass), for sorted world
+   * rendering. They are not among the draw chains of `cmds`. A batch on the boundary of leafs is in each of them.
+   */
+  readonly transparentBatches: WorldSurfaceBatch[][];
 
   /** Bounds of each leaf, six values, grown while the display lists are packed. */
   readonly leafBounds: Float32Array;
@@ -46,6 +52,7 @@ export class WorldRenderState {
     this.waterchains = new Int32Array(leafCount);
     this.cmds = Array.from({ length: leafCount }, () => []);
     this.turbulentChains = Array.from({ length: leafCount }, () => []);
+    this.transparentBatches = Array.from({ length: leafCount }, () => []);
     this.leafBounds = model.leafTable.bounds.slice();
   }
 
@@ -73,6 +80,7 @@ export class WorldRenderState {
     for (let leaf = 0; leaf < this.cmds.length; leaf++) {
       this.cmds[leaf].length = 0;
       this.turbulentChains[leaf].length = 0;
+      this.transparentBatches[leaf].length = 0;
     }
   }
 }
