@@ -18,6 +18,7 @@ This directory contains documentation for the QuakeShack engine codebase and fea
 - [Menu System](menu-system.md) - Stack-based, widget-driven menu framework and the `ClientEngineAPI.Menu` API for game code.
 - [Post-Process Effects](post-process-effects.md) - Game-controlled screen-space effects (color grading, blur, color shifts): stacks, channels, pulses, stages and how to extend them.
 - [QSMAT (QuakeShack Material) Format](qsmat-format.md) - Details on the `.qsmat.json` file format used to define PBR materials for Quake BSP maps.
+- [Refraction](refraction.md) - Screen-space refraction of translucent liquids: the `_qs_waterrefraction` worldspawn key, `r_refraction` and how the scene copies are scheduled.
 - [Shader Chunks](shader-chunks.md) - `#include` for GLSL: the chunk folder, once-per-stage expansion, `#line` based error mapping, the list of chunks and how to add one.
 - [Traceline API](traceline.md) - Contract and semantics of the gameplay-facing trace query used by server and client game logic.
 - [Volumetric Fog](volumetric-fog.md) - Guide on creating atmospheric fog volumes in maps.

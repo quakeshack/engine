@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
 import { BrushModelRenderer, resolveBrushBloomContributionStrength } from '../../source/engine/client/renderer/models/BrushModelRenderer.ts';
 import { SimpleSkyBox } from '../../source/engine/client/renderer/scene/Sky.ts';
 import { createRenderedWorld } from '../support/bspTree.ts';
 import { WorldRenderState } from '../../source/engine/common/model/WorldRenderState.ts';
-import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
+import { BrushModel, type WorldTurbulentChainInfo } from '../../source/engine/common/model/BSP.ts';
+import { BaseMaterial, MaterialFlags } from '../../source/engine/client/renderer/models/Materials.ts';
+import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
+import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
+import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
+import { patchMembers } from '../support/clientState.ts';
 import type { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import type { Face } from '../../source/engine/common/model/BaseModel.ts';
 import type R from '../../source/engine/client/R.ts';
@@ -451,5 +456,201 @@ void describe('SimpleSkyBox.shutdown', () => {
     skybox.shutdown();
 
     assert.deepEqual(frees, []);
+  });
+});
+
+void describe('BrushModelRenderer.ResolveLiquidRefraction', () => {
+  void test('is off for a map that does not ask for it', () => {
+    assert.equal(BrushModelRenderer.ResolveLiquidRefraction(undefined, 1.0), 0.0);
+  });
+
+  void test('takes the strength of the map, scaled by the player', () => {
+    assert.equal(BrushModelRenderer.ResolveLiquidRefraction('1', 1.0), 1.0);
+    assert.equal(BrushModelRenderer.ResolveLiquidRefraction('0.5', 2.0), 1.0);
+  });
+
+  void test('is off when the player turned it off, whatever the map asks for', () => {
+    assert.equal(BrushModelRenderer.ResolveLiquidRefraction('1', 0.0), 0.0);
+  });
+
+  void test('is off for a value that is not a positive number', () => {
+    assert.equal(BrushModelRenderer.ResolveLiquidRefraction('0', 1.0), 0.0);
+    assert.equal(BrushModelRenderer.ResolveLiquidRefraction('-1', 1.0), 0.0);
+    assert.equal(BrushModelRenderer.ResolveLiquidRefraction('yes', 1.0), 0.0);
+  });
+});
+
+void describe('BrushModelRenderer liquids of brush entities', () => {
+  const worldspawn = { model: null, alpha: 1.0 } as unknown as ClientEdict;
+  let restores: Array<() => void> = [];
+
+  beforeEach(() => {
+    restores = [
+      patchMembers(rendererCvars, { refraction: { value: 1 }, drawturbulents: { value: 1 } }),
+      patchMembers(clientRuntimeState, { clientEntities: { getEntity: () => worldspawn } }),
+      patchMembers(PostProcess, { active: true }),
+    ];
+  });
+
+  afterEach(() => {
+    for (const restore of restores.reverse()) {
+      restore();
+    }
+  });
+
+  /**
+   * Builds a world whose worldspawn may ask for refraction.
+   * @param waterrefraction The `_qs_waterrefraction` value, `undefined` for none.
+   * @returns The world model.
+   */
+  function createWorld(waterrefraction: string | undefined): BrushModel {
+    const world = new BrushModel('maps/test.bsp');
+
+    world.worldspawnInfo._qs_waterrefraction = waterrefraction;
+
+    return world;
+  }
+
+  /**
+   * Builds an inline brush model with one chain per material.
+   * @param flags The flags of each chain's material.
+   * @returns The model.
+   */
+  function createEntityModel(...flags: MaterialFlags[]): BrushModel {
+    const model = new BrushModel('*1');
+
+    model.submodel = true;
+    for (let i = 0; i < flags.length; i++) {
+      const material = new BaseMaterial(`texture${i}`, 64, 64);
+      material.flags = flags[i];
+      model.textures.push(material);
+      model.chains.push([i, 0, 6]);
+    }
+
+    return model;
+  }
+
+  /**
+   * Builds the part of a brush entity the renderer reads.
+   * @param model The model it draws.
+   * @param alpha How opaque it is.
+   * @returns The entity.
+   */
+  function createEntity(model: BrushModel, alpha: number): ClientEdict {
+    return { model, alpha } as unknown as ClientEdict;
+  }
+
+  void test('an opaque entity with water is drawn in the transparent pass, nothing else draws its liquids', () => {
+    const renderer = new BrushModelRenderer();
+    const model = createEntityModel(MaterialFlags.MF_NONE, MaterialFlags.MF_TURBULENT);
+
+    assert(renderer.rendersTransparentPass(model, createEntity(model, 1.0)));
+  });
+
+  void test('an opaque entity without liquids or glass stays out of the transparent pass', () => {
+    const renderer = new BrushModelRenderer();
+    const model = createEntityModel(MaterialFlags.MF_NONE);
+
+    assert(!renderer.rendersTransparentPass(model, createEntity(model, 1.0)));
+  });
+
+  void test('translucent water of an entity refracts when the map asks for it', () => {
+    const renderer = new BrushModelRenderer();
+    const model = createEntityModel(MaterialFlags.MF_TURBULENT);
+
+    renderer.prepareLiquidRefraction(createWorld('1'));
+
+    assert(renderer.refractsEntity(model, createEntity(model, 0.5)));
+  });
+
+  void test('opaque water does not refract, it shows nothing behind it', () => {
+    const renderer = new BrushModelRenderer();
+    const model = createEntityModel(MaterialFlags.MF_TURBULENT);
+
+    renderer.prepareLiquidRefraction(createWorld('1'));
+
+    assert(!renderer.refractsEntity(model, createEntity(model, 1.0)));
+  });
+
+  void test('a translucent entity without liquids does not refract', () => {
+    const renderer = new BrushModelRenderer();
+    const model = createEntityModel(MaterialFlags.MF_TRANSPARENT);
+
+    renderer.prepareLiquidRefraction(createWorld('1'));
+
+    assert(!renderer.refractsEntity(model, createEntity(model, 0.5)));
+  });
+
+  void test('nothing refracts on a map that does not ask for it', () => {
+    const renderer = new BrushModelRenderer();
+    const model = createEntityModel(MaterialFlags.MF_TURBULENT);
+
+    renderer.prepareLiquidRefraction(createWorld(undefined));
+
+    assert(!renderer.refractsEntity(model, createEntity(model, 0.5)));
+  });
+
+  void test('nothing refracts without the scene capture, there is no copy of the scene to sample', () => {
+    const renderer = new BrushModelRenderer();
+    const model = createEntityModel(MaterialFlags.MF_TURBULENT);
+
+    PostProcess.active = false;
+    renderer.prepareLiquidRefraction(createWorld('1'));
+
+    assert(!renderer.refractsEntity(model, createEntity(model, 0.5)));
+  });
+
+  /**
+   * Builds a world with one water chain, made translucent by the map or not.
+   * @param wateralpha The `_wateralpha` value, `undefined` for opaque water.
+   * @returns The world and its water chain.
+   */
+  function createWaterWorld(wateralpha: string | undefined): { world: BrushModel; chain: WorldTurbulentChainInfo } {
+    const world = createWorld('1');
+    const water = new BaseMaterial('*water1', 64, 64);
+
+    water.flags = MaterialFlags.MF_TURBULENT;
+    world.textures.push(water);
+    world.worldspawnInfo._wateralpha = wateralpha;
+
+    return { world, chain: { texture: 0, firstVertex: 0, vertexCount: 6, mins: new Vector(), maxs: new Vector() } };
+  }
+
+  void test('world water the map makes translucent refracts', () => {
+    const renderer = new BrushModelRenderer();
+    const { world, chain } = createWaterWorld('0.5');
+    const restore = patchMembers(clientRuntimeState, { worldmodel: world });
+
+    try {
+      renderer.prepareLiquidRefraction(world);
+
+      assert(renderer.refractsWorldTurbulentChain(world, chain));
+    } finally {
+      restore();
+    }
+  });
+
+  void test('opaque world water does not refract', () => {
+    const renderer = new BrushModelRenderer();
+    const { world, chain } = createWaterWorld(undefined);
+    const restore = patchMembers(clientRuntimeState, { worldmodel: world });
+
+    try {
+      renderer.prepareLiquidRefraction(world);
+
+      assert(!renderer.refractsWorldTurbulentChain(world, chain));
+    } finally {
+      restore();
+    }
+  });
+
+  void test('nothing refracts after the pass, a draw outside it must not sample its copies', () => {
+    const renderer = new BrushModelRenderer();
+    const model = createEntityModel(MaterialFlags.MF_TURBULENT);
+
+    renderer.prepareLiquidRefraction(createWorld('1'));
+    renderer.prepareLiquidRefraction(null);
+
+    assert(!renderer.refractsEntity(model, createEntity(model, 0.5)));
   });
 });

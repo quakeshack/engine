@@ -50,6 +50,7 @@ through it, so `ERROR: 2:41: 'x' : undeclared identifier` is reported as
 | Chunk | Contents | Included by |
 | :--- | :--- | :--- |
 | `depth.glsl` | `uPerspective`, `linearizeDepth` | `fog-volume`, `turbulent`, `underwater-fog` (.frag) |
+| `refraction.glsl` | `tSceneColor`, `tSceneEmissive`, `uRefraction`, `refractedScreenUV(depth, uv, distortion, surfaceDepth)` (shift, falling back where the sample is in front of the surface), `composeRefraction(scene, uv, surface, alpha)`; includes `depth.glsl` | `turbulent.frag` |
 | `hash.glsl` | `hash2D` | `shadow-alias`, `shadow-brush` (.frag) |
 | `shadow-point.glsl` | `uPointShadowBias`, `uPointShadowNormalBias`, `samplePointShadowMap(map, position, normal, light, far)` (normal offset and PCF in the receiver's plane, the only point shadow bias there is) | `brush.frag`, `shadow-entity.glsl` |
 | `shadow-entity.glsl` | entity shadow uniforms, `vWorldPos`, `sampleLocalShadow`, `samplePointShadow` | `alias`, `mesh`, `player` (.frag) |

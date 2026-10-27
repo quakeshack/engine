@@ -29,6 +29,9 @@ export interface WorldspawnInfo extends Record<string, string | undefined> {
   /** opt-in for automatically enabling water fog effects (1 for on, 0 for off) */
   _qs_waterfog?: string;
 
+  /** opt-in for the refraction of translucent liquids: its strength, 1 for the default one, 0 or absent for off */
+  _qs_waterrefraction?: string;
+
   /**
    * Opt-in for BSP38 (Quake II) `.wal` texture loading (1 for on, anything
    * else/absent for off). Off by default: a map whose textures are fully

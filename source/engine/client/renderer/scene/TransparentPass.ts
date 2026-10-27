@@ -75,6 +75,9 @@ class TransparentPass {
   /** The decal texture bound right now, so a run of decals with one texture flushes once. */
   static #currentDecalTexture: GLTexture | null = null;
 
+  /** Where the scene is copied for the refracting items of the frame being drawn, see `PlanSceneCopies()`. */
+  static readonly #copyBefore: boolean[] = [];
+
   /**
    * Resolves deterministic tie-break priority for the kinds.
    * @returns Higher values are sorted earlier on near-equal depth.
@@ -279,6 +282,9 @@ class TransparentPass {
 
     items.sort(TransparentPass.Compare);
 
+    TransparentPass.#brushRenderer?.prepareLiquidRefraction(TransparentPass.#worldmodel);
+    const copyBefore = TransparentPass.PlanSceneCopies(items, TransparentPass.#isRefractive, TransparentPass.#copyBefore);
+
     gl.depthMask(false);
 
     TransparentPass.#spriteRenderer = modelRendererRegistry.getRendererForModelClass(SpriteModel);
@@ -290,8 +296,19 @@ class TransparentPass {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
 
-      if (item.kind !== TransparentPass.#activeKind) {
+      const kindChanges = item.kind !== TransparentPass.#activeKind;
+
+      // ending a kind flushes what it streamed, which has to be in the copy
+      if (kindChanges) {
         TransparentPass.#endActiveKind();
+      }
+
+      if (copyBefore[i]) {
+        PostProcess.copySceneDepth();
+        PostProcess.copySceneColor();
+      }
+
+      if (kindChanges) {
         if (!TransparentPass.#beginKind(item.kind)) {
           continue;
         }
@@ -306,12 +323,39 @@ class TransparentPass {
     gl.disable(gl.BLEND);
     gl.depthMask(true);
 
+    TransparentPass.#brushRenderer?.prepareLiquidRefraction(null);
+
     // do not keep the frame's entities and particles alive
     items.length = 0;
+    copyBefore.length = 0;
     TransparentPass.#worldmodel = null;
     TransparentPass.#brushRenderer = null;
     TransparentPass.#spriteRenderer = null;
     TransparentPass.#currentDecalTexture = null;
+  }
+
+  /**
+   * Whether an item refracts what is behind it, so the scene has to be copied before it is drawn.
+   * @returns True for the liquids that refract in this pass.
+   */
+  static #isRefractive(this: void, item: TransparentItem): boolean {
+    const brushRenderer = TransparentPass.#brushRenderer;
+    const worldmodel = TransparentPass.#worldmodel;
+
+    if (brushRenderer === null) {
+      return false;
+    }
+
+    switch (item.kind) {
+      case TransparentKind.Turbulent:
+        return worldmodel !== null && brushRenderer.refractsWorldTurbulentChain(worldmodel, item.data as WorldTurbulentChainInfo);
+      case TransparentKind.Entity: {
+        const entity = item.data as ClientEdict;
+        return entity.model !== null && brushRenderer.refractsEntity(entity.model, entity);
+      }
+      default:
+        return false;
+    }
   }
 
   /**

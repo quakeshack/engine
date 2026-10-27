@@ -171,7 +171,31 @@ export class BrushModelRenderer extends ModelRenderer {
   /** The depth copy a fog volume pass samples, kept so that it can be bound again after a light probe was uploaded. */
   _fogVolumeDepth: GLRenderTexture | null = null;
 
+  /**
+   * How strongly translucent liquids refract in the transparent pass being drawn, 0 when they do not. Set by
+   * {@link BrushModelRenderer.prepareLiquidRefraction} for the pass and back to 0 after it, so nothing outside the
+   * pass samples a scene copy that was not made for it.
+   */
+  #liquidRefraction = 0.0;
+
   // ─── Static methods ───────────────────────────────────────────────
+
+  /**
+   * How strongly a map's translucent liquids refract.
+   * @param value The worldspawn `_qs_waterrefraction` value: a strength, `"1"` being the default one.
+   * @param scale The player's scale, `r_refraction`.
+   * @returns The strength, 0 when the map does not ask for refraction, the value is not a number, or the player
+   * turned it off.
+   */
+  static ResolveLiquidRefraction(value: string | undefined, scale: number): number {
+    if (value === undefined) {
+      return 0.0;
+    }
+
+    const strength = Number.parseFloat(value) * scale;
+
+    return Number.isFinite(strength) && strength > 0.0 ? strength : 0.0;
+  }
 
   /**
    * Determine whether a brush model should sample the shared deluxemap atlas.
@@ -410,7 +434,8 @@ export class BrushModelRenderer extends ModelRenderer {
       const chain = clmodel.chains[i];
       const material = clmodel.textures[chain[0]];
 
-      if ((material.flags & MaterialFlags.MF_TRANSPARENT) !== 0) {
+      // liquids of brush entities are drawn in the transparent pass, also opaque ones, see render()
+      if ((material.flags & (MaterialFlags.MF_TRANSPARENT | MaterialFlags.MF_TURBULENT)) !== 0) {
         return true;
       }
     }
@@ -487,7 +512,139 @@ export class BrushModelRenderer extends ModelRenderer {
       RenderStats.c_brush_vbos++;
       this._renderTransparentSurfaces(clmodel, e, viewMatrix);
       GL.UnbindVAO();
+
+      // Liquids of a brush entity have their own vertex array and program. Nothing draws an entity in pass 1, so
+      // they are drawn here, in the sorted transparent pass, opaque ones (which write depth) included.
+      if (rendererCvars.drawturbulents.value !== 0 && BrushModelRenderer.#hasTurbulentChains(clmodel)) {
+        GL.BindVAO(clmodel.turbulentVAO!);
+        RenderStats.c_brush_vbos++;
+        this._renderTurbulentSurfaces(clmodel, e, viewMatrix);
+        GL.UnbindVAO();
+        // back to the state of the transparent pass, which a liquid that writes depth left
+        gl.enable(gl.BLEND);
+        gl.depthMask(false);
+      }
     }
+  }
+
+  // ─── Refraction ───────────────────────────────────────────────────
+
+  /**
+   * Sets how strongly translucent liquids refract in the transparent pass that is about to be drawn, or turns it off
+   * after the pass. Refraction needs the scene capture: the liquids sample the copies of the scene made during it.
+   * @param worldmodel The world of the pass, `null` after the pass.
+   */
+  prepareLiquidRefraction(worldmodel: BrushModel | null): void {
+    this.#liquidRefraction = worldmodel !== null && PostProcess.active
+      ? BrushModelRenderer.ResolveLiquidRefraction(worldmodel.worldspawnInfo._qs_waterrefraction, rendererCvars.refraction.value)
+      : 0.0;
+  }
+
+  /**
+   * Whether a turbulent chain of the world refracts in this pass, so the scene has to be copied before it is drawn.
+   * @returns True when it is drawn translucent and the map's liquids refract.
+   */
+  refractsWorldTurbulentChain(clmodel: BrushModel, chain: WorldTurbulentChainInfo): boolean {
+    const worldspawn = clientRuntimeState.clientEntities.getEntity(0);
+
+    return this.#liquidRefraction > 0.0 && this.#turbulentAlpha(clmodel.textures[chain.texture] as BaseMaterial, worldspawn) < 1.0;
+  }
+
+  /**
+   * Whether a brush entity has a liquid that refracts in this pass, so the scene has to be copied before it is drawn.
+   * @returns True when one of its liquids is drawn translucent and the map's liquids refract.
+   */
+  refractsEntity(model: BaseModel, entity: ClientEdict): boolean {
+    if (this.#liquidRefraction === 0.0 || !(model instanceof BrushModel) || rendererCvars.drawturbulents.value === 0) {
+      return false;
+    }
+
+    for (let i = 0; i < model.chains.length; i++) {
+      const material = model.textures[model.chains[i][0]] as BaseMaterial;
+
+      if ((material.flags & MaterialFlags.MF_SKIP) === 0 && (material.flags & MaterialFlags.MF_TURBULENT) !== 0
+        && this.#turbulentAlpha(material, entity) < 1.0) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * The alpha a turbulent material is drawn with for an entity, resolved the way the draw resolves it.
+   * @returns Alpha in the 0..1 range.
+   */
+  #turbulentAlpha(material: BaseMaterial, entity: ClientEdict): number {
+    MaterialBinder.Emit(material, entity);
+
+    return this._getTurbulentMaterialAlpha(material, entity);
+  }
+
+  /**
+   * Whether a brush model has liquid surfaces.
+   * @returns True when one of its chains is turbulent.
+   */
+  static #hasTurbulentChains(clmodel: BrushModel): boolean {
+    for (let i = 0; i < clmodel.chains.length; i++) {
+      const material = clmodel.textures[clmodel.chains[i][0]] as BaseMaterial;
+
+      if ((material.flags & MaterialFlags.MF_TURBULENT) !== 0 && (material.flags & MaterialFlags.MF_SKIP) === 0) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Binds what the turbulent shader samples of the scene: the depth drawn so far, copied now, and the color copy the
+   * transparent pass made before the refracting liquids. Without the scene capture the units get empty textures.
+   */
+  _bindTurbulentSceneInputs(program: GLProgramInfo): void {
+    gl.uniform1f(program.uCameraInside!, Visibility.viewContents <= content.CONTENT_WATER ? 1.0 : 0.0);
+
+    if (!PostProcess.active) {
+      DefaultTextures.null_texture.bind(program.tDepth!);
+      DefaultTextures.null_texture.bind(program.tSceneColor!);
+      DefaultTextures.null_texture.bind(program.tSceneEmissive!);
+      gl.uniform2f(program.uScreenSize!, 1.0, 1.0);
+      return;
+    }
+
+    PostProcess.copySceneDepth().bind(program.tDepth!);
+    PostProcess.colorCopy!.colorTexture(0).bind(program.tSceneColor!);
+    PostProcess.colorCopy!.colorTexture(1).bind(program.tSceneEmissive!);
+    gl.uniform2f(program.uScreenSize!, PostProcess.width, PostProcess.height);
+  }
+
+  /**
+   * Puts empty textures on the units the scene inputs of the turbulent shader were bound to. The brush shader reads
+   * its specular, normal and deluxe maps from the same units, and a material that has none does not rebind them:
+   * without this the scene copies would be sampled as the maps of the surfaces that follow.
+   */
+  _unbindTurbulentSceneInputs(program: GLProgramInfo): void {
+    if (!PostProcess.active) {
+      return;
+    }
+
+    DefaultTextures.null_texture.bind(program.tDepth!);
+    DefaultTextures.null_texture.bind(program.tSceneColor!);
+    DefaultTextures.null_texture.bind(program.tSceneEmissive!);
+  }
+
+  /**
+   * Sets the uniforms of one turbulent draw that depend on its alpha: the alpha, the depth fog of translucent liquids
+   * when the map opted in with `_qs_waterfog`, and the refraction of translucent liquids when it opted in with
+   * `_qs_waterrefraction`. Opaque liquids rely on PVS, get no absorption and do not refract.
+   */
+  _setTurbulentDrawUniforms(program: GLProgramInfo, alpha: number): void {
+    const translucent = PostProcess.active && alpha < 1.0;
+    const waterfogEnabled = clientRuntimeState.worldmodel?.worldspawnInfo._qs_waterfog === '1';
+
+    gl.uniform1f(program.uAlpha!, alpha);
+    gl.uniform1f(program.uWaterFogDensity!, translucent && waterfogEnabled ? 0.01 : 0.0);
+    gl.uniform1f(program.uRefraction!, translucent ? this.#liquidRefraction : 0.0);
   }
 
   // ─── Shadow rendering ────────────────────────────────────────────
@@ -825,18 +982,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uBloomEmissiveScale!, 0.0);
     gl.uniform1f(program.uBloomDlightScale!, rendererCvars.bloomDlightStrength.value);
 
-    const cameraInside = Visibility.viewContents <= content.CONTENT_WATER ? 1.0 : 0.0;
-    gl.uniform1f(program.uCameraInside!, cameraInside);
-
-    if (PostProcess.active) {
-      PostProcess.copySceneDepth().bind(program.tDepth!);
-      gl.uniform2f(program.uScreenSize!, PostProcess.width, PostProcess.height);
-      // Per-surface alpha decides whether depth fog is active.
-      gl.uniform1f(program.uWaterFogDensity!, 0.0);
-    } else {
-      DefaultTextures.null_texture.bind(program.tDepth!);
-      gl.uniform1f(program.uWaterFogDensity!, 0.0);
-    }
+    this._bindTurbulentSceneInputs(program);
 
     this._setupBrushShaderCommon(program, clmodel, true);
     LightStyles.lightstyle_texture_a.bind(program.tLightStyleA!);
@@ -873,12 +1019,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.disable(gl.BLEND);
     gl.depthMask(true);
     GL.UnbindVAO();
-    if (PostProcess.active) {
-      // The turbulent shader leaves the depth copy bound to unit 7 (tDepth), the same unit the brush shader reads
-      // tSpecular from, and QuakeMaterial.bindTo does not rebind that slot: without this the depth would be sampled
-      // as the specular map of the surfaces that follow.
-      DefaultTextures.null_texture.bind(this._worldTurbulentProgram!.tDepth!);
-    }
+    this._unbindTurbulentSceneInputs(this._worldTurbulentProgram!);
     this._worldTurbulentProgram = null;
     this._worldTurbulentModel = null;
   }
@@ -1177,11 +1318,7 @@ export class BrushModelRenderer extends ModelRenderer {
     MaterialBinder.Emit(material, worldspawn);
     const alpha = this._getTurbulentMaterialAlpha(material, worldspawn);
     this._setTurbulentSurfaceState(alpha);
-    gl.uniform1f(program.uAlpha!, alpha);
-    // Only apply depth fog to translucent liquids when the map has opted in via
-    // _qs_waterfog. Opaque turbulents rely on PVS and should not get absorption.
-    const waterfogEnabled = clientRuntimeState.worldmodel?.worldspawnInfo._qs_waterfog === '1';
-    gl.uniform1f(program.uWaterFogDensity!, PostProcess.active && alpha < 1.0 && waterfogEnabled ? 0.01 : 0.0);
+    this._setTurbulentDrawUniforms(program, alpha);
 
     RenderStats.c_brush_verts += vertexCount;
     RenderStats.c_brush_tris += vertexCount / 3;
@@ -1323,9 +1460,12 @@ export class BrushModelRenderer extends ModelRenderer {
         continue;
       }
 
-      if (e.alpha === 1.0 && (
-        (material.flags & MaterialFlags.MF_TURBULENT) || !(material.flags & MaterialFlags.MF_TRANSPARENT)
-      )) {
+      // liquids index the turbulent vertex array, render() draws them with their own program
+      if ((material.flags & MaterialFlags.MF_TURBULENT) !== 0) {
+        continue;
+      }
+
+      if (e.alpha === 1.0 && !(material.flags & MaterialFlags.MF_TRANSPARENT)) {
         continue;
       }
 
@@ -1356,8 +1496,10 @@ export class BrushModelRenderer extends ModelRenderer {
     this._setupBrushShaderCommon(program, clmodel, false);
     LightStyles.lightstyle_texture_a.bind(program.tLightStyleA!);
     LightStyles.lightstyle_texture_b.bind(program.tLightStyleB!);
+    this._bindTurbulentSceneInputs(program);
 
     if (!clmodel.chains || clmodel.chains.length === 0) {
+      this._unbindTurbulentSceneInputs(program);
       gl.depthMask(true);
       gl.disable(gl.BLEND);
       return;
@@ -1378,7 +1520,7 @@ export class BrushModelRenderer extends ModelRenderer {
       MaterialBinder.Emit(material, e);
       const alpha = this._getTurbulentMaterialAlpha(material, e);
       this._setTurbulentSurfaceState(alpha);
-      gl.uniform1f(program.uAlpha!, alpha);
+      this._setTurbulentDrawUniforms(program, alpha);
       MaterialBinder.Bind(material, program);
 
       RenderStats.c_brush_verts += chain[2];
@@ -1387,6 +1529,7 @@ export class BrushModelRenderer extends ModelRenderer {
       RenderStats.c_brush_draws++;
     }
 
+    this._unbindTurbulentSceneInputs(program);
     gl.depthMask(true);
     gl.disable(gl.BLEND);
   }

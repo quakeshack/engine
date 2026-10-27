@@ -21,6 +21,7 @@ uniform sampler2D tLightStyleA;
 uniform sampler2D tLightStyleB;
 uniform sampler2D tDepth;
 #include "depth.glsl"
+#include "refraction.glsl"
 uniform vec2 uScreenSize;
 uniform float uWaterFogDensity;
 uniform float uCameraInside;
@@ -33,7 +34,8 @@ in vec2 vDlightTexCoord;
 in float vHasLightmap;
 
 void main(void) {
-  vec2 warpedTexCoord = vTexCoord.st + vec2(sin(vTexCoord.t * 3.141593 + uTime), sin(vTexCoord.s * 3.141593 + uTime)) * 0.125;
+  vec2 warpPhase = vec2(vTexCoord.t, vTexCoord.s) * 3.141593 + uTime;
+  vec2 warpedTexCoord = vTexCoord.st + sin(warpPhase) * 0.125;
   vec4 texel = vec4(texture(tTexture, warpedTexCoord).rgb, 1.0);
   vec3 luminance = texture(tLuminance, warpedTexCoord).rgb;
 
@@ -66,6 +68,12 @@ void main(void) {
 
   vec3 emissiveColor = texel.rgb * clamp(luminance + vec3(uBloomEmissiveScale), 0.0, 1.0);
 
+  // Refraction shifts what is seen behind the surface along the slope of the same waves that warp its texture.
+  vec2 screenUV = gl_FragCoord.xy / uScreenSize;
+  float surfaceDepth = linearizeDepth(gl_FragCoord.z);
+  float refracts = step(0.0001, uRefraction);
+  vec2 behindUV = mix(screenUV, refractedScreenUV(tDepth, screenUV, cos(warpPhase), surfaceDepth), refracts);
+
   // Depth-based water fog: sample scene depth and compare to surface depth.
   // When the geometry behind the surface is far away the water column is deep,
   // making the liquid appear more opaque and absorbing more color.
@@ -74,11 +82,10 @@ void main(void) {
   // the fake depth fog to the outside world seen through the surface.
   float depthFog = 0.0;
   if (uWaterFogDensity > 0.0 && uCameraInside < 0.5) {
-    float rawSceneDepth = texture(tDepth, gl_FragCoord.xy / uScreenSize).r;
+    float rawSceneDepth = texture(tDepth, behindUV).r;
     // No geometry behind the water surface (sky) — treat as shallow.
     if (rawSceneDepth < 1.0) {
       float sceneDepth   = linearizeDepth(rawSceneDepth);
-      float surfaceDepth = linearizeDepth(gl_FragCoord.z);
       float waterDepth   = max(0.0, sceneDepth - surfaceDepth);
       depthFog = clamp(1.0 - exp(-uWaterFogDensity * waterDepth), 0.0, 0.85);
     }
@@ -101,4 +108,8 @@ void main(void) {
   vec3 bloomEmissive = pow(emissiveColor, vec3(uGamma));
   bloomEmissive = mix(uFogColor, bloomEmissive, vFog);
   fragEmissive = vec4(bloomEmissive, effectiveAlpha);
+
+  // A refracting surface already holds what is behind it, so it replaces the pixel instead of blending over it.
+  fragColor = mix(fragColor, composeRefraction(tSceneColor, behindUV, fragColor.rgb, effectiveAlpha), refracts);
+  fragEmissive = mix(fragEmissive, composeRefraction(tSceneEmissive, behindUV, fragEmissive.rgb, effectiveAlpha), refracts);
 }

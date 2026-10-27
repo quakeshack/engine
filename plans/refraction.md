@@ -1,6 +1,6 @@
 # Screen-space refraction for translucent liquids and glass
 
-**Status:** Phase 1 shipped (2026-10); Phase 2 (water) next. Water and glass ship together in this pass.
+**Status:** Phases 1 and 2 shipped (2026-10); Phase 3 (glass) next. Open: the duplicate liquid draws found in Phase 2. Water and glass ship together in this pass.
 
 ## Context
 
@@ -173,6 +173,45 @@ All phases ship in this pass; each ends with typecheck, lint and tests green and
   predicate.
 - Tests: `test/renderer/post-process-color-copy.test.ts` (blits, attachments restored, MSAA source, never a scene
   texture) and `PlanSceneCopies` in `transparent-sorting.test.ts`.
+
+### What actually shipped in Phase 2
+
+- `_qs_waterrefraction` (`WorldspawnInfo`), resolved by `BrushModelRenderer.ResolveLiquidRefraction(value, scale)`
+  (positive finite number times `r_refraction`, else 0) and set for the pass with `prepareLiquidRefraction(world)`,
+  reset with `prepareLiquidRefraction(null)` after it. The plan's `isRefractiveMaterial` became
+  `refractsWorldTurbulentChain` and `refractsEntity`, which resolve the alpha exactly as the draw does
+  (`MaterialBinder.Emit` + `_getTurbulentMaterialAlpha`); `_setTurbulentDrawUniforms` sets `uAlpha`, the depth fog
+  and `uRefraction` from that alpha for the world and the entity path alike, so the predicate and the shader cannot
+  disagree about whether a copy is sampled.
+- `TransparentPass.Render` runs `PlanSceneCopies` with `#isRefractive` and, at a planned item, ends the active kind
+  first (so streamed geometry is flushed into the copy), then copies depth and color, then begins the kind. Within
+  a kind (a translucent chain after an opaque lava chain) it copies between draws; the program and VAO survive the
+  blits, and the copies reuse the textures already bound.
+- Shader: the chunk `include/refraction.glsl` (`tSceneColor`, `tSceneEmissive`, `uRefraction`,
+  `refractedScreenUV`, `composeRefraction`; includes `depth.glsl`) for Phase 3 to reuse. `turbulent.frag` takes the
+  distortion from `cos` of the same phase its texture warp uses `sin` of, shifts at most 0.02 of the screen up close
+  and less beyond 64 units, and mixes branchlessly with `step(uRefraction)`. The `_qs_waterfog` depth fog samples the
+  depth at the shifted position.
+- **Brush-entity liquids were never drawn** (found while wiring them): nothing calls pass 1 for entities, an opaque
+  entity skipped its turbulent chains in pass 2, and a translucent one drew them through the opaque vertex array with
+  offsets of the turbulent one. Now `rendersTransparentPass` takes entities with liquids, pass 2 skips turbulent
+  chains in `_renderTransparentSurfaces` and draws them afterwards with the `turbulent` program and VAO, opaque ones
+  writing depth. They also get the depth copy, so `_qs_waterfog` absorption now works on them. Not covered by the
+  browser pass (no stock map at hand with a liquid brush entity).
+- Sampler hygiene: `_bindTurbulentSceneInputs` / `_unbindTurbulentSceneInputs` in both paths; units 8 and 9 (the
+  copies) are the brush shader's `tNormal`/`tDeluxemap` units, put back to the empty texture like `tDepth` on 7.
+- Docs: new `docs/refraction.md`, the chunk in `docs/shader-chunks.md`.
+- Browser pass (`start`, `e1m1`, software GL, MSAA 0 and 4): no WebGL errors, `scene-color-copy` in the frame graph
+  with no violations, `r_refraction 0` and opaque liquids pixel-identical to refraction off, refraction animated.
+
+### Found in Phase 2: translucent liquids are drawn several times
+
+The world builds its turbulent chains per leaf from the leaf's marksurfaces, and Quake lists a face in every leaf it
+borders. On `start` one lava face is listed by 22 leafs, many liquid faces by 2 to 5, so every visible duplicate is
+blended again: `_lavaalpha 0.5` looks practically opaque (mean difference 0.4/255 from alpha 1). Refraction hides it
+by accident, because every duplicate replaces the pixel from the same copy, so the same map looks clearly more
+transparent with refraction on than off. This predates refraction and is a separate fix (draw each liquid face once
+per frame); it changes how every map with translucent liquids looks.
 
 ## Testing
 
