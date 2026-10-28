@@ -246,6 +246,45 @@ void describe('MaterialBinder', () => {
       assert.equal(water.currentAlpha, 1.0);
     });
 
+    void test('takes the alpha of the material for a surface that is not a liquid', () => {
+      const glass = new QuakeMaterial('glass1', 64, 64);
+
+      glass.alpha = 0.33;
+      MaterialBinder.Emit(glass, door);
+
+      assert.equal(glass.currentAlpha, 0.33);
+    });
+
+    void test('takes the alpha of the material for a liquid of another entity than the world', () => {
+      const water = new QuakeMaterial('*04water1', 64, 64);
+
+      water.flags = MaterialFlags.MF_TURBULENT;
+      water.alpha = 0.6;
+      MaterialBinder.Emit(water, door);
+
+      assert.equal(water.currentAlpha, 0.6);
+    });
+
+    void test('lets the worldspawn key override the alpha of the material of a world liquid', () => {
+      const water = new QuakeMaterial('*04water1', 64, 64);
+
+      water.flags = MaterialFlags.MF_TURBULENT;
+      water.alpha = 0.9;
+      MaterialBinder.Emit(water, world);
+
+      assert.equal(water.currentAlpha, 0.4);
+    });
+
+    void test('keeps the alpha of the material of a world liquid when the map has no key for it', () => {
+      const slime = new QuakeMaterial('*slime0', 64, 64);
+
+      slime.flags = MaterialFlags.MF_TURBULENT;
+      slime.alpha = 0.7;
+      MaterialBinder.Emit(slime, world);
+
+      assert.equal(slime.currentAlpha, 0.7);
+    });
+
     void test('is opaque for a surface that is not a liquid', () => {
       const wall = new QuakeMaterial('wall1', 64, 64);
 

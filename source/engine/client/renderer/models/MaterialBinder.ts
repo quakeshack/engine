@@ -46,8 +46,8 @@ export function resolveMaterialLuminanceTexture(flags: number, luminanceTexture:
  */
 class MaterialBinder {
   /**
-   * Resolves what a draw of the material shows: the alpha (a map can make its liquids translucent through
-   * worldspawn keys) and, for a material with animation frames, the frame.
+   * Resolves what a draw of the material shows: the alpha (the material's own, which a map can override for its
+   * liquids through worldspawn keys) and, for a material with animation frames, the frame.
    * @param material The material about to be drawn.
    * @param clientEdict The entity it is drawn for, `null` for none.
    */
@@ -83,18 +83,20 @@ class MaterialBinder {
    * @returns Alpha in the 0..1 range.
    */
   static #resolveAlpha(material: BaseMaterial, clientEdict: ClientEdict | null): number {
+    const materialAlpha = material.alpha ?? 1.0;
+
     if ((material.flags & MaterialFlags.MF_TURBULENT) === 0 || clientEdict === null) {
-      return 1.0;
+      return materialAlpha;
     }
 
     const worldspawn = clientRuntimeState.clientEntities.getEntity(0);
     if (clientEdict !== worldspawn) {
-      return 1.0;
+      return materialAlpha;
     }
 
     const worldspawnInfo = clientRuntimeState.worldmodel?.worldspawnInfo;
     if (!worldspawnInfo) {
-      return 1.0;
+      return materialAlpha;
     }
 
     const alphaKeys = material.getLiquidAlphaKeys();
@@ -110,7 +112,7 @@ class MaterialBinder {
       }
     }
 
-    return 1.0;
+    return materialAlpha;
   }
 
   static #bindQuake(material: QuakeMaterial, program: GLProgramInfo, hasDeluxemap: boolean): void {

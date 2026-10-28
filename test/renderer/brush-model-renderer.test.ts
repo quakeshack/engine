@@ -22,6 +22,8 @@ import type { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import type { Face } from '../../source/engine/common/model/BaseModel.ts';
 import type R from '../../source/engine/client/R.ts';
 import type { GLTexture } from '../../source/engine/client/GL.ts';
+import MaterialBinder from '../../source/engine/client/renderer/models/MaterialBinder.ts';
+import type { GLProgramInfo } from '../../source/engine/client/GL.ts';
 import { installEngineMocks } from '../support/withEngineMocks.ts';
 
 void describe('resolveBrushBloomContributionStrength', () => {
@@ -948,5 +950,170 @@ void describe('BrushModelRenderer glass of brush entities', () => {
 
     assert(!renderer.refractsEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict));
     assert(renderer.refractsEntity(model, { model, alpha: 0.5 } as unknown as ClientEdict));
+  });
+});
+
+const CHAIN: WorldSurfaceBatch = { texture: 0, firstVertex: 0, vertexCount: 6, mins: new Vector(), maxs: new Vector() };
+
+/**
+ * Builds a world with one chain of a material.
+ * @param material The material of the chain.
+ * @returns The world.
+ */
+function createWaterWorld(material: BaseMaterial): BrushModel {
+  const world = new BrushModel('maps/test.bsp');
+
+  world.textures.push(material);
+
+  return world;
+}
+
+void describe('BrushModelRenderer refraction asked for by a material', () => {
+  const previousContext = GL.gl;
+  const worldspawn = { model: null, alpha: 1.0 } as unknown as ClientEdict;
+  const program = { uAlpha: 'uAlpha', uWaterFogDensity: 'uWaterFogDensity', uRefraction: 'uRefraction' } as unknown as GLProgramInfo;
+  let recording = createRecordingContext();
+  let restores: Array<() => void> = [];
+
+  /**
+   * Starts a pass on a world whose worldspawn may ask its liquids to refract.
+   * @param waterrefraction The `_qs_waterrefraction` value, `undefined` for none.
+   * @param scale The player's `r_refraction`.
+   * @returns The renderer, in the pass.
+   */
+  function beginPass(waterrefraction: string | undefined, scale = 1.0): BrushModelRenderer {
+    const world = new BrushModel('maps/test.bsp');
+    const renderer = new BrushModelRenderer();
+
+    world.worldspawnInfo._qs_waterrefraction = waterrefraction;
+    restores.push(patchMembers(rendererCvars, { refraction: { value: scale }, drawturbulents: { value: 1 } }));
+    renderer.prepareRefraction(world);
+
+    return renderer;
+  }
+
+  /**
+   * Builds a material.
+   * @param flags Its flags.
+   * @param alpha How opaque it is.
+   * @param refraction Its own refraction strength.
+   * @returns The material.
+   */
+  function createMaterial(flags: MaterialFlags, alpha: number | null, refraction: number | null): BaseMaterial {
+    const material = new BaseMaterial('*water1', 64, 64);
+
+    material.flags = flags;
+    material.alpha = alpha;
+    material.refraction = refraction;
+
+    return material;
+  }
+
+  /**
+   * Draws a liquid of the world and reads the refraction strength the shader got.
+   * @returns The strength, `null` when none was set.
+   */
+  function drawStrength(renderer: BrushModelRenderer, material: BaseMaterial): number | null {
+    MaterialBinder.Emit(material, worldspawn);
+    recording.log.length = 0;
+    renderer._setTurbulentDrawUniforms(program, material, renderer._getTurbulentMaterialAlpha(material, worldspawn));
+
+    const calls = recording.calls('uniform1f').filter((call) => call.includes('uRefraction'));
+
+    return calls.length === 0 ? null : Number.parseFloat(calls[0].split(',')[1]);
+  }
+
+  beforeEach(() => {
+    recording = createRecordingContext();
+    GL.gl = recording.gl;
+    publishGlReady(recording.gl);
+    restores = [
+      patchMembers(clientRuntimeState, { clientEntities: { getEntity: () => worldspawn }, worldmodel: null, time: 0 }),
+      patchMembers(PostProcess, { active: true }),
+    ];
+  });
+
+  afterEach(() => {
+    for (const restore of restores.reverse()) {
+      restore();
+    }
+    eventBus.publish('gl.shutdown');
+    GL.gl = previousContext;
+  });
+
+  void test('a liquid takes the strength of the map, scaled by the player', () => {
+    const renderer = beginPass('2', 0.5);
+
+    assert.equal(drawStrength(renderer, createMaterial(MaterialFlags.MF_TURBULENT, 0.5, null)), 1.0);
+  });
+
+  void test('a liquid with a strength of its own ignores the map, and the player still scales it', () => {
+    const renderer = beginPass('2', 0.5);
+
+    assert.equal(drawStrength(renderer, createMaterial(MaterialFlags.MF_TURBULENT, 0.5, 0.6)), 0.3);
+  });
+
+  void test('a liquid with a strength of 0 does not refract on a map that asks for it', () => {
+    const renderer = beginPass('2');
+    const material = createMaterial(MaterialFlags.MF_TURBULENT, 0.5, 0);
+
+    assert.equal(drawStrength(renderer, material), 0.0);
+    assert(!renderer.refractsWorldTurbulentChain(createWaterWorld(material), CHAIN));
+  });
+
+  void test('MF_REFRACT makes a liquid refract on a map that does not ask, at strength 1', () => {
+    const renderer = beginPass(undefined);
+    const material = createMaterial(MaterialFlags.MF_TURBULENT | MaterialFlags.MF_REFRACT, 0.5, null);
+
+    assert.equal(drawStrength(renderer, material), 1.0);
+    assert(renderer.refractsWorldTurbulentChain(createWaterWorld(material), CHAIN));
+  });
+
+  void test('a liquid that is not marked does not refract on a map that does not ask', () => {
+    const renderer = beginPass(undefined);
+    const material = createMaterial(MaterialFlags.MF_TURBULENT, 0.5, null);
+
+    assert.equal(drawStrength(renderer, material), 0.0);
+    assert(!renderer.refractsWorldTurbulentChain(createWaterWorld(material), CHAIN));
+  });
+
+  void test('an opaque liquid does not refract whatever it asks for', () => {
+    const renderer = beginPass('1');
+    const material = createMaterial(MaterialFlags.MF_TURBULENT | MaterialFlags.MF_REFRACT, null, 2.0);
+
+    assert.equal(drawStrength(renderer, material), 0.0);
+    assert(!renderer.refractsWorldTurbulentChain(createWaterWorld(material), CHAIN));
+  });
+
+  void test('the alpha of the material makes a liquid translucent without a key on the map', () => {
+    const renderer = beginPass('1');
+
+    assert(renderer.refractsWorldTurbulentChain(createWaterWorld(createMaterial(MaterialFlags.MF_TURBULENT, 0.4, null)), CHAIN));
+  });
+
+  void test('a refraction strength alone makes glass refract, the flag is not needed', () => {
+    const renderer = beginPass(undefined);
+    const model = new BrushModel('*1');
+    const glass = createMaterial(MaterialFlags.MF_TRANSPARENT, 0.5, 0.5);
+
+    model.submodel = true;
+    model.textures.push(glass);
+    model.chains.push([0, 0, 6]);
+
+    assert(renderer.refractsEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict));
+
+    glass.refraction = 0;
+
+    assert(!renderer.refractsEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict));
+  });
+
+  void test('a map has to capture the scene for a material that asks for refraction, flag or strength', () => {
+    const world = new BrushModel('maps/test.bsp');
+
+    assert(!BrushModelRenderer.HasRefractingMaterials(world));
+
+    world.textures.push(createMaterial(MaterialFlags.MF_TRANSPARENT, null, 0.5));
+
+    assert(BrushModelRenderer.HasRefractingMaterials(world));
   });
 });

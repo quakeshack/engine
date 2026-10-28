@@ -36,6 +36,8 @@ Each entry in the `materials` object defines the properties for a specific textu
 | `specular` | `string` | Path to the specular map texture. |
 | `luminance` | `string` | Path to the luminance (emissive) texture, layered on top of the lightmap. |
 | `flags` | `string[]` | An array of material flags. |
+| `alpha` | `number` | Optional, 0..1. How opaque the surface is, on top of the alpha channel of the `diffuse` image. Below 1 it makes a surface that is not a liquid `MF_TRANSPARENT`. For a liquid it is the default alpha: a worldspawn alpha key (`_wateralpha`, `_slimealpha`, ...) overrides it. |
+| `refraction` | `number` | Optional, 0 or more. How strongly the surface refracts what is behind it (see [Refraction](refraction.md)); it implies `MF_REFRACT`. On a liquid it replaces the map's `_qs_waterrefraction`, `0` turns refraction off for it. |
 | `width` | `number` | Optional. Overrides the texel-space tiling scale (see [Width and Height](#width-and-height) below). |
 | `height` | `number` | Optional. Overrides the texel-space tiling scale (see [Width and Height](#width-and-height) below). |
 
@@ -48,7 +50,7 @@ The `flags` array can contain the following strings:
 | `MF_TRANSPARENT` | Use alpha blending for this material. Useful for glass, grating, etc. Note that textures starting with `{` are automatically marked as transparent by the engine. |
 | `MF_SKY` | Marks the surface as a sky surface. |
 | `MF_TURBULENT` | Applies turbulent deformation (like water/slime/lava). Textures starting with `*` or `!` are automatically marked as turbulent. |
-| `MF_REFRACT` | The surface refracts what is behind it, bent along its `normal` map (see [Refraction](refraction.md)). It needs a translucent surface: `MF_TRANSPARENT` with alpha in the `diffuse` image, or a brush entity with `alpha` below 1. Without a normal map the surface is flat glass and bends nothing. It applies to surfaces that are not liquids; liquids refract with the worldspawn key `_qs_waterrefraction`. |
+| `MF_REFRACT` | The surface refracts what is behind it, bent along its `normal` map (see [Refraction](refraction.md)). It needs a translucent surface: `MF_TRANSPARENT` with alpha in the `diffuse` image, or a brush entity with `alpha` below 1. Without a normal map the surface is flat glass and bends nothing. A liquid refracts with this flag too (strength 1), or with the worldspawn key `_qs_waterrefraction` for all liquids of a map; it still has to be translucent, see `alpha`. |
 | `MF_FULLBRIGHT` | Renders the surface unlit, ignoring lightmaps. Useful for emissive/glowing surfaces. Unlike `luminance`, this applies the diffuse texture itself as the emissive layer rather than a separate map. |
 
 ### Width and Height

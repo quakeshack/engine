@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import TransparentPass, { TransparentKind } from '../../source/engine/client/renderer/scene/TransparentPass.ts';
+import TransparentPass, { TransparentKind, type TransparentItem } from '../../source/engine/client/renderer/scene/TransparentPass.ts';
+import type { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
+import type { WorldSurfaceBatch } from '../../source/engine/common/model/BSP.ts';
 
 void describe('TransparentPass.Compare', () => {
   void test('sorts farther items first', () => {
@@ -95,6 +97,29 @@ void describe('TransparentPass.PlanSceneCopies', () => {
 
   void test('copies again after anything that does not refract was drawn in between', () => {
     assert.deepEqual(plan([true, false, true, true, false, true]), [true, false, true, false, false, true]);
+  });
+
+  void test('copies again within a run where the owner changes, a nearer wall has to show the liquid before it', () => {
+    const wall = {} as ClientEdict;
+    const otherWall = {} as ClientEdict;
+    const items: TransparentItem[] = [
+      { dist: 200, kind: TransparentKind.Turbulent, data: {} as WorldSurfaceBatch },
+      { dist: 190, kind: TransparentKind.Turbulent, data: {} as WorldSurfaceBatch },
+      { dist: 100, kind: TransparentKind.Entity, data: wall },
+      { dist: 90, kind: TransparentKind.Entity, data: otherWall },
+      { dist: 80, kind: TransparentKind.Entity, data: otherWall },
+      { dist: 70, kind: TransparentKind.RefractiveWorldSurface, data: {} as WorldSurfaceBatch },
+    ];
+
+    const result = TransparentPass.PlanSceneCopies(items, () => true, [], TransparentPass.SharesCopy);
+
+    assert.deepEqual(result, [true, false, true, true, false, true]);
+  });
+
+  void test('a pass that does not refract copies nothing, whatever the owners are', () => {
+    const items = [{ dist: 2, kind: TransparentKind.Turbulent }, { dist: 1, kind: TransparentKind.Entity }];
+
+    assert.deepEqual(TransparentPass.PlanSceneCopies(items, () => false, [], () => false), [false, false]);
   });
 
   void test('reuses the array it is given, leaving nothing of a longer earlier pass', () => {

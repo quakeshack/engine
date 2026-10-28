@@ -469,3 +469,91 @@ void describe('QSMatLoader (used by BSP38Loader, BSP29Loader and BSP2Loader alik
     assert.equal(model.textures[0].height, 32);
   });
 });
+
+void describe('QSMatLoader.applySurfaceParameters', () => {
+  /**
+   *
+   */
+  /**
+   * Builds a material as the loader does, before it applies the entry.
+   * @param flags Its flags.
+   * @returns The material.
+   */
+  function createMaterial(flags: MaterialFlags = MaterialFlags.MF_NONE): PBRMaterial {
+    const material = new PBRMaterial('glass', 64, 64);
+
+    material.flags = flags;
+
+    return material;
+  }
+
+  void test('an alpha below 1 makes a surface that is not a liquid transparent', () => {
+    const material = createMaterial();
+
+    QSMatLoader.applySurfaceParameters(material, { alpha: 0.4 }, null);
+
+    assert.equal(material.alpha, 0.4);
+    assert.ok(material.flags & MaterialFlags.MF_TRANSPARENT);
+  });
+
+  void test('an alpha leaves a liquid to the liquid path, it is not marked transparent', () => {
+    const material = createMaterial(MaterialFlags.MF_TURBULENT);
+
+    QSMatLoader.applySurfaceParameters(material, { alpha: 0.4 }, null);
+
+    assert.equal(material.alpha, 0.4);
+    assert.equal(material.flags & MaterialFlags.MF_TRANSPARENT, 0);
+  });
+
+  void test('an alpha of 1 changes nothing about the blending', () => {
+    const material = createMaterial();
+
+    QSMatLoader.applySurfaceParameters(material, { alpha: 1 }, null);
+
+    assert.equal(material.alpha, 1);
+    assert.equal(material.flags & MaterialFlags.MF_TRANSPARENT, 0);
+  });
+
+  void test('clamps the alpha to 0..1 and skips a value that is not a number', () => {
+    const tooHigh = createMaterial();
+    const notANumber = createMaterial();
+
+    QSMatLoader.applySurfaceParameters(tooHigh, { alpha: 7 }, null);
+    QSMatLoader.applySurfaceParameters(notANumber, { alpha: Number.NaN }, 0.66);
+
+    assert.equal(tooHigh.alpha, 1);
+    assert.equal(notANumber.alpha, 0.66);
+  });
+
+  void test('keeps the alpha the replaced material had, a surface flag of the BSP, unless the entry has one', () => {
+    const inherited = createMaterial();
+    const overridden = createMaterial();
+
+    QSMatLoader.applySurfaceParameters(inherited, {}, 0.33);
+    QSMatLoader.applySurfaceParameters(overridden, { alpha: 0.9 }, 0.33);
+
+    assert.equal(inherited.alpha, 0.33);
+    assert.equal(overridden.alpha, 0.9);
+  });
+
+  void test('a refraction strength makes the material refract, and a negative one is clamped to none', () => {
+    const material = createMaterial();
+    const negative = createMaterial();
+
+    QSMatLoader.applySurfaceParameters(material, { refraction: 0.5 }, null);
+    QSMatLoader.applySurfaceParameters(negative, { refraction: -3 }, null);
+
+    assert.equal(material.refraction, 0.5);
+    assert.ok(material.flags & MaterialFlags.MF_REFRACT);
+    assert.equal(negative.refraction, 0);
+  });
+
+  void test('without a refraction strength the material keeps the default one', () => {
+    const material = createMaterial();
+
+    QSMatLoader.applySurfaceParameters(material, {}, null);
+
+    assert.equal(material.refraction, null);
+    assert.equal(material.flags & MaterialFlags.MF_REFRACT, 0);
+  });
+});

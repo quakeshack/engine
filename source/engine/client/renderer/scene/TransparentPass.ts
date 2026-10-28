@@ -122,15 +122,23 @@ class TransparentPass {
 
   /**
    * Decides before which items of a sorted pass the scene color is copied for the items that refract what is behind
-   * them. A copy is made before the first item of every run of refracting items, because everything drawn before the
-   * run has to show through it, and not again within a run: a full-screen blit per refracting item would be too much
-   * on maps full of liquid, and the price is that a refracting item does not see another one of its run behind it.
+   * them. A refracting item replaces its pixels with the copy, so everything drawn before it has to be in the copy,
+   * or it vanishes behind it. A copy is made before the first item of every run of refracting items, and again within
+   * a run where the owner changes (`sharesCopy`), such as a glass wall in front of a pool. Within one owner the copy
+   * is shared: a full-screen blit per refracting item would be too much on maps full of liquid, and the price is that
+   * a refracting item does not see another one of its owner behind it.
    * @param items The items in drawing order.
    * @param isRefractive Whether an item refracts.
    * @param copyBefore Filled with one entry per item, true where the copy is made before drawing it.
+   * @param sharesCopy Whether a refracting item can do with the copy made for the refracting item drawn right before it.
    * @returns `copyBefore`.
    */
-  static PlanSceneCopies<T extends SortKindDistance>(items: readonly T[], isRefractive: (item: T) => boolean, copyBefore: boolean[]): boolean[] {
+  static PlanSceneCopies<T extends SortKindDistance>(
+    items: readonly T[],
+    isRefractive: (item: T) => boolean,
+    copyBefore: boolean[],
+    sharesCopy: (previous: T, item: T) => boolean = () => true,
+  ): boolean[] {
     let previousRefractive = false;
 
     copyBefore.length = items.length;
@@ -138,11 +146,21 @@ class TransparentPass {
     for (let i = 0; i < items.length; i++) {
       const refractive = isRefractive(items[i]);
 
-      copyBefore[i] = refractive && !previousRefractive;
+      copyBefore[i] = refractive && (!previousRefractive || !sharesCopy(items[i - 1], items[i]));
       previousRefractive = refractive;
     }
 
     return copyBefore;
+  }
+
+  /**
+   * Whether two refracting items drawn one after the other can use one copy of the scene: the liquids of the world
+   * and its glass among themselves can, but not a brush entity, which can stand in front of what the world drew
+   * before it, nor the world liquids and the world glass, which cover each other.
+   * @returns True when the second item does not need what the first one drew.
+   */
+  static SharesCopy(this: void, previous: TransparentItem, item: TransparentItem): boolean {
+    return previous.kind === item.kind && (item.kind !== TransparentKind.Entity || previous.data === item.data);
   }
 
   /**
@@ -288,7 +306,7 @@ class TransparentPass {
 
     items.sort(TransparentPass.Compare);
 
-    const copyBefore = TransparentPass.PlanSceneCopies(items, TransparentPass.#isRefractive, TransparentPass.#copyBefore);
+    const copyBefore = TransparentPass.PlanSceneCopies(items, TransparentPass.#isRefractive, TransparentPass.#copyBefore, TransparentPass.SharesCopy);
 
     gl.depthMask(false);
 

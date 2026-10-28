@@ -28,6 +28,19 @@ export class BaseMaterial {
   /** Texture height in texels. */
   height: number;
 
+  /**
+   * How opaque the material is on its own, in the 0..1 range, `null` for no say in it (opaque, or whatever the
+   * texture's alpha channel makes of it). A map can still override it for its liquids with the worldspawn alpha keys.
+   * The Quake 2 surface flags `SURF_TRANS33` and `SURF_TRANS66` are this property at 0.33 and 0.66.
+   */
+  alpha: number | null = null;
+
+  /**
+   * How strongly the surface refracts what is behind it, `null` for the default: the map's strength for a liquid,
+   * 1 for a material with `MF_REFRACT`, none for the rest. 0 turns refraction off for a liquid the map makes refract.
+   */
+  refraction: number | null = null;
+
   /** Current alpha value resolved per-draw. */
   currentAlpha = 1.0;
 

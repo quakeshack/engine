@@ -1,14 +1,23 @@
 import { GLTexture } from '../../client/GL.ts';
-import { MaterialFlags, PBRMaterial, QuakeMaterial } from '../../client/renderer/models/Materials.ts';
+import { type BaseMaterial, MaterialFlags, PBRMaterial, QuakeMaterial } from '../../client/renderer/models/Materials.ts';
 import type { BrushModel } from './BSP.ts';
 import type { ModelLoadContext } from './ModelLoadContext.ts';
 
-interface MaterialDefinition {
+export interface MaterialDefinition {
   readonly diffuse?: string;
   readonly luminance?: string;
   readonly specular?: string;
   readonly normal?: string;
   readonly flags?: string[];
+
+  /**
+   * How opaque the surface is, 0..1. Anything below 1 makes a surface that is not a liquid `MF_TRANSPARENT`. On top
+   * of the diffuse image's alpha channel; a liquid takes it unless the map sets its own alpha key on the worldspawn.
+   */
+  readonly alpha?: number;
+
+  /** How strongly the surface refracts what is behind it, 0 or more, and it makes the material `MF_REFRACT`. */
+  readonly refraction?: number;
 
   /**
    * Optional explicit texel-space tiling dimensions, overriding whatever the
@@ -38,6 +47,27 @@ type MaterialTextureCategory = 'luminance' | 'diffuse' | 'specular' | 'normal';
 export class QSMatLoader {
   private constructor() {
     // Static-only helper class.
+  }
+
+  /**
+   * Applies the `alpha` and `refraction` of a material entry. A number that is missing or not finite is skipped, the
+   * rest is clamped: alpha to 0..1, refraction to 0 or more.
+   * @param material The material built from the entry.
+   * @param definition The entry.
+   * @param inheritedAlpha The alpha the replaced material already had (a BSP loader sets one for the Quake 2
+   * translucency flags), used when the entry has none.
+   */
+  static applySurfaceParameters(material: BaseMaterial, definition: MaterialDefinition, inheritedAlpha: number | null): void {
+    material.alpha = Number.isFinite(definition.alpha) ? Math.max(0.0, Math.min(definition.alpha!, 1.0)) : inheritedAlpha;
+
+    if (material.alpha !== null && material.alpha < 1.0 && (material.flags & MaterialFlags.MF_TURBULENT) === 0) {
+      material.flags |= MaterialFlags.MF_TRANSPARENT;
+    }
+
+    if (Number.isFinite(definition.refraction)) {
+      material.refraction = Math.max(0.0, definition.refraction!);
+      material.flags |= MaterialFlags.MF_REFRACT;
+    }
   }
 
   /**
@@ -134,6 +164,8 @@ export class QSMatLoader {
             }
           }
         }
+
+        QSMatLoader.applySurfaceParameters(pbr, textures, texture.alpha);
 
         if (!textures.diffuse && texture instanceof QuakeMaterial && texture.texture !== null) {
           pbr.diffuse = texture.texture; // keep original diffuse as base

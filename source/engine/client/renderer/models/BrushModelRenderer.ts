@@ -181,8 +181,11 @@ export class BrushModelRenderer extends ModelRenderer {
    */
   #liquidRefraction = 0.0;
 
-  /** How strongly translucent `MF_REFRACT` surfaces refract in the transparent pass being drawn, like `#liquidRefraction`. */
-  #glassRefraction = 0.0;
+  /**
+   * The player's `r_refraction` for the transparent pass being drawn, 0 when nothing refracts. It scales the strength
+   * of a material that sets its own, see {@link BrushModelRenderer.#refractionOf}. Set and cleared like `#liquidRefraction`.
+   */
+  #refractionScale = 0.0;
 
   // ─── Static methods ───────────────────────────────────────────────
 
@@ -192,7 +195,9 @@ export class BrushModelRenderer extends ModelRenderer {
    */
   static HasRefractingMaterials(model: BrushModel): boolean {
     for (let i = 0; i < model.textures.length; i++) {
-      if (((model.textures[i] as BaseMaterial).flags & MaterialFlags.MF_REFRACT) !== 0) {
+      const material = model.textures[i] as BaseMaterial;
+
+      if ((material.flags & MaterialFlags.MF_REFRACT) !== 0 || material.refraction !== null) {
         return true;
       }
     }
@@ -565,31 +570,49 @@ export class BrushModelRenderer extends ModelRenderer {
     this.#liquidRefraction = active
       ? BrushModelRenderer.ResolveLiquidRefraction(worldmodel.worldspawnInfo._qs_waterrefraction, rendererCvars.refraction.value)
       : 0.0;
-    this.#glassRefraction = active ? Math.max(0.0, rendererCvars.refraction.value) : 0.0;
+    this.#refractionScale = active ? Math.max(0.0, rendererCvars.refraction.value) : 0.0;
+  }
+
+  /**
+   * How strongly a material refracts in the pass being drawn: its own `refraction`, otherwise 1 for `MF_REFRACT`,
+   * otherwise the map's strength for a liquid, times the player's `r_refraction`.
+   * @returns The strength, 0 when the material does not refract.
+   */
+  #refractionOf(material: BaseMaterial): number {
+    if (material.refraction !== null) {
+      return material.refraction * this.#refractionScale;
+    }
+
+    if ((material.flags & MaterialFlags.MF_REFRACT) !== 0) {
+      return this.#refractionScale;
+    }
+
+    return (material.flags & MaterialFlags.MF_TURBULENT) !== 0 ? this.#liquidRefraction : 0.0;
   }
 
   /**
    * Whether a translucent world batch refracts in this pass, so it is drawn by `brush-refract` and the scene has to
    * be copied before it.
-   * @returns True for an `MF_REFRACT` material while refraction is on.
+   * @returns True for a refracting material while refraction is on.
    */
   refractsWorldBatch(clmodel: BrushModel, batch: WorldSurfaceBatch): boolean {
-    return this.#glassRefraction > 0.0 && ((clmodel.textures[batch.texture] as BaseMaterial).flags & MaterialFlags.MF_REFRACT) !== 0;
+    return this.#refractionOf(clmodel.textures[batch.texture] as BaseMaterial) > 0.0;
   }
 
   /**
    * Whether a turbulent chain of the world refracts in this pass, so the scene has to be copied before it is drawn.
-   * @returns True when it is drawn translucent and the map's liquids refract.
+   * @returns True when it is drawn translucent and refracts, by the map or by its material.
    */
   refractsWorldTurbulentChain(clmodel: BrushModel, chain: WorldSurfaceBatch): boolean {
     const worldspawn = clientRuntimeState.clientEntities.getEntity(0);
+    const material = clmodel.textures[chain.texture] as BaseMaterial;
 
-    return this.#liquidRefraction > 0.0 && this.#turbulentAlpha(clmodel.textures[chain.texture] as BaseMaterial, worldspawn) < 1.0;
+    return this.#refractionOf(material) > 0.0 && this.#turbulentAlpha(material, worldspawn) < 1.0;
   }
 
   /**
    * Whether a brush entity has a liquid that refracts in this pass, so the scene has to be copied before it is drawn.
-   * @returns True when one of its liquids is drawn translucent and the map's liquids refract.
+   * @returns True when one of its liquids is drawn translucent and refracts, by the map or by its material.
    */
   refractsEntity(model: BaseModel, entity: ClientEdict): boolean {
     if (!(model instanceof BrushModel)) {
@@ -600,7 +623,7 @@ export class BrushModelRenderer extends ModelRenderer {
       return true;
     }
 
-    if (this.#liquidRefraction === 0.0 || rendererCvars.drawturbulents.value === 0) {
+    if (this.#refractionScale === 0.0 || rendererCvars.drawturbulents.value === 0) {
       return false;
     }
 
@@ -608,7 +631,7 @@ export class BrushModelRenderer extends ModelRenderer {
       const material = model.textures[model.chains[i][0]] as BaseMaterial;
 
       if ((material.flags & MaterialFlags.MF_SKIP) === 0 && (material.flags & MaterialFlags.MF_TURBULENT) !== 0
-        && this.#turbulentAlpha(material, entity) < 1.0) {
+        && this.#refractionOf(material) > 0.0 && this.#turbulentAlpha(material, entity) < 1.0) {
         return true;
       }
     }
@@ -617,13 +640,12 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Whether a chain of a brush entity is glass that refracts in this pass: an `MF_REFRACT` material that is drawn
+   * Whether a chain of a brush entity is glass that refracts in this pass: a refracting material that is drawn
    * translucent, because the material or the entity is.
    * @returns True when it is drawn by `brush-refract`.
    */
   #refractsGlassChain(material: BaseMaterial, entity: ClientEdict): boolean {
-    return this.#glassRefraction > 0.0
-      && (material.flags & MaterialFlags.MF_REFRACT) !== 0
+    return this.#refractionOf(material) > 0.0
       && (material.flags & (MaterialFlags.MF_TURBULENT | MaterialFlags.MF_SKIP)) === 0
       && ((material.flags & MaterialFlags.MF_TRANSPARENT) !== 0 || entity.alpha < 1.0);
   }
@@ -656,14 +678,29 @@ export class BrushModelRenderer extends ModelRenderer {
 
   /**
    * Binds what `brush-refract` samples of the scene: the depth and color copies the transparent pass made before the
-   * refracting run, and the strength. Undo with `_unbindSceneInputs`.
+   * refracting run. The strength is set per material, see {@link BrushModelRenderer.#setGlassDrawUniforms}. Undo with
+   * `_unbindSceneInputs`.
    */
-  #bindRefractionInputs(program: GLProgramInfo, strength: number): void {
+  #bindRefractionInputs(program: GLProgramInfo): void {
     PostProcess.depthCopy!.depthTexture!.bind(program.tDepth!);
     PostProcess.colorCopy!.colorTexture(0).bind(program.tSceneColor!);
     PostProcess.colorCopy!.colorTexture(1).bind(program.tSceneEmissive!);
     gl.uniform2f(program.uScreenSize!, PostProcess.width, PostProcess.height);
-    gl.uniform1f(program.uRefraction!, strength);
+  }
+
+  /**
+   * Sets the uniforms of one draw of a translucent brush surface that depend on its material: the alpha, and the
+   * strength of the refraction when the program refracts (`brush-refract`).
+   * @param program The program in use.
+   * @param material The material about to be drawn, after `MaterialBinder.Emit`.
+   * @param entityAlpha The alpha of the entity it is drawn for, 1 for the world.
+   */
+  #setGlassDrawUniforms(program: GLProgramInfo, material: BaseMaterial, entityAlpha: number): void {
+    gl.uniform1f(program.uAlpha!, entityAlpha * material.currentAlpha);
+
+    if (program.uRefraction !== undefined) {
+      gl.uniform1f(program.uRefraction, this.#refractionOf(material));
+    }
   }
 
   /**
@@ -732,15 +769,15 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * Sets the uniforms of one turbulent draw that depend on its alpha: the alpha, the depth fog of translucent liquids
    * when the map opted in with `_qs_waterfog`, and the refraction of translucent liquids when it opted in with
-   * `_qs_waterrefraction`. Opaque liquids rely on PVS, get no absorption and do not refract.
+   * `_qs_waterrefraction` or its material asked for it. Opaque liquids rely on PVS, get no absorption and do not refract.
    */
-  _setTurbulentDrawUniforms(program: GLProgramInfo, alpha: number): void {
+  _setTurbulentDrawUniforms(program: GLProgramInfo, material: BaseMaterial, alpha: number): void {
     const translucent = PostProcess.active && alpha < 1.0;
     const waterfogEnabled = clientRuntimeState.worldmodel?.worldspawnInfo._qs_waterfog === '1';
 
     gl.uniform1f(program.uAlpha!, alpha);
     gl.uniform1f(program.uWaterFogDensity!, translucent && waterfogEnabled ? 0.01 : 0.0);
-    gl.uniform1f(program.uRefraction!, translucent ? this.#liquidRefraction : 0.0);
+    gl.uniform1f(program.uRefraction!, translucent ? this.#refractionOf(material) : 0.0);
   }
 
   // ─── Shadow rendering ────────────────────────────────────────────
@@ -901,7 +938,7 @@ export class BrushModelRenderer extends ModelRenderer {
   beginWorldRefractivePass(clmodel: BrushModel): void {
     const program = this.#beginWorldBlendedPass(clmodel, 'brush-refract');
 
-    this.#bindRefractionInputs(program, this.#glassRefraction);
+    this.#bindRefractionInputs(program);
   }
 
   /**
@@ -920,6 +957,7 @@ export class BrushModelRenderer extends ModelRenderer {
     RenderStats.c_brush_tris += batch.vertexCount / 3;
 
     MaterialBinder.Emit(material, worldspawn);
+    this.#setGlassDrawUniforms(this._worldTransparentProgram!, material, 1.0);
     MaterialBinder.Bind(material, this._worldTransparentProgram!, this._worldTransparentHasDeluxemap);
     BrushModelRenderer.#bindGlassNormal(material, this._worldTransparentProgram!);
 
@@ -1333,7 +1371,7 @@ export class BrushModelRenderer extends ModelRenderer {
     MaterialBinder.Emit(material, worldspawn);
     const alpha = this._getTurbulentMaterialAlpha(material, worldspawn);
     this._setTurbulentSurfaceState(alpha);
-    this._setTurbulentDrawUniforms(program, alpha);
+    this._setTurbulentDrawUniforms(program, material, alpha);
 
     RenderStats.c_brush_verts += vertexCount;
     RenderStats.c_brush_tris += vertexCount / 3;
@@ -1463,7 +1501,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const hasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     if (refractive) {
-      this.#bindRefractionInputs(program, this.#glassRefraction);
+      this.#bindRefractionInputs(program);
     }
 
     gl.enable(gl.BLEND);
@@ -1501,6 +1539,7 @@ export class BrushModelRenderer extends ModelRenderer {
       RenderStats.c_brush_tris += chain[2] / 3;
 
       MaterialBinder.Emit(material, e);
+      this.#setGlassDrawUniforms(program, material, e.alpha);
       MaterialBinder.Bind(material, program, hasDeluxemap);
       BrushModelRenderer.#bindGlassNormal(material, program);
 
@@ -1550,7 +1589,7 @@ export class BrushModelRenderer extends ModelRenderer {
       MaterialBinder.Emit(material, e);
       const alpha = this._getTurbulentMaterialAlpha(material, e);
       this._setTurbulentSurfaceState(alpha);
-      this._setTurbulentDrawUniforms(program, alpha);
+      this._setTurbulentDrawUniforms(program, material, alpha);
       MaterialBinder.Bind(material, program);
 
       RenderStats.c_brush_verts += chain[2];
