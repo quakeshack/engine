@@ -60,15 +60,19 @@ A material refracts when its `.qsmat.json` entry has the flag `MF_REFRACT` (see 
 `r_refraction` (a cheat variable, not saved, default `1`) scales the strength the map asks for (glass has strength 1); `0` turns
 refraction off and liquids and glass are blended as without it.
 
+`r_refraction_distance` (saved, default `1024`) is how far away liquids and glass still refract. The strength fades
+out over the last quarter of it, so nothing snaps; farther surfaces are blended, which saves a copy of the scene.
+At 1024 units the shift is a pixel or two at 1080p. `0` means no limit.
+
 ## How it works
 
 - `TransparentPass.Render` decides, with `TransparentPass.PlanSceneCopies`, where in the sorted back-to-front pass the
   scene is copied: once before every run of refracting items, and again within a run where the owner changes
   (`TransparentPass.SharesCopy`): a brush entity, the world's liquids and the world's glass each get a copy that holds
   what was drawn before them. A refracting surface replaces its pixels with the copy, so without that a glass wall in
-  front of a pool would erase the pool. It copies the depth (`PostProcess.copySceneDepth`) and the color and emissive
-  (`PostProcess.copySceneColor`) drawn so far, so whatever was drawn before shows through, other translucent things
-  included. Within one owner nothing is copied again: the faces of the world's liquids do not see each other (water
+  front of a pool would erase the pool. It copies the color (`PostProcess.copySceneColor`) drawn so far, and the
+  depth when it changed (`PostProcess.sceneDepthCopy`), so whatever was drawn before shows through, other translucent
+  things included. Within one owner nothing is copied again: the faces of the world's liquids do not see each other (water
   seen through water), which keeps a map full of liquid down to a few copies.
 - `BrushModelRenderer` decides which items refract (`refractsWorldTurbulentChain`, `refractsWorldBatch`,
   `refractsEntity`) with the same alpha the draw uses, so a surface samples a copy only when one was made for it. The
@@ -79,6 +83,12 @@ refraction off and liquids and glass are blended as without it.
 - Within a brush entity, glass is drawn after its other translucent surfaces and does not see them through itself:
   the scene was copied before the entity.
 - The `turbulent` and `brush-refract` shaders sample the copies through `include/refraction.glsl`. A shifted sample that lands on something
-  in front of the surface falls back to the unshifted one, so near geometry does not bleed into the liquid. The
-  emissive buffer is refracted too, so bloom of what is behind the surface is kept.
+  in front of the surface falls back to the unshifted one, so near geometry does not bleed into the liquid. Only the
+  color is copied and refracted: the surface blends its emissive over the unshifted emissive behind it, so bloom of
+  what is behind the surface is kept, just not shifted (bloom blurs it anyway).
+- The depth copy is shared by the whole transparent pass (`PostProcess.sceneDepthCopy`) and made again only after an
+  opaque liquid wrote depth. A copy costs a full-screen blit, a resolve when multisampled; on an integrated GPU at
+  1080p a copy cost 0.2 to 0.5 ms, and copying per run was most of what refraction cost.
+- `TransparentPass` tells the brush renderer the distance of each item before it checks or draws it
+  (`setRefractionDistance`), so the copy plan and the strength in the shader follow `r_refraction_distance` alike.
 - Refraction needs the scene capture, which every frame with liquids has. Without it nothing refracts.

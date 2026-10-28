@@ -69,7 +69,7 @@ class ShaderPrograms {
             ['aTangent', gl.FLOAT, 3],
             ['aBitangent', gl.FLOAT, 3],
           ],
-          ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB', 'tLuminance', 'tSpecular', 'tNormal', 'tDeluxemap', 'tShadowMap', 'tDepth', 'tSceneColor', 'tSceneEmissive'])),
+          ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB', 'tLuminance', 'tSpecular', 'tNormal', 'tDeluxemap', 'tShadowMap', 'tDepth', 'tSceneColor'])),
 
       // rendering dynamic lights
       Promise.resolve(GL.CreateProgram('dlight',
@@ -117,7 +117,7 @@ class ShaderPrograms {
             // ['aTangent', gl.FLOAT, 3],
             // ['aBitangent', gl.FLOAT, 3],
           ],
-          ['tTexture', 'tLuminance', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB', 'tDeluxemap', 'tDepth', 'tSceneColor', 'tSceneEmissive'])),
+          ['tTexture', 'tLuminance', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB', 'tDeluxemap', 'tDepth', 'tSceneColor'])),
 
       // depth-only pre-pass for turbulent surface boundary (underwater fog)
       Promise.resolve(GL.CreateProgram('turbulent-depth',

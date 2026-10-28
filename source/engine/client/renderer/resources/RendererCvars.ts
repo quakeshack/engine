@@ -87,6 +87,9 @@ export class RendererCvars {
   /** `r_refraction`: strength scale of the refraction of liquids and glass, 0 turns it off. */
   refraction: Cvar = null!;
 
+  /** `r_refraction_distance`: how far away liquids and glass still refract, 0 for no limit. */
+  refractionDistance: Cvar = null!;
+
   /**
    * Creates the variables, in the order `cvarlist` shows them. Called once by `R.Init()` when the renderer starts.
    */
@@ -122,6 +125,7 @@ export class RendererCvars {
     this.underwater_fog_density = new Cvar('r_underwater_fog_density', '0.01', Cvar.FLAG.CHEAT, 'Fog density exponent for the underwater fog effect.');
 
     this.refraction = new Cvar('r_refraction', '1', Cvar.FLAG.CHEAT, 'Refraction of translucent liquids and glass that opt in: 0 = off, other values scale its strength.');
+    this.refractionDistance = new Cvar('r_refraction_distance', '1024', Cvar.FLAG.ARCHIVE, 'Distance in units up to which liquids and glass refract, fading out before it; farther ones are blended, which saves a copy of the scene. 0 = no limit.');
   }
 }
 

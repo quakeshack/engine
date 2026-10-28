@@ -986,7 +986,7 @@ void describe('BrushModelRenderer refraction asked for by a material', () => {
     const renderer = new BrushModelRenderer();
 
     world.worldspawnInfo._qs_waterrefraction = waterrefraction;
-    restores.push(patchMembers(rendererCvars, { refraction: { value: scale }, drawturbulents: { value: 1 } }));
+    restores.push(patchMembers(rendererCvars, { refraction: { value: scale }, drawturbulents: { value: 1 }, refractionDistance: { value: 1024 } }));
     renderer.prepareRefraction(world);
 
     return renderer;
@@ -1115,5 +1115,86 @@ void describe('BrushModelRenderer refraction asked for by a material', () => {
     world.textures.push(createMaterial(MaterialFlags.MF_TRANSPARENT, null, 0.5));
 
     assert(BrushModelRenderer.HasRefractingMaterials(world));
+  });
+
+  // r_refraction_distance is 1024 in beginPass(): full strength up to 768, none from 1024
+  void test('a liquid fades out toward r_refraction_distance instead of snapping to blended', () => {
+    const renderer = beginPass('1');
+    const material = createMaterial(MaterialFlags.MF_TURBULENT, 0.5, null);
+
+    renderer.setRefractionDistance(700);
+    assert.equal(drawStrength(renderer, material), 1.0);
+
+    renderer.setRefractionDistance(896);
+    assert.equal(drawStrength(renderer, material), 0.5);
+  });
+
+  void test('glass beyond r_refraction_distance is blended, so no copy of the scene is made for it', () => {
+    const renderer = beginPass(undefined);
+    const world = new BrushModel('maps/test.bsp');
+    const batch: WorldSurfaceBatch = { texture: 0, firstVertex: 0, vertexCount: 6, mins: new Vector(), maxs: new Vector() };
+
+    world.textures.push(createMaterial(MaterialFlags.MF_TRANSPARENT | MaterialFlags.MF_REFRACT, null, null));
+
+    renderer.setRefractionDistance(100);
+    assert(renderer.refractsWorldBatch(world, batch));
+
+    renderer.setRefractionDistance(1024);
+    assert(!renderer.refractsWorldBatch(world, batch));
+  });
+
+  void test('an r_refraction_distance of 0 refracts at any distance', () => {
+    const renderer = beginPass('1');
+
+    restores.push(patchMembers(rendererCvars, { refractionDistance: { value: 0 } }));
+    renderer.setRefractionDistance(100000);
+
+    assert.equal(drawStrength(renderer, createMaterial(MaterialFlags.MF_TURBULENT, 0.5, null)), 1.0);
+  });
+
+  void test('a new pass starts at full strength, whatever the distance of the last item before it', () => {
+    const renderer = beginPass('1');
+
+    const world = new BrushModel('maps/test.bsp');
+
+    world.worldspawnInfo._qs_waterrefraction = '1';
+    renderer.setRefractionDistance(5000);
+    renderer.prepareRefraction(world);
+
+    assert.equal(drawStrength(renderer, createMaterial(MaterialFlags.MF_TURBULENT, 0.5, null)), 1.0);
+  });
+});
+
+void describe('BrushModelRenderer._setTurbulentSurfaceState', () => {
+  const previousContext = GL.gl;
+  let invalidated = 0;
+  let restore: () => void = () => {};
+
+  beforeEach(() => {
+    invalidated = 0;
+    GL.gl = createRecordingContext().gl;
+    publishGlReady(GL.gl);
+    restore = patchMembers(PostProcess, { invalidateSceneDepthCopy: () => {
+      invalidated++;
+    } });
+  });
+
+  afterEach(() => {
+    restore();
+    eventBus.publish('gl.shutdown');
+    GL.gl = previousContext;
+  });
+
+  // the transparent pass shares one depth copy, and an opaque liquid is the only thing in it that writes depth
+  void test('an opaque liquid writes depth, so the next pass that samples it gets a new copy', () => {
+    new BrushModelRenderer()._setTurbulentSurfaceState(1.0);
+
+    assert.equal(invalidated, 1);
+  });
+
+  void test('a translucent liquid writes no depth and keeps the copy shared', () => {
+    new BrushModelRenderer()._setTurbulentSurfaceState(0.5);
+
+    assert.equal(invalidated, 0);
   });
 });

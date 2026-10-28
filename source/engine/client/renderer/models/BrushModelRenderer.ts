@@ -187,6 +187,12 @@ export class BrushModelRenderer extends ModelRenderer {
    */
   #refractionScale = 0.0;
 
+  /**
+   * How much of its strength the item of the transparent pass that is checked or drawn next refracts with, by how far
+   * it is, see {@link BrushModelRenderer.setRefractionDistance}. 1 outside the pass.
+   */
+  #refractionFade = 1.0;
+
   // ─── Static methods ───────────────────────────────────────────────
 
   /**
@@ -571,6 +577,33 @@ export class BrushModelRenderer extends ModelRenderer {
       ? BrushModelRenderer.ResolveLiquidRefraction(worldmodel.worldspawnInfo._qs_waterrefraction, rendererCvars.refraction.value)
       : 0.0;
     this.#refractionScale = active ? Math.max(0.0, rendererCvars.refraction.value) : 0.0;
+    this.#refractionFade = 1.0;
+  }
+
+  /**
+   * Tells the renderer how far the item of the transparent pass that is checked (`refractsWorldBatch`, ...) or drawn
+   * next is, so a far one refracts less, and beyond `r_refraction_distance` not at all: there the shift is a pixel
+   * or two, not worth a copy of the scene. The transparent pass sets it before each, from the distance it sorts by,
+   * so the decision whether to copy the scene and the strength the draw uses agree.
+   * @param distance Distance of the item from the view, as sorted.
+   */
+  setRefractionDistance(distance: number): void {
+    this.#refractionFade = BrushModelRenderer.RefractionFade(distance, rendererCvars.refractionDistance.value);
+  }
+
+  /**
+   * The share of its strength a surface refracts with at a distance: all of it up to three quarters of the limit,
+   * then less, down to none at the limit, so a surface does not snap from refracting to blended while moving.
+   * @param distance Distance of the surface from the view.
+   * @param limit `r_refraction_distance`, 0 or less for no limit.
+   * @returns 0..1.
+   */
+  static RefractionFade(distance: number, limit: number): number {
+    if (limit <= 0.0) {
+      return 1.0;
+    }
+
+    return Math.min(1.0, Math.max(0.0, (limit - distance) / (limit * 0.25)));
   }
 
   /**
@@ -580,14 +613,14 @@ export class BrushModelRenderer extends ModelRenderer {
    */
   #refractionOf(material: BaseMaterial): number {
     if (material.refraction !== null) {
-      return material.refraction * this.#refractionScale;
+      return material.refraction * this.#refractionScale * this.#refractionFade;
     }
 
     if ((material.flags & MaterialFlags.MF_REFRACT) !== 0) {
-      return this.#refractionScale;
+      return this.#refractionScale * this.#refractionFade;
     }
 
-    return (material.flags & MaterialFlags.MF_TURBULENT) !== 0 ? this.#liquidRefraction : 0.0;
+    return (material.flags & MaterialFlags.MF_TURBULENT) !== 0 ? this.#liquidRefraction * this.#refractionFade : 0.0;
   }
 
   /**
@@ -684,7 +717,6 @@ export class BrushModelRenderer extends ModelRenderer {
   #bindRefractionInputs(program: GLProgramInfo): void {
     PostProcess.depthCopy!.depthTexture!.bind(program.tDepth!);
     PostProcess.colorCopy!.colorTexture(0).bind(program.tSceneColor!);
-    PostProcess.colorCopy!.colorTexture(1).bind(program.tSceneEmissive!);
     gl.uniform2f(program.uScreenSize!, PostProcess.width, PostProcess.height);
   }
 
@@ -730,8 +762,9 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Binds what the turbulent shader samples of the scene: the depth drawn so far, copied now, and the color copy the
-   * transparent pass made before the refracting liquids. Without the scene capture the units get empty textures.
+   * Binds what the turbulent shader samples of the scene: the depth drawn so far (`PostProcess.sceneDepthCopy`, which
+   * copies it again only when it changed) and the color copy the transparent pass made before the refracting
+   * liquids. Without the scene capture the units get empty textures.
    */
   _bindTurbulentSceneInputs(program: GLProgramInfo): void {
     gl.uniform1f(program.uCameraInside!, Visibility.viewContents <= content.CONTENT_WATER ? 1.0 : 0.0);
@@ -739,14 +772,12 @@ export class BrushModelRenderer extends ModelRenderer {
     if (!PostProcess.active) {
       DefaultTextures.null_texture.bind(program.tDepth!);
       DefaultTextures.null_texture.bind(program.tSceneColor!);
-      DefaultTextures.null_texture.bind(program.tSceneEmissive!);
       gl.uniform2f(program.uScreenSize!, 1.0, 1.0);
       return;
     }
 
-    PostProcess.copySceneDepth().bind(program.tDepth!);
+    PostProcess.sceneDepthCopy().bind(program.tDepth!);
     PostProcess.colorCopy!.colorTexture(0).bind(program.tSceneColor!);
-    PostProcess.colorCopy!.colorTexture(1).bind(program.tSceneEmissive!);
     gl.uniform2f(program.uScreenSize!, PostProcess.width, PostProcess.height);
   }
 
@@ -763,7 +794,6 @@ export class BrushModelRenderer extends ModelRenderer {
 
     DefaultTextures.null_texture.bind(program.tDepth!);
     DefaultTextures.null_texture.bind(program.tSceneColor!);
-    DefaultTextures.null_texture.bind(program.tSceneEmissive!);
   }
 
   /**
@@ -1151,7 +1181,7 @@ export class BrushModelRenderer extends ModelRenderer {
       return false;
     }
 
-    const depthCopy = PostProcess.copySceneDepth();
+    const depthCopy = PostProcess.sceneDepthCopy();
     const program = GL.UseProgram('fog-volume')!;
 
     gl.enable(gl.BLEND);
@@ -1391,13 +1421,14 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Opaque liquids must write depth so they occlude later fog/transparent passes.
+   * Opaque liquids must write depth so they occlude later fog/transparent passes, which then need a new copy of it.
    * @private
    */
   _setTurbulentSurfaceState(alpha: number): void {
     if (alpha >= 1.0) {
       gl.disable(gl.BLEND);
       gl.depthMask(true);
+      PostProcess.invalidateSceneDepthCopy();
       return;
     }
 

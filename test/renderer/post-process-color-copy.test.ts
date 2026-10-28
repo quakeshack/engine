@@ -37,28 +37,29 @@ void describe('PostProcess.copySceneColor', () => {
     recording.log.length = 0;
   }
 
-  void test('blits color and emissive into the two textures of the copy and goes on drawing into the scene', () => {
+  void test('blits the color into the texture of the copy and goes on drawing into the scene', () => {
     beginScene(0);
 
     const copy = PostProcess.copySceneColor();
 
     assert.equal(copy, PostProcess.colorCopy);
-    assert.deepEqual(recording.calls('readBuffer'), ['readBuffer(COLOR_ATTACHMENT0)', 'readBuffer(COLOR_ATTACHMENT1)', 'readBuffer(COLOR_ATTACHMENT0)']);
-    assert.deepEqual(recording.calls('blitFramebuffer'), [
-      'blitFramebuffer(0, 0, 640, 480, 0, 0, 640, 480, COLOR_BUFFER_BIT, NEAREST)',
-      'blitFramebuffer(0, 0, 640, 480, 0, 0, 640, 480, COLOR_BUFFER_BIT, NEAREST)',
-    ]);
+    assert.deepEqual(recording.calls('blitFramebuffer'), ['blitFramebuffer(0, 0, 640, 480, 0, 0, 640, 480, COLOR_BUFFER_BIT, NEAREST)']);
     assert.equal(RenderTarget.bound, PostProcess.scene);
   });
 
-  void test('leaves both textures of the copy attached where they belong, for the next copy', () => {
-    beginScene(0);
+  // resolveMSAA() leaves the multisampled target reading attachment 1, so the next frame copied the emissive (the
+  // glow for bloom) as the color behind every refracting surface unless the copy selects the color itself
+  void test('reads the color attachment even when the source was left reading the emissive', () => {
+    beginScene(4);
+    PostProcess.msaaTarget!.bindForRead();
+    recording.gl.readBuffer(recording.gl.COLOR_ATTACHMENT1);
+    PostProcess.msaaTarget!.bind();
+    recording.log.length = 0;
 
-    const copy = PostProcess.copySceneColor();
+    PostProcess.copySceneColor();
 
-    assert(copy.isAttached(copy.colorTexture(0)));
-    assert(copy.isAttached(copy.colorTexture(1)));
-    assert.deepEqual(recording.calls('drawBuffers').at(-1), 'drawBuffers([COLOR_ATTACHMENT0, COLOR_ATTACHMENT1])');
+    const log = recording.log.filter((call) => call.startsWith('readBuffer') || call.startsWith('blitFramebuffer'));
+    assert.deepEqual(log.slice(-2), ['readBuffer(COLOR_ATTACHMENT0)', 'blitFramebuffer(0, 0, 640, 480, 0, 0, 640, 480, COLOR_BUFFER_BIT, NEAREST)']);
   });
 
   void test('reads the multisampled target when the frame is multisampled, and stays in it', () => {
@@ -66,7 +67,7 @@ void describe('PostProcess.copySceneColor', () => {
 
     PostProcess.copySceneColor();
 
-    assert.equal(recording.calls('blitFramebuffer').length, 2);
+    assert.equal(recording.calls('blitFramebuffer').length, 1);
     assert.equal(RenderTarget.bound, PostProcess.msaaTarget);
   });
 
@@ -76,6 +77,5 @@ void describe('PostProcess.copySceneColor', () => {
     const copy = PostProcess.copySceneColor();
 
     assert(!PostProcess.scene!.isAttached(copy.colorTexture(0)));
-    assert(!PostProcess.scene!.isAttached(copy.colorTexture(1)));
   });
 });

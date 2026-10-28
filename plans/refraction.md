@@ -282,3 +282,38 @@ world leafs should move to it too.
 
 None; the three raised with the plan (camera underwater, strength, glass shadows) are settled under Decisions
 already made.
+
+### Performance pass (2026-10-28)
+
+Measured on the developer's machine (AMD Radeon 890M, integrated; Chromium headless on ANGLE/Vulkan), map `start` with
+every liquid at alpha 0.5 and `_qs_waterrefraction 1`, 1920×1080, GPU time of the scene from a timer query between
+`PostProcess.begin` and `end` (harness kept out of the repo). The cost was the copies, not the shader: turning the
+color blits into no-ops took the spawn view from +2.7 to +1.0 ms over refraction off, and timing the copies alone gave
+0.2 ms per color copy (color and emissive) and 0.3 to 0.5 ms per depth copy at MSAA 4. Every refracting run made one
+color copy and two depth copies (`TransparentPass` and again `_bindTurbulentSceneInputs`), and every restart of the
+turbulent kind another depth copy, refraction or not: up to 8 color and 16 depth copies a frame.
+
+- **Depth copy shared by the pass:** `PostProcess.sceneDepthCopy()` copies only when stale (frame begin,
+  `TransparentPass.Render`, `invalidateSceneDepthCopy()` from an opaque liquid in `_setTurbulentSurfaceState`). One
+  depth copy a frame on `start`.
+- **No emissive copy:** a refracting surface blends its emissive with its own alpha over the unshifted emissive
+  (blending is per attachment, so the color still replaces the pixel). Deviates from "the emissive buffer is refracted
+  too": bloom behind a refracting surface is kept but not shifted. Not visible on `start` (nothing emissive behind
+  its liquids), unverified in a scene that has it.
+- **`r_refraction_distance`** (archived, 1024; the developer's idea): strength fades over the last quarter, nothing
+  farther refracts or gets a copy. `TransparentPass` hands the sort distance to `BrushModelRenderer.setRefractionDistance`
+  before checking or drawing an item, so the copy plan and the uniform agree.
+- **Not done:** a lower-resolution color copy. A multisampled source cannot be scaled by the resolving blit, and once
+  the count was down a copy was 0.1 to 0.2 ms.
+
+| View (scene GPU ms) | MSAA | on, before | on, after | off, before | off, after |
+|---|---|---|---|---|---|
+| spawn | 4 | 7.11 | 4.80 | 4.46 | 3.91 |
+| liquid at 64 units | 4 | 10.96 | 5.82 | 5.77 | 4.28 |
+| liquid at 400 units | 4 | 11.18 | 2.69 | 3.92 | 1.73 |
+| spawn | 0 | 4.31 | 2.97 | 2.61 | 2.22 |
+| liquid at 64 units | 0 | 6.40 | 3.43 | 3.43 | 2.46 |
+| liquid at 400 units | 0 | 6.84 | 1.69 | 2.72 | 0.79 |
+
+Browser pass (SwiftShader, `start`, MSAA 0 and 4, time pinned): spawn and 64-unit views bit-identical before/after,
+`r_refraction 0` identical everywhere, differences only on liquids 830 to 990 units away (inside the fade).

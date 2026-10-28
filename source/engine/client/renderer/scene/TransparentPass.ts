@@ -210,6 +210,7 @@ class TransparentPass {
       const worldSurfaces = brushRenderer!.getWorldTransparentBatches(worldmodel, vieworg);
       for (let i = 0; i < worldSurfaces.length; i++) {
         const batch = worldSurfaces[i].batch;
+        brushRenderer!.setRefractionDistance(worldSurfaces[i].dist);
         const kind = brushRenderer!.refractsWorldBatch(worldmodel, batch) ? TransparentKind.RefractiveWorldSurface : TransparentKind.WorldSurface;
         items.push({ dist: worldSurfaces[i].dist, kind, data: batch });
       }
@@ -306,6 +307,9 @@ class TransparentPass {
 
     items.sort(TransparentPass.Compare);
 
+    // the opaque geometry was drawn since any copy of the depth that may have been made
+    PostProcess.invalidateSceneDepthCopy();
+
     const copyBefore = TransparentPass.PlanSceneCopies(items, TransparentPass.#isRefractive, TransparentPass.#copyBefore, TransparentPass.SharesCopy);
 
     gl.depthMask(false);
@@ -326,8 +330,9 @@ class TransparentPass {
         TransparentPass.#endActiveKind();
       }
 
+      // the depth is only copied again when something wrote it since the last copy, an opaque liquid
       if (copyBefore[i]) {
-        PostProcess.copySceneDepth();
+        PostProcess.sceneDepthCopy();
         PostProcess.copySceneColor();
       }
 
@@ -359,7 +364,7 @@ class TransparentPass {
 
   /**
    * Whether an item refracts what is behind it, so the scene has to be copied before it is drawn.
-   * @returns True for the liquids that refract in this pass.
+   * @returns True for the liquids and glass that refract in this pass at the distance of the item.
    */
   static #isRefractive(this: void, item: TransparentItem): boolean {
     const brushRenderer = TransparentPass.#brushRenderer;
@@ -368,6 +373,8 @@ class TransparentPass {
     if (brushRenderer === null) {
       return false;
     }
+
+    brushRenderer.setRefractionDistance(item.dist);
 
     switch (item.kind) {
       case TransparentKind.RefractiveWorldSurface:
@@ -509,6 +516,9 @@ class TransparentPass {
     const brushRenderer = TransparentPass.#brushRenderer;
     const worldmodel = TransparentPass.#worldmodel;
     const spriteRenderer = TransparentPass.#spriteRenderer;
+
+    // the strength of the refraction fades with the distance, as it did when the copies were planned
+    brushRenderer?.setRefractionDistance(item.dist);
 
     switch (item.kind) {
       case TransparentKind.WorldSurface:

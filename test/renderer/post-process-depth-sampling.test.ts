@@ -90,3 +90,54 @@ void describe('PostProcess.copySceneDepth', () => {
     assert.notEqual(PostProcess.copySceneDepth(), PostProcess.depthTexture);
   });
 });
+
+void describe('PostProcess.sceneDepthCopy', () => {
+  const previousContext = GL.gl;
+  let recording: RecordingContext = null!;
+
+  beforeEach(() => {
+    recording = createRecordingContext();
+    GL.gl = recording.gl;
+    publishGlReady(recording.gl);
+    PostProcess.init();
+    PostProcess.msaa!.set('0');
+    PostProcess.resize(640, 480);
+    PostProcess.begin();
+    recording.log.length = 0;
+  });
+
+  afterEach(() => {
+    PostProcess.msaa!.free();
+    PostProcess.shutdown();
+    eventBus.publish('gl.shutdown');
+    GL.gl = previousContext;
+  });
+
+  // every liquid run and fog volume pass used to blit the depth again, up to 16 full-screen blits a frame
+  void test('passes that ask one after the other share one copy', () => {
+    const first = PostProcess.sceneDepthCopy();
+    const second = PostProcess.sceneDepthCopy();
+
+    assert.equal(second, first);
+    assert.equal(recording.calls('blitFramebuffer').length, 1);
+  });
+
+  void test('copies again once depth was written since, so an opaque liquid shows in the copy', () => {
+    PostProcess.sceneDepthCopy();
+    PostProcess.invalidateSceneDepthCopy();
+    PostProcess.sceneDepthCopy();
+
+    assert.equal(recording.calls('blitFramebuffer').length, 2);
+  });
+
+  void test('a new frame does not see the copy of the last one', () => {
+    PostProcess.sceneDepthCopy();
+    PostProcess.end();
+    PostProcess.begin();
+    recording.log.length = 0;
+
+    PostProcess.sceneDepthCopy();
+
+    assert.equal(recording.calls('blitFramebuffer').length, 1);
+  });
+});

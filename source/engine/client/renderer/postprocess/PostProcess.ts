@@ -31,7 +31,7 @@ eventBus.subscribe('gl.shutdown', () => {
  * the default framebuffer (screen).
  *
  * Passes that need the depth of the scene while it is drawn (turbulent surfaces, fog volumes) sample the copy that
- * {@link PostProcess.copySceneDepth} makes, and passes that refract what is behind them sample the copy of its color
+ * {@link PostProcess.sceneDepthCopy} keeps, and passes that refract what is behind them sample the copy of its color
  * that {@link PostProcess.copySceneColor} makes. Neither is part of the post-resolve effect pipeline.
  */
 export default class PostProcess {
@@ -47,14 +47,14 @@ export default class PostProcess {
    */
   static depthCopy: RenderTarget | null = null;
 
+  /** Whether {@link PostProcess.depthCopy} still holds the depth of the scene, see {@link PostProcess.sceneDepthCopy}. */
+  static #depthCopyCurrent = false;
+
   /**
-   * Color target whose two textures hold a copy of the color and the emissive drawn into the scene so far, made by
+   * Color target whose texture holds a copy of the color drawn into the scene so far, made by
    * {@link PostProcess.copySceneColor} for the passes that refract what is behind them.
    */
   static colorCopy: RenderTarget | null = null;
-
-  /** The second texture {@link PostProcess.copySceneColor} reads, for the frame graph; reused by every copy. */
-  static readonly #colorCopyExtraInputs: GLRenderTexture[] = [];
 
   /** Current scene FBO width in pixels. */
   static width = 0;
@@ -275,10 +275,10 @@ export default class PostProcess {
       depth: { storage: 'texture', filter: 'nearest' },
     });
 
-    // Where the color and emissive of the scene are copied to for the passes that refract, see copySceneColor().
+    // Where the color of the scene is copied to for the passes that refract, see copySceneColor().
     PostProcess.colorCopy = new RenderTarget({
       name: 'scene-color-copy',
-      color: [{ storage: 'texture', filter: 'linear' }, { storage: 'texture', filter: 'linear' }],
+      color: [{ storage: 'texture', filter: 'linear' }],
       depth: null,
     });
 
@@ -393,6 +393,7 @@ export default class PostProcess {
     gl.clearBufferfv(gl.COLOR, 1, [0.0, 0.0, 0.0, 0.0]);
     gl.clear(gl.DEPTH_BUFFER_BIT);
     PostProcess.active = true;
+    PostProcess.#depthCopyCurrent = false;
     Frame.beginPass('scene', target);
   }
 
@@ -422,47 +423,66 @@ export default class PostProcess {
     Frame.endPass();
 
     source!.bind();
+    PostProcess.#depthCopyCurrent = true;
 
     return copy.depthTexture!;
   }
 
   /**
-   * Copies the color and the emissive of what is being drawn into the scene so far into the two textures of
-   * {@link PostProcess.colorCopy}, so a pass can sample what is behind it while it goes on drawing. Like
-   * {@link PostProcess.copySceneDepth}, the copy comes from the multisampled target when the frame is multisampled
-   * (the blit resolves it), the frame stays in the target it was in, and the copy is a snapshot: a pass that has to
-   * see what was drawn after this call asks again. Put another texture on the units the copy was bound to when the
-   * pass is done if a later draw expects something of its own there.
-   * @returns The target whose `colorTexture(0)` holds the color and `colorTexture(1)` the emissive.
+   * The copy of the depth of the scene, made by {@link PostProcess.copySceneDepth} only when depth may have been
+   * drawn since the last copy. A full-screen depth blit is expensive (more so multisampled), and the transparent
+   * pass, which is where the copy is sampled, hardly ever writes depth: every pass that samples it can ask for it.
+   *
+   * The copy counts as stale once the frame begins and after {@link PostProcess.invalidateSceneDepthCopy}: whoever
+   * writes depth after the copy may have been taken (an opaque liquid in the transparent pass, a pass that starts
+   * after opaque geometry was drawn) says so, or the copy goes on showing the depth from before. The contract of
+   * {@link PostProcess.copySceneDepth} on binding the texture applies.
+   * @returns The depth texture of {@link PostProcess.depthCopy}.
+   */
+  static sceneDepthCopy(): GLRenderTexture {
+    if (PostProcess.#depthCopyCurrent) {
+      return PostProcess.depthCopy!.depthTexture!;
+    }
+
+    return PostProcess.copySceneDepth();
+  }
+
+  /**
+   * Tells {@link PostProcess.sceneDepthCopy} that the depth of the scene may have changed since its last copy, so the
+   * next pass that asks for it gets a new one.
+   */
+  static invalidateSceneDepthCopy(): void {
+    PostProcess.#depthCopyCurrent = false;
+  }
+
+  /**
+   * Copies the color of what is being drawn into the scene so far into the texture of {@link PostProcess.colorCopy},
+   * so a pass can sample what is behind it while it goes on drawing. Like {@link PostProcess.copySceneDepth}, the
+   * copy comes from the multisampled target when the frame is multisampled (the blit resolves it), the frame stays in
+   * the target it was in, and the copy is a snapshot: a pass that has to see what was drawn after this call asks
+   * again. Put another texture on the unit the copy was bound to when the pass is done if a later draw expects
+   * something of its own there.
+   *
+   * The emissive is not copied: a refracting surface blends its own over it unshifted, which bloom blurs anyway, and
+   * a second full-screen blit per copy is what made refraction expensive.
+   * @returns The target whose `colorTexture(0)` holds the color.
    */
   static copySceneColor(): RenderTarget {
     const source = RenderTarget.bound;
     const copy = PostProcess.colorCopy!;
     const width = PostProcess.width;
     const height = PostProcess.height;
-    const extraInputs = PostProcess.#colorCopyExtraInputs;
 
     console.assert(source !== null && (source === PostProcess.scene || source === PostProcess.msaaTarget), 'the scene is the target while its color is copied');
 
     // a multisampled scene has its color in renderbuffers, which are not textures and not inputs of the pass
-    const fromTextures = source === PostProcess.scene;
-    extraInputs.length = 0;
-    if (fromTextures) {
-      extraInputs.push(PostProcess.emissiveTexture!);
-    }
-
-    Frame.beginPass('scene-color-copy', copy, fromTextures ? PostProcess.colorTexture : null, extraInputs);
+    Frame.beginPass('scene-color-copy', copy, source === PostProcess.scene ? PostProcess.colorTexture : null);
     source!.bindForRead();
     copy.bindForDraw();
 
-    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT0, copy.colorTexture(0), width, height);
-    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT1, copy.colorTexture(1), width, height);
-
-    // _resolveMSAAColorAttachment leaves the last texture on attachment 0, put both back where they belong
-    copy.colorTexture(0).attachToFramebuffer(gl.COLOR_ATTACHMENT0);
-    copy.colorTexture(1).attachToFramebuffer(gl.COLOR_ATTACHMENT1);
-    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+    // the read buffer is state of the source framebuffer, and resolveMSAA() leaves the emissive selected
     gl.readBuffer(gl.COLOR_ATTACHMENT0);
+    gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     Frame.endPass();
 
     source!.bind();

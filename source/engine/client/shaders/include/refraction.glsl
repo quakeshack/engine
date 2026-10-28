@@ -1,9 +1,10 @@
 // Screen-space refraction: a translucent surface shows the copy of the scene drawn behind it, shifted by a
-// distortion, instead of blending over it. The copies come from PostProcess.copySceneColor and copySceneDepth.
+// distortion, instead of blending over it. The copies come from PostProcess.copySceneColor and sceneDepthCopy.
+// Only the color is refracted: the emissive output keeps its alpha and is blended over the unshifted emissive of
+// what is behind, which bloom blurs anyway and which saves a full-screen copy.
 #include "depth.glsl"
 
 uniform sampler2D tSceneColor;
-uniform sampler2D tSceneEmissive;
 
 // Strength of the shift, 0 = the surface does not refract and is blended as it always was.
 uniform float uRefraction;
@@ -28,6 +29,7 @@ vec2 refractedScreenUV(sampler2D depthTexture, vec2 screenUV, vec2 distortion, f
 /**
  * The surface over what is behind it at uv, as the blend would have put it, but opaque: the result replaces the
  * pixel because it already contains the scene. surface is the color the surface would have blended with alpha.
+ * For the color output only, see the top of this file.
  */
 vec4 composeRefraction(sampler2D sceneTexture, vec2 uv, vec3 surface, float alpha) {
   return vec4(mix(texture(sceneTexture, uv).rgb, surface, alpha), 1.0);

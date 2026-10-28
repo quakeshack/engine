@@ -25,7 +25,7 @@ npx eslint --fix <file>             # strict config, fix all warnings
 
 Silent failures. The project skills in `.claude/skills/` cover the others (commits under `source/game/`, Dockerfile fixtures, shaders, event bus docs, UI verification, tests); load one when its description matches.
 
-- **Sampling scene depth while drawing**: bind `PostProcess.copySceneDepth()`, never `PostProcess.depthTexture` (feedback loop). Contract in its JSDoc (`source/engine/client/renderer/postprocess/PostProcess.ts`).
+- **Sampling scene depth while drawing**: bind `PostProcess.sceneDepthCopy()`, never `PostProcess.depthTexture` (feedback loop); it copies only when stale, so whatever writes depth after a copy calls `invalidateSceneDepthCopy()`. Contract in its JSDoc (`source/engine/client/renderer/postprocess/PostProcess.ts`).
 - **Adding a worker**: register it in `WorkerFactories.ts`, file name ends in `Worker.ts` (`docs/workers.md`).
 
 **Where new knowledge goes**: an API contract in JSDoc, a reference or how-to in `docs/`, a trigger plus checklist as a skill, a cross-cutting rule in the matching `.github/instructions/` file, a rule for certain files only in `.claude/rules/` with `paths:` frontmatter. Everything imported below loads into every session: keep it short, put detail in a skill or `docs/`.

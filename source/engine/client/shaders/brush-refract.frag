@@ -29,6 +29,7 @@ void main(void) {
   vec2 screenUV = gl_FragCoord.xy / uScreenSize;
   vec2 behindUV = refractedScreenUV(tDepth, screenUV, distortion, linearizeDepth(gl_FragCoord.z));
 
+  // the color replaces the pixel, the emissive is blended over the unshifted one behind, see refraction.glsl
   fragColor = composeRefraction(tSceneColor, behindUV, color, alpha);
-  fragEmissive = composeRefraction(tSceneEmissive, behindUV, emissive, alpha);
+  fragEmissive = vec4(emissive, alpha);
 }

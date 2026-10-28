@@ -109,7 +109,7 @@ void main(void) {
   bloomEmissive = mix(uFogColor, bloomEmissive, vFog);
   fragEmissive = vec4(bloomEmissive, effectiveAlpha);
 
-  // A refracting surface already holds what is behind it, so it replaces the pixel instead of blending over it.
+  // A refracting surface already holds what is behind it, so it replaces the pixel instead of blending over it. The
+  // emissive stays blended, unshifted.
   fragColor = mix(fragColor, composeRefraction(tSceneColor, behindUV, fragColor.rgb, effectiveAlpha), refracts);
-  fragEmissive = mix(fragEmissive, composeRefraction(tSceneEmissive, behindUV, fragEmissive.rgb, effectiveAlpha), refracts);
 }
