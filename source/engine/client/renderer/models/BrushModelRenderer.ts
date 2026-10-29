@@ -868,9 +868,12 @@ export class BrushModelRenderer extends ModelRenderer {
     const hasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     const state = WorldRenderState.of(clmodel);
+    const visibleLeafs = state.visibleLeafs;
 
-    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
-      if (state.visframes[leaf] !== Visibility.visframecount || state.skychains[leaf] === 0) {
+    for (let i = 0; i < visibleLeafs.length; i++) {
+      const leaf = visibleLeafs[i];
+
+      if (state.skychains[leaf] === 0) {
         continue;
       }
 
@@ -1027,10 +1030,13 @@ export class BrushModelRenderer extends ModelRenderer {
 
     seen.clear();
 
-    for (let leaf = 0; leaf < batchesOfLeafs.length; leaf++) {
+    const visibleLeafs = state.visibleLeafs;
+
+    for (let i = 0; i < visibleLeafs.length; i++) {
+      const leaf = visibleLeafs[i];
       const batches = batchesOfLeafs[leaf];
 
-      if (state.visframes[leaf] !== Visibility.visframecount || batches.length === 0) {
+      if (batches.length === 0) {
         continue;
       }
 
@@ -1123,17 +1129,14 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
     gl.uniform1f(program.uTime!, Host.realtime);
 
+    // the batches of the visible leafs in the view, each once although several leafs refer to it
     const state = WorldRenderState.of(clmodel);
+    const items = this.#collectVisibleBatches(state, state.turbulentChains, Camera.refdef.vieworg);
 
-    for (let leaf = 0; leaf < clmodel.leafTable.count; leaf++) {
-      if ((state.visframes[leaf] !== Visibility.visframecount) || (state.waterchains[leaf] === state.cmds[leaf].length)) {
-        continue;
-      }
-      for (let j = state.waterchains[leaf]; j < state.cmds[leaf].length; j++) {
-        const cmd = state.cmds[leaf][j];
-        gl.drawArrays(gl.TRIANGLES, cmd[1], cmd[2]);
-        RenderStats.c_brush_verts += cmd[2];
-      }
+    for (let i = 0; i < items.length; i++) {
+      const batch = items[i].batch;
+      gl.drawArrays(gl.TRIANGLES, batch.firstVertex, batch.vertexCount);
+      RenderStats.c_brush_verts += batch.vertexCount;
     }
 
     GL.UnbindVAO();

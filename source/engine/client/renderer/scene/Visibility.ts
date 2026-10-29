@@ -116,7 +116,18 @@ class Visibility {
     // eslint-disable-next-line no-constant-condition
     } while (false);
     Visibility.skyVisible = false;
+    state.visibleLeafs.length = 0;
     Visibility.#walkMarkedNodes(worldmodel, state, 0);
+    // the passes draw in leaf order, as they did when they scanned every leaf
+    state.visibleLeafs.sort(Visibility.#byIndex);
+  }
+
+  /**
+   * Orders leaf indices ascending.
+   * @returns Sort comparator result.
+   */
+  static #byIndex(this: void, leafA: number, leafB: number): number {
+    return leafA - leafB;
   }
 
   /**
@@ -161,8 +172,8 @@ class Visibility {
   }
 
   /**
-   * Stamps the leafs that were marked in this marking with the current frame count and notes whether one of
-   * them has sky surfaces.
+   * Stamps the leafs that were marked in this marking with the current frame count, lists them in `visibleLeafs`
+   * and notes whether one of them has sky surfaces.
    */
   static #walkMarkedNodes(worldmodel: BrushModel, state: WorldRenderState, reference: number): void {
     if (reference < 0) {
@@ -177,6 +188,7 @@ class Visibility {
       }
 
       state.visframes[leaf] = Visibility.visframecount;
+      state.visibleLeafs.push(leaf);
 
       if (state.skychains[leaf] !== state.waterchains[leaf]) {
         Visibility.skyVisible = true;

@@ -126,6 +126,27 @@ void describe('Visibility.MarkLeafs', () => {
     assert.notEqual(world.state.visframes[2], Visibility.visframecount);
   });
 
+  void test('lists the leafs it stamps, for the passes that walk only the visible ones', () => {
+    world.revealedLeafs.add(1);
+    world.revealedLeafs.add(2);
+
+    Visibility.MarkLeafs();
+
+    assert.deepEqual(world.state.visibleLeafs, [1, 2]);
+  });
+
+  void test('lists only the leafs of the latest marking after the view moved', () => {
+    world.revealedLeafs.add(1);
+    Visibility.MarkLeafs();
+
+    world.revealedLeafs.clear();
+    world.revealedLeafs.add(2);
+    Visibility.viewleaf = 2;
+    Visibility.MarkLeafs();
+
+    assert.deepEqual(world.state.visibleLeafs, [2]);
+  });
+
   void test('marks the parents of a revealed leaf so the BSP walk can reach it', () => {
     world.revealedLeafs.add(2);
 

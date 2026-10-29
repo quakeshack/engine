@@ -69,10 +69,15 @@ void main(void) {
   vec3 emissiveColor = texel.rgb * clamp(luminance + vec3(uBloomEmissiveScale), 0.0, 1.0);
 
   // Refraction shifts what is seen behind the surface along the slope of the same waves that warp its texture.
+  // uRefraction is one value per draw, so every fragment takes the same side of these branches: they cost no
+  // divergence and spare the liquids that do not refract (opaque ones, maps that did not opt in) the texture reads.
   vec2 screenUV = gl_FragCoord.xy / uScreenSize;
   float surfaceDepth = linearizeDepth(gl_FragCoord.z);
-  float refracts = step(0.0001, uRefraction);
-  vec2 behindUV = mix(screenUV, refractedScreenUV(tDepth, screenUV, cos(warpPhase), surfaceDepth), refracts);
+  bool refracts = uRefraction > 0.0;
+  vec2 behindUV = screenUV;
+  if (refracts) {
+    behindUV = refractedScreenUV(tDepth, screenUV, cos(warpPhase), surfaceDepth);
+  }
 
   // Depth-based water fog: sample scene depth and compare to surface depth.
   // When the geometry behind the surface is far away the water column is deep,
@@ -111,5 +116,7 @@ void main(void) {
 
   // A refracting surface already holds what is behind it, so it replaces the pixel instead of blending over it. The
   // emissive stays blended, unshifted.
-  fragColor = mix(fragColor, composeRefraction(tSceneColor, behindUV, fragColor.rgb, effectiveAlpha), refracts);
+  if (refracts) {
+    fragColor = composeRefraction(tSceneColor, behindUV, fragColor.rgb, effectiveAlpha);
+  }
 }

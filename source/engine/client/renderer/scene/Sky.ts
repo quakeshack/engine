@@ -29,9 +29,6 @@ export function resolveSkyBloomEmissiveScale(strength: number): number {
  * the camera, the visibility or the lighting systems themselves, and run in a realm that has none of them.
  */
 export interface SkyDrawContext {
-  /** Leafs with this `visframe` are revealed from the view leaf. */
-  readonly visframecount: number;
-
   /** The camera origin. */
   readonly vieworg: Vector;
 
@@ -85,9 +82,13 @@ export class SkyRenderer {
     const mins = SkyRenderer.#leafMins;
     const maxs = SkyRenderer.#leafMaxs;
 
-    for (let leaf = 0; leaf < this.worldmodel.leafTable.count; leaf++) {
-      // Skip leafs that aren't visible or don't have sky surfaces
-      if (state.visframes[leaf] !== context.visframecount || state.skychains[leaf] === state.waterchains[leaf]) {
+    const visibleLeafs = state.visibleLeafs;
+
+    for (let i = 0; i < visibleLeafs.length; i++) {
+      const leaf = visibleLeafs[i];
+
+      // Skip leafs that don't have sky surfaces
+      if (state.skychains[leaf] === state.waterchains[leaf]) {
         continue;
       }
 

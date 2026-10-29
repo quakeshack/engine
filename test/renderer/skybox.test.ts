@@ -125,7 +125,7 @@ void describe('SkyBox', () => {
       const vieworg = new Vector(10, 20, 30);
       restores.push(
         patchMembers(clientRuntimeState, { worldmodel: createWorld(renderer) }),
-        patchMembers(Visibility, { skyVisible: true, visframecount: 42 }),
+        patchMembers(Visibility, { skyVisible: true }),
         patchMembers(Camera.refdef, { vieworg }),
       );
 
@@ -135,7 +135,6 @@ void describe('SkyBox', () => {
       assert.deepEqual(renderer.calls, ['init', 'render']);
 
       const context = renderer.contexts[0];
-      assert.equal(context.visframecount, 42);
       assert.equal(context.vieworg, vieworg);
       assert.equal(context.bloomSkyStrength, 0.33);
     });

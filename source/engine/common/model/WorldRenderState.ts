@@ -18,6 +18,12 @@ export class WorldRenderState {
   /** The marking that revealed each leaf. A leaf is drawn when this is the current marking. */
   readonly visframes: Int32Array;
 
+  /**
+   * The leafs the last marking revealed, in leaf order: the ones whose `visframes` entry is the current marking. The
+   * passes of a frame walk this instead of every leaf of the map. It changes only when the view leaf does.
+   */
+  readonly visibleLeafs: number[] = [];
+
   /** Number of draw chains of each leaf that are sky or opaque surfaces (the chains before the water ones). */
   readonly skychains: Int32Array;
 
@@ -73,6 +79,7 @@ export class WorldRenderState {
   reset(): void {
     this.markframes.fill(0);
     this.visframes.fill(0);
+    this.visibleLeafs.length = 0;
     this.skychains.fill(0);
     this.waterchains.fill(0);
     this.leafBounds.set(this.#model.leafTable.bounds);

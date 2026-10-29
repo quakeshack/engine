@@ -311,6 +311,26 @@ turbulent kind another depth copy, refraction or not: up to 8 color and 16 depth
   scaled by the area no longer copied: most for a small or distant surface, nothing for a liquid that fills the
   screen. Worth revisiting only if a measurement shows the copies are most of what refraction still costs.
 
+### Second optimization pass (2026-10-29)
+
+Done ahead of bigger maps, not measured on a GPU (the session renders on SwiftShader); both are pixel-identical.
+
+- **Visible leafs instead of every leaf:** `Visibility.MarkLeafs` lists the leafs it stamps in
+  `WorldRenderState.visibleLeafs` (sorted by index, so the draw order is the one the full scans had), rebuilt only when
+  the view leaf changes. The opaque world, the batch collection of liquids and translucent surfaces (twice a frame),
+  the underwater boundary depth and the sky walk that list instead of skipping through every leaf of the map. The
+  boundary depth pass now goes through the deduplicated, frustum-culled liquid batches too, instead of every listing
+  leaf's copy of a batch. `SkyDrawContext.visframecount` became unused and is gone. The shadow passes still walk
+  every leaf: their casters are not limited to what the view sees.
+- **Uniform branch in `turbulent.frag`:** the refraction reads (depth at the shifted position, scene color) are skipped
+  with `if (uRefraction > 0.0)` instead of computed and mixed away, so opaque liquids and maps without refraction
+  no longer pay them. The `shader-chunks` skill now names this exception to its branchless rule.
+- Browser pass (`start`, production builds of `13f916e` and the change, plain, `CAPTURE_WATERFOG=1`, and refracting
+  liquids with the clock frozen): identical draw counts in every view, the sky and liquid views 0 pixels apart outside
+  the HUD text, the opaque views apart only by the light flicker two captures of one build also show; no WebGL
+  errors, no frame violations.
+- Left for a CPU profile on a big map: every refracting item resolves its material alpha twice (copy plan and draw).
+
 | View (scene GPU ms) | MSAA | on, before | on, after | off, before | off, after |
 |---|---|---|---|---|---|
 | spawn | 4 | 7.11 | 4.80 | 4.46 | 3.91 |

@@ -14,7 +14,6 @@ import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { patchMembers } from '../support/clientState.ts';
 import GL from '../../source/engine/client/GL.ts';
 import Camera from '../../source/engine/client/renderer/scene/Camera.ts';
-import Visibility from '../../source/engine/client/renderer/scene/Visibility.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { publishGlReady } from '../support/glEvents.ts';
 import { createRecordingContext } from '../support/recordingContext.ts';
@@ -737,7 +736,7 @@ void describe('BrushModelRenderer world liquids listed by several leafs', () => 
     const restore = patchMembers(Camera, { CullBox: () => false });
 
     try {
-      state.visframes.fill(Visibility.visframecount);
+      state.visibleLeafs.push(0, 1, 2);
 
       const items = new BrushModelRenderer().getWorldTurbulentChains(model, new Vector(0, 0, 0));
 
@@ -754,8 +753,7 @@ void describe('BrushModelRenderer world liquids listed by several leafs', () => 
     const restore = patchMembers(Camera, { CullBox: () => false });
 
     try {
-      state.visframes.fill(Visibility.visframecount - 1);
-      state.visframes[1] = Visibility.visframecount;
+      state.visibleLeafs.push(1);
 
       const items = new BrushModelRenderer().getWorldTurbulentChains(model, new Vector(0, 0, 0));
 
@@ -863,7 +861,7 @@ void describe('BrushModelRenderer translucent world surfaces', () => {
   void test('a translucent batch is drawn once when both leafs are visible', () => {
     const model = buildWorld();
 
-    WorldRenderState.of(model).visframes.fill(Visibility.visframecount);
+    WorldRenderState.of(model).visibleLeafs.push(0, 1);
 
     const items = new BrushModelRenderer().getWorldTransparentBatches(model, new Vector(0, 0, 0));
 

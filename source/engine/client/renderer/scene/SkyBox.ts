@@ -53,7 +53,6 @@ class SkyBox {
     }
 
     const context: SkyDrawContext = {
-      visframecount: Visibility.visframecount,
       vieworg: Camera.refdef.vieworg,
       bloomSkyStrength: rendererCvars.bloomSkyStrength?.value ?? 0.0,
       shadowTexture: ShadowMap.getActiveTopDownTexture(),

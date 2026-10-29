@@ -17,6 +17,7 @@ WebGL 2 (GLSL ES 3.00) shaders live in `source/engine/client/shaders/*.frag` and
    val = mix(expFog, linearFog, isLinear);
    ```
    In utility functions, replace an early return (`if (z < 0.0 || z > 1.0) return 1.0;`) with a mask (`float zValid = step(0.0, z) * step(z, 1.0);`) and `mix()` the result. Cascade and shadow-step selection is `step()`-weighted too, not nested `if`s.
+   The exception: an `if` on a uniform that skips texture reads. Every fragment of the draw takes the same side, so it does not diverge, and computing both sides would pay the reads for nothing (`turbulent.frag` skips its refraction reads when `uRefraction` is 0). Cheap math stays branchless.
 2. **Vectorize.** `color.rgb = pow(color.rgb, vec3(uGamma));` and `color.rgb = base.rgb * mix(vec3(1.0), light.rgb, a);`, never one statement per channel.
 3. **Safe normalization without a guard.** Clamp the denominator: `worldNormal /= max(normalLen, 0.0001);` and scale a dependent term with `step(0.0001, normalLen)`.
 4. **Unroll small kernels** (a 3x3 blur is nine `texture()` calls with constant offsets) so the result does not depend on the driver unrolling a loop.

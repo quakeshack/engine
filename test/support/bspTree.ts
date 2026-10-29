@@ -102,7 +102,8 @@ export function createSingleLeafWorld(contents: number = content.CONTENT_EMPTY):
 /**
  * Builds a world for the tests of the renderer's leaf loops: leafs with the marksurfaces and draw chains the test gives, and
  * a render state to hold the chains.
- * @param leafs The leafs, with the draw chains `[texture, first vertex, vertex count]` the display lists made for them.
+ * @param leafs The leafs, with the draw chains `[texture, first vertex, vertex count]` the display lists made for them;
+ * a leaf given a `visframe` is also listed in `visibleLeafs`.
  * @param members Other members of the model, e.g. faces, marksurfaces and textures; tests give just the parts the code under test reads, so they are not checked against the model's own types.
  * @returns The model; its render state is made, with the chains set.
  */
@@ -122,6 +123,9 @@ export function createRenderedWorld(
     state.skychains[index] = leaf.skychain ?? 0;
     state.waterchains[index] = leaf.waterchain ?? 0;
     state.visframes[index] = leaf.visframe ?? 0;
+    if (leaf.visframe !== undefined) {
+      state.visibleLeafs.push(index);
+    }
   });
 
   return model;
