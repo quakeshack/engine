@@ -305,6 +305,11 @@ turbulent kind another depth copy, refraction or not: up to 8 color and 16 depth
   before checking or drawing an item, so the copy plan and the uniform agree.
 - **Not done:** a lower-resolution color copy. A multisampled source cannot be scaled by the resolving blit, and once
   the count was down a copy was 0.1 to 0.2 ms.
+- **Not done, dismissed as low yield (2026-10-29):** copying only the screen rectangle the refracting items of a copy
+  cover (their projected bounds, padded by the largest shift of the group, full screen when a corner is behind the
+  camera, the shader clamping to the copied rectangle). It would save at most the 0.1 to 0.2 ms of each color copy,
+  scaled by the area no longer copied: most for a small or distant surface, nothing for a liquid that fills the
+  screen. Worth revisiting only if a measurement shows the copies are most of what refraction still costs.
 
 | View (scene GPU ms) | MSAA | on, before | on, after | off, before | off, after |
 |---|---|---|---|---|---|
