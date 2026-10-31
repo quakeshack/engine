@@ -73,7 +73,8 @@ At 1024 units the shift is a pixel or two at 1080p. `0` means no limit.
   front of a pool would erase the pool. It copies the color (`PostProcess.copySceneColor`) drawn so far, and the
   depth when it changed (`PostProcess.sceneDepthCopy`), so whatever was drawn before shows through, other translucent
   things included. Within one owner nothing is copied again: the faces of the world's liquids do not see each other (water
-  seen through water), which keeps a map full of liquid down to a few copies.
+  seen through water), which keeps a map full of liquid down to a few copies. A brush entity out of the frustum is not
+  in the pass at all, so glass behind the camera does not get a copy.
 - `BrushModelRenderer` decides which items refract (`refractsWorldTurbulentChain`, `refractsWorldBatch`,
   `refractsEntity`) with the same alpha the draw uses, so a surface samples a copy only when one was made for it. The
   strengths are set for the pass by `prepareRefraction` and back to 0 after it. Refracting world glass is its own

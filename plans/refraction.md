@@ -468,6 +468,44 @@ Baseline (`d1ff5b9`, scene GPU ms, range over 2 rounds, color copies with refrac
 | two-panes | 6.99–7.04 | 7.89–8.06 | 3 | 5.32–5.70 | 5.92–6.49 |
 | through-glass | 7.78–7.86 | 9.37–9.40 | 6 | 5.66–5.79 | 6.59 |
 
+##### What actually shipped in Phase 1
+
+- `BrushModelRenderer.isEntityInView`, the cull of `render()` moved out and shared. `rendersTransparentPass` asks it last,
+  so a brush entity out of the frustum gets no item in `TransparentPass.Collect`. `#loadEntityBounds` is the one place
+  for the bounds of an entity, shared with `getEntityViewDistance`, on two reused `Vector`s; `render()` no longer
+  allocates two per entity and pass.
+- Tests with a real frustum in `transparent-collect.test.ts`. With the check taken out, the three that leave a pane out
+  fail. The two that keep one guard against culling too much, including a `func_wall` that wraps around the view.
+- Bench (scene GPU ms over refraction off, MSAA 4):
+
+| View | Before | After | Copies |
+|---|---:|---:|---:|
+| spot | +1.33 | +0.77 | 6 → 3 |
+| pane-fills-screen | +0.40 | −0.10 | 3 → 1 |
+| pane-strips | +0.47 | +0.51 | 3 → 2 |
+| two-panes | +0.95 | about 0 | 3 → 1 |
+| through-glass | +1.57 | +0.14 | 6 → 2 |
+
+  MSAA 0 shows the same direction. The goal of +0.5 is met at three views, not at the spot, and `pane-strips` is on the
+  line. That view makes a second depth copy with refraction on, which was not looked into.
+- **Browser pass: incomplete.** It was stopped because it overheated the developer's notebook: 90 yaw angles per view,
+  each a 1080p PNG, on the GPU, with two builds running at once. Compared offline, from what it had written, at MSAA 4:
+  - 145 of 455 pairs are unusable: the before build showed no scene (a blank tile) at those frames. Never the after
+    build. Why was not looked into; the machine was overloaded by then. They are all of `through-glass`, more than half
+    of `two-panes` and none of the rest.
+  - `spot` (568 pixels apart, 416 between two captures of one build), `pane-fills-screen` and `two-panes` (0) match, and
+    no compared frame shows a block at the screen edge, as a pane culled too early would.
+  - `pane-strips` and `two-panes` differ on the room behind the window: the map's flickering green light (style 10), not
+    the change. The difference carries the wall's texture, as lighting does, and the after build is greener in about
+    half of the frames and less green in the other half (20 to 22 and 9 to 9). So the pinned clock did not hold that
+    light still; not explained.
+  - **Not verified:** `through-glass` before/after, MSAA 0, frame-graph violations, and a same-build noise pair for
+    `pane-strips` and `two-panes`.
+- Removing an out-of-view item can merge two runs of world liquids or glass into one copy, see A. Not seen in the
+  compared frames, and not specifically tested.
+
+The developer's smoke test of Phase 1 on the real map: much better.
+
 #### Testing
 
 - `isEntityInView` and `rendersTransparentPass`: an entity behind the frustum gets no item and no copy, in

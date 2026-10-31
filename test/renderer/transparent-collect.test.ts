@@ -157,4 +157,82 @@ void describe('TransparentPass.Collect', () => {
 
     assert.deepEqual(items.map((item) => item.data), [farWindow, sprite, nearWindow]);
   });
+
+  void describe('with a view looking along +x', () => {
+    const previous = { vpn: Camera.vpn, vup: Camera.vup, vright: Camera.vright, fovX: Camera.refdef.fov_x, fovY: Camera.refdef.fov_y };
+
+    beforeEach(() => {
+      const { forward, right, up } = new Vector(0, 0, 0).angleVectors();
+
+      Camera.vpn = forward;
+      Camera.vright = right;
+      Camera.vup = up;
+      Camera.refdef.fov_x = 90;
+      Camera.refdef.fov_y = 90;
+      Camera.SetFrustum();
+    });
+
+    afterEach(() => {
+      Camera.vpn = previous.vpn;
+      Camera.vup = previous.vup;
+      Camera.vright = previous.vright;
+      Camera.refdef.fov_x = previous.fovX;
+      Camera.refdef.fov_y = previous.fovY;
+      Camera.SetFrustum();
+    });
+
+    // Glass behind the camera used to make it into the pass and pay for a full-screen copy of the scene: the copies
+    // are planned from these items, and the frustum check only came when drawing them. On a map with its glass in
+    // func_walls that was half of what refraction cost.
+    void test('leaves out a window behind the view', () => {
+      visibleEntities.push(createEntity(
+        createSubmodel(new Vector(-508, -64, -64), new Vector(-500, 64, 64)),
+        new Vector(0, 0, 0),
+      ));
+
+      assert.equal(TransparentPass.Collect(worldEntity).length, 0);
+    });
+
+    void test('leaves out a window beside the view, out of the frustum but in front of the camera', () => {
+      visibleEntities.push(createEntity(
+        createSubmodel(new Vector(100, 500, -64), new Vector(108, 628, 64)),
+        new Vector(0, 0, 0),
+      ));
+
+      assert.equal(TransparentPass.Collect(worldEntity).length, 0);
+    });
+
+    void test('keeps a window that a door swung into the view, by its origin and not where its model sits', () => {
+      visibleEntities.push(createEntity(
+        createSubmodel(new Vector(-508, -64, -64), new Vector(-500, 64, 64)),
+        new Vector(1000, 0, 0),
+      ));
+
+      assert.equal(TransparentPass.Collect(worldEntity).length, 1);
+    });
+
+    void test('keeps a long wall of windows that wraps around the view, though most of it is out of view', () => {
+      visibleEntities.push(createEntity(
+        createSubmodel(new Vector(-800, -800, -64), new Vector(800, 800, 64)),
+        new Vector(0, 0, 0),
+      ));
+
+      assert.equal(TransparentPass.Collect(worldEntity).length, 1);
+    });
+
+    void test('leaves out a brush model that is not a submodel by its radius', () => {
+      const model = new BrushModel('maps/b_batt0.bsp');
+
+      model.radius = 16;
+      visibleEntities.push(createEntity(model, new Vector(-200, 0, 0)));
+
+      assert.equal(TransparentPass.Collect(worldEntity).length, 0);
+    });
+
+    void test('still takes a sprite behind the view, which has no frustum check of its own here', () => {
+      visibleEntities.push(createEntity(new SpriteModel('sprites/flame.spr'), new Vector(-300, 0, 0)));
+
+      assert.equal(TransparentPass.Collect(worldEntity).length, 1);
+    });
+  });
 });

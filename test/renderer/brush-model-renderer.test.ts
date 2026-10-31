@@ -496,6 +496,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
       patchMembers(rendererCvars, { refraction: { value: 1 }, drawturbulents: { value: 1 } }),
       patchMembers(clientRuntimeState, { clientEntities: { getEntity: () => worldspawn } }),
       patchMembers(PostProcess, { active: true }),
+      patchMembers(Camera, { CullBox: () => false }),
     ];
   });
 
@@ -544,7 +545,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
    * @returns The entity.
    */
   function createEntity(model: BrushModel, alpha: number): ClientEdict {
-    return { model, alpha } as unknown as ClientEdict;
+    return { model, alpha, origin: new Vector() } as unknown as ClientEdict;
   }
 
   void test('an opaque entity with water is drawn in the transparent pass, nothing else draws its liquids', () => {

@@ -112,13 +112,13 @@ export class BrushModelRenderer extends ModelRenderer {
    */
   static MAX_FOG_DLIGHTS = 8;
 
-  /** Reused by `getEntityViewDistance()`, once per transparent brush entity and frame. */
   /** Bounds of the leaf a loop looks at, see `#loadLeafBounds()`. */
   static readonly #leafMins = new Vector();
   static readonly #leafMaxs = new Vector();
 
-  static readonly #scratchMins: [number, number, number] = [0, 0, 0];
-  static readonly #scratchMaxs: [number, number, number] = [0, 0, 0];
+  /** Bounds of the brush entity being looked at, see `#loadEntityBounds()`. Reused, this runs per entity and frame. */
+  static readonly #entityMins = new Vector();
+  static readonly #entityMaxs = new Vector();
 
   // ─── Private instance fields ──────────────────────────────────────
 
@@ -446,7 +446,32 @@ export class BrushModelRenderer extends ModelRenderer {
     return entity.alpha >= 1.0;
   }
 
-  rendersTransparentPass(model: BaseModel, entity: ClientEdict): boolean {
+  /**
+   * A brush entity out of view is not part of the pass, so it is neither sorted nor, what matters, worth a copy of the
+   * scene: glass behind the camera would pay for a full-screen copy and then draw nothing.
+   * @returns True when the entity has surfaces the pass draws and is in view.
+   */
+  override rendersTransparentPass(model: BaseModel, entity: ClientEdict): boolean {
+    const clmodel = model as BrushModel;
+
+    return BrushModelRenderer.#hasTransparentSurfaces(clmodel, entity) && this.isEntityInView(clmodel, entity);
+  }
+
+  /**
+   * Whether a brush entity is in the frustum of the view.
+   * @returns False when its bounds are outside of the frustum.
+   */
+  isEntityInView(clmodel: BrushModel, entity: ClientEdict): boolean {
+    BrushModelRenderer.#loadEntityBounds(clmodel, entity.origin);
+
+    return !Camera.CullBox(BrushModelRenderer.#entityMins, BrushModelRenderer.#entityMaxs);
+  }
+
+  /**
+   * Whether a brush entity has anything for the transparent pass to draw.
+   * @returns True when it is translucent as a whole, or has translucent surfaces or liquids.
+   */
+  static #hasTransparentSurfaces(clmodel: BrushModel, entity: ClientEdict): boolean {
     if (entity.alpha <= 0.0) {
       return false;
     }
@@ -454,8 +479,6 @@ export class BrushModelRenderer extends ModelRenderer {
     if (entity.alpha < 1.0) {
       return true;
     }
-
-    const clmodel = model as BrushModel;
 
     if (!clmodel.chains || clmodel.chains.length === 0) {
       return false;
@@ -495,34 +518,8 @@ export class BrushModelRenderer extends ModelRenderer {
     }
 
     // Regular brush entity — frustum cull
-    if (clmodel.submodel) {
-      if (Camera.CullBox(
-        new Vector(
-          e.origin[0] + clmodel.mins[0],
-          e.origin[1] + clmodel.mins[1],
-          e.origin[2] + clmodel.mins[2],
-        ),
-        new Vector(
-          e.origin[0] + clmodel.maxs[0],
-          e.origin[1] + clmodel.maxs[1],
-          e.origin[2] + clmodel.maxs[2],
-        ))) {
-        return;
-      }
-    } else {
-      if (Camera.CullBox(
-        new Vector(
-          e.origin[0] - clmodel.radius,
-          e.origin[1] - clmodel.radius,
-          e.origin[2] - clmodel.radius,
-        ),
-        new Vector(
-          e.origin[0] + clmodel.radius,
-          e.origin[1] + clmodel.radius,
-          e.origin[2] + clmodel.radius,
-        ))) {
-        return;
-      }
+    if (!this.isEntityInView(clmodel, e)) {
+      return;
     }
 
     const viewMatrix = e.lerp.angles.toRotationMatrix();
@@ -1352,27 +1349,36 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * Distance from the viewpoint to the nearest point of the bounds of a brush entity, the same measure the world
    * leafs, turbulent chains and fog volumes sort by, so they rank against each other in the transparent pass.
-   * An inline submodel keeps its vertices at world coordinates, so a door or a window that has not moved has the
-   * origin 0 0 0 wherever it is in the map: its bounds are the model bounds moved by the origin, as the frustum
-   * cull in `render()` has it. A model that is not a submodel is bounded by its radius around the origin.
    * @returns Distance in world units.
    */
   getEntityViewDistance(clmodel: BrushModel, entity: ClientEdict, vieworg: Float32Array | number[]): number {
-    const origin = entity.origin;
+    BrushModelRenderer.#loadEntityBounds(clmodel, entity.origin);
+
+    return this._getBoundsDistanceToView(BrushModelRenderer.#entityMins, BrushModelRenderer.#entityMaxs, vieworg);
+  }
+
+  /**
+   * Loads the bounds of a brush entity into `#entityMins` and `#entityMaxs`. An inline submodel keeps its vertices at
+   * world coordinates, so a door or a window that has not moved has the origin 0 0 0 wherever it is in the map: its
+   * bounds are the model bounds moved by the origin. A model that is not a submodel is bounded by its radius around
+   * the origin.
+   * @param origin Where the entity is.
+   */
+  static #loadEntityBounds(clmodel: BrushModel, origin: Vector): void {
+    const mins = BrushModelRenderer.#entityMins;
+    const maxs = BrushModelRenderer.#entityMaxs;
 
     if (clmodel.submodel) {
       for (let axis = 0; axis < 3; axis++) {
-        BrushModelRenderer.#scratchMins[axis] = origin[axis] + clmodel.mins[axis];
-        BrushModelRenderer.#scratchMaxs[axis] = origin[axis] + clmodel.maxs[axis];
+        mins[axis] = origin[axis] + clmodel.mins[axis];
+        maxs[axis] = origin[axis] + clmodel.maxs[axis];
       }
     } else {
       for (let axis = 0; axis < 3; axis++) {
-        BrushModelRenderer.#scratchMins[axis] = origin[axis] - clmodel.radius;
-        BrushModelRenderer.#scratchMaxs[axis] = origin[axis] + clmodel.radius;
+        mins[axis] = origin[axis] - clmodel.radius;
+        maxs[axis] = origin[axis] + clmodel.radius;
       }
     }
-
-    return this._getBoundsDistanceToView(BrushModelRenderer.#scratchMins, BrushModelRenderer.#scratchMaxs, vieworg);
   }
 
   /**
