@@ -23,11 +23,12 @@
  * that refactor when its before/after pair needs the same script on both sides.
  */
 import fs from 'node:fs';
-import http from 'node:http';
 import path from 'node:path';
 import process from 'node:process';
 
 import { chromium } from 'playwright';
+
+import { createConsole, startServer } from './harness.mjs';
 
 const [distDir, outDir, portArgument = '3101'] = process.argv.slice(2);
 
@@ -36,7 +37,6 @@ if (distDir === undefined || outDir === undefined) {
   process.exit(2);
 }
 
-const DEDICATED = { host: '127.0.0.1', port: Number(process.env.DEDICATED_PORT ?? 3000) };
 const VIEWPORT = { width: 960, height: 600 };
 
 // `CAPTURE_MAP` loads another map than the new-game menu path does (`CAPTURE_GAME` is the mod the build and the
@@ -50,67 +50,6 @@ const PINNED_CLIENT_TIME = 5000.25;
 
 // console notify lines and the drawer's slide animation run in real time and need to be gone before a screenshot
 const SETTLE_MS = 4500;
-
-const MIME_TYPES = {
-  '.html': 'text/html',
-  '.js': 'text/javascript',
-  '.mjs': 'text/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.jpeg': 'image/jpeg',
-  '.wasm': 'application/wasm',
-  '.svg': 'image/svg+xml',
-  '.txt': 'text/plain',
-};
-
-/**
- * Serves the build and forwards game files to the dedicated server.
- * @param {number} port Port to listen on.
- * @returns {Promise<http.Server>} The listening server.
- */
-async function startServer(port) {
-  const server = http.createServer((request, response) => {
-    const url = new URL(request.url, 'http://localhost');
-
-    if (url.pathname.startsWith('/qfs/')) {
-      const forwarded = http.request({ ...DEDICATED, path: request.url, method: request.method, headers: request.headers }, (upstream) => {
-        response.writeHead(upstream.statusCode, upstream.headers);
-        upstream.pipe(response);
-      });
-
-      forwarded.on('error', () => {
-        response.writeHead(502);
-        response.end();
-      });
-      request.pipe(forwarded);
-
-      return;
-    }
-
-    let file = path.join(distDir, decodeURIComponent(url.pathname));
-
-    if (file.endsWith('/')) {
-      file += 'index.html';
-    }
-
-    fs.readFile(file, (error, data) => {
-      if (error) {
-        response.writeHead(404);
-        response.end();
-
-        return;
-      }
-
-      response.writeHead(200, { 'Content-Type': MIME_TYPES[path.extname(file)] ?? 'application/octet-stream' });
-      response.end(data);
-    });
-  });
-
-  await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
-
-  return server;
-}
 
 /**
  * Installs what the scene needs inside the page: the engine members it touches, a seeded `Math.random` and the
@@ -254,7 +193,7 @@ function findFace(wanted) {
 
 fs.mkdirSync(outDir, { recursive: true });
 
-const server = await startServer(Number(portArgument));
+const server = await startServer(distDir, Number(portArgument));
 const browser = await chromium.launch({ args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: VIEWPORT });
 const consoleLog = [];
@@ -267,42 +206,7 @@ page.on('console', (message) => {
 });
 page.on('pageerror', (error) => consoleLog.push(`[pageerror] ${error.message}`));
 
-/**
- * Types a console command and makes sure the whole line arrived: the first character typed right after the
- * drawer opens can be swallowed, which turns it into a different command.
- * @param {string} command The console line.
- */
-async function enter(command) {
-  const isOpen = () => page.evaluate(() => window.engine.ConsoleOverlay.isOpen);
-  const echoed = () => page.evaluate((wanted) => window.engine.Con.text
-    .filter((line) => line && line.text)
-    .slice(-6)
-    .some((line) => line.text.trim().toLowerCase().endsWith(wanted.toLowerCase())), command);
-
-  for (let attempt = 0; attempt < 6; attempt++) {
-    if (!(await isOpen())) {
-      await page.keyboard.press('Backquote');
-      await page.waitForTimeout(900);
-    }
-
-    await page.keyboard.type(command, { delay: 15 });
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(300);
-
-    const arrived = await echoed();
-
-    if (await isOpen()) {
-      await page.keyboard.press('Backquote');
-      await page.waitForTimeout(300);
-    }
-
-    if (arrived) {
-      return;
-    }
-  }
-
-  throw new Error(`could not enter: ${command}`);
-}
+const enter = createConsole(page);
 
 const views = {};
 

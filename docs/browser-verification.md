@@ -234,7 +234,7 @@ node scripts/renderer-capture/compare.mjs \
   views: the spawn view, two dynamic lights with particles and a decal, the player model in chase view, bloom, fog,
   a camera under the largest sky face, above the largest liquid surface and inside it, and the spawn view again.
   It records the `r_speeds` lines of each view in `views.json`. A capture takes about 80 seconds; the page runs on
-  software GL at 3 to 5 FPS, so it says nothing about frame time.
+  software GL at 3 to 5 FPS, so it says nothing about frame time (section 9 does).
 - `compare.mjs` needs at least two captures on one side. It measures how far two captures of one build are apart
   and flags a view only when even the closest before/after pair is further apart than that. A view that is
   flagged by a small margin is worth a third capture before it is worth a look. A broken sky or particle pass is
@@ -259,6 +259,41 @@ node scripts/renderer-capture/compare.mjs \
   renderer state such as a changed resolution. Underwater fog is only covered with `CAPTURE_WATERFOG=1` in the
   environment of `capture.mjs`: `start` has no `_qs_waterfog` volume, so the key is set on the worldspawn before the
   liquid views and the "inside the lava" view then shows the underwater fog effect.
+
+## 9. Measuring GPU time (`gpu-bench.mjs`)
+
+For a performance change: `scripts/renderer-capture/gpu-bench.mjs` runs a production build on the real GPU and
+reports the GPU time of the scene (a timer query from `PostProcess.begin` to `end`) and the copies per frame, at fixed
+views and under named settings. It needs what section 8 needs: `playwright` importable (section 1) and a dedicated
+server running the same game.
+
+```bash
+npx vite build --mode production --outDir <scratch>/dist-before --emptyOutDir
+CAPTURE_GAME=<mod> BENCH_MSAA=4,0 node scripts/renderer-capture/gpu-bench.mjs \
+  <scratch>/dist-before scripts/renderer-capture/views/<bench>.json <scratch>/before
+```
+
+- The bench file names the map, the settings to compare (console commands) and the views. `views/hw_doom-glass.json`,
+  a Hellwave map, is an example; a view is an `origin` and `angles`, the same numbers as the player's position in the
+  game. Setting `sv_cheats 1`, `god`, `notarget` and `noclip` is the script's part.
+- Every setting is measured `BENCH_ROUNDS` times (default 2) at every view. The table shows the range, which is the
+  noise of that row: on an integrated GPU about 0.1 to 0.2 ms at MSAA 4, more at MSAA 0. A smaller difference
+  between two builds is not a result.
+- **It runs the GPU flat out, so one run at a time.** A notebook heats up within minutes: `BENCH_MSAA=4` and the default
+  rounds take about two. Do not run two builds at once, and do not script screenshot sweeps on the real GPU (a sweep
+  of 90 angles per view at 1080p with two builds running made a notebook unresponsive). A pixel comparison of a few
+  fixed views does not need the GPU at all: leave out `--use-angle=vulkan`, as `capture.mjs` does.
+- It needs a real GPU and warns on software GL. `--use-angle=vulkan` is what gives headless Chromium the GPU here, and
+  `EXT_disjoint_timer_query_webgl2` has to be available.
+- The game is paused at every view, because a running game changes the scene being measured. Its screenshots are not
+  frozen beyond that (pickups spin, lights flicker, sky and liquids animate), so comparing two runs pixel by pixel
+  shows those too: read where the pixels differ, not only how many.
+- It reports scene GPU time, not FPS: the page is capped near 60, and shadow maps and post-processing are outside the
+  query.
+- **The player has to stand at the view.** A camera moved on the client alone (`camera_override` in `capture.mjs`)
+  shows the map, but the server keeps sending the entities around the player, so brush entities near the view are
+  missing without any error, and what they cost is not measured. The script therefore runs the server in the page
+  (`?serverthread`) and moves the player's edict. It warns when no setting made a color copy at a view.
 
 ## Reporting results
 

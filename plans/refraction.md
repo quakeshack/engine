@@ -342,3 +342,144 @@ Done ahead of bigger maps, not measured on a GPU (the session renders on SwiftSh
 
 Browser pass (SwiftShader, `start`, MSAA 0 and 4, time pinned): spawn and 64-unit views bit-identical before/after,
 `r_refraction 0` identical everywhere, differences only on liquids 830 to 990 units away (inside the fade).
+
+### Third optimization pass: glass (planned, 2026-10-31)
+
+Refraction costs a noticeable frame rate on glass-heavy maps. Everything here is proposed, nothing is implemented; the
+numbers come from prototypes in a scratch copy of the tree.
+
+#### Context
+
+Measured on the developer's machine (AMD Radeon 890M, Chromium headless on ANGLE/Vulkan, production build, 1920x1080,
+GPU time of the scene from a timer query between `PostProcess.begin` and `end`), map `hw_doom`, from the spot the
+developer picked (origin `190.9 -985.3 24.8`, angles `1.3 335.3 -0.2`) and four views built around its panes. Player
+placed at the view, see C: the panes are entities, and moving only the camera leaves them out.
+
+`hw_doom` has 75 glass faces, all in 9 `func_wall` brush entities, none in the world. `TransparentPass.SharesCopy` gives
+every brush entity its own copy, so the count of glass entities in the PVS sets the count of copies.
+
+| View (MSAA 4, scene GPU ms) | Copies today → culled | Off | Today | Today, color copies skipped | Culled | Culled + rectangle |
+|---|---|---:|---:|---:|---:|---:|
+| spot (3 rounds) | 6 → 3 | 7.3–8.0 | 9.2–9.5 | 7.6 | 8.1–8.5 | 7.4–8.2 |
+| `300 -1000 70`, yaw 180 (pane fills the screen) | 3 → 1 | 7.1–7.2 | 7.9 | 6.5 | 7.0 | 6.9 |
+| `570 -930 70`, yaw 90 (two strips of pane, whole-screen rectangle) | 3 → 2 | 9.0 | 9.5 | 9.0 | 9.2 | 9.5 |
+| `420 -1000 70`, yaw 135 | 3 → 1 | 6.8–6.9 | 8.1 | 6.7 | 7.2 | 7.1 |
+| `200 -1050 70`, yaw 25 | 6 → 2 | 7.6–7.7 | 9.9 | 7.4 | 8.6 | 8.2 |
+
+The spot at MSAA 0 (2 rounds): off 6.0–6.4, today 7.2, culled 6.2–6.3, culled + rectangle 5.8–6.0.
+
+Noise is about 0.4 ms between runs of an identical plan and up to 0.7 ms for one setting within a run, so only
+differences above that mean anything in a single row. The rows agree on the direction.
+
+- **The copies are the whole cost.** With the color copies skipped, refraction is at or below refraction off in all
+  five views, also with a pane filling the screen: `brush-refract` drops the shadow samplers `brush` pays for. The
+  fragment shader needs no work. "Skipped" keeps the shader and its samples, reading a stale copy.
+- **Half the copies are for glass that is not on the screen.** `TransparentPass.Collect` takes every brush entity of
+  the visible list, the copy plan asks `refractsEntity`, and the frustum check only comes later, in
+  `BrushModelRenderer.render`. A pane behind the camera costs a full-screen copy and draws nothing. At the spot,
+  `*37`, `*38` and `*39` are such panes.
+- **A full copy costs about 0.25 to 0.45 ms here,** about double the 0.1 to 0.2 ms taken on `start`. Why is not measured.
+- This meets the condition the 2026-10-29 note set for revisiting rectangle copies: copies are most of what refraction
+  still costs, and panes are usually small on the screen.
+- Refraction adds 0.5 to 2.3 ms here. FPS was not measured (the page is capped near 60), but 1 ms is 9 FPS at 100 FPS
+  and 2.3 ms is 19, so this fits the 10 FPS the developer sees.
+
+#### Goals
+
+- At the five views, refraction on costs at most 0.5 ms over refraction off at MSAA 4.
+- No change in the picture: both phases are meant to be pixel-identical.
+
+#### Non-goals (this pass)
+
+- **Shader work** on `brush-refract`: measured above, nothing to gain.
+- **Sharing a copy between panes that do not overlap on the screen.** The prototype removed no copy in the five views.
+  It treated fog volumes as full-screen, so it may undersell itself, but rectangle copies leave it little to win.
+  Worth a measurement only on a map with glass in the world, where particles between two batches do break a run. No
+  such map was measured: `hw_doom` had 413 particles in one frame at the spot, but its glass is in entities, which copy anyway.
+- Occlusion queries for glass in the frustum behind a wall.
+- Tighter bounds per chain: `*32` wraps around the camera at the spot, so its rectangle is the whole screen, but it
+  also covers much of it.
+- A new player setting: `r_refraction_distance` is saved and can already be turned down, `r_refraction` stays a cheat.
+
+#### Design
+
+##### A. Brush entities out of view leave the pass (`BrushModelRenderer`)
+
+- Move the two `Camera.CullBox` branches of `render()` into `isEntityInView(clmodel, entity)`, on scratch vectors instead
+  of the two `new Vector` per call. `render()` uses it for its passes.
+- `rendersTransparentPass` returns false for an entity out of view. `TransparentPass.Collect` is its only caller, so
+  the entity gets no item: no sort, no copy, no `setupRenderState(2)`. The check goes last, after the cheap ones.
+- An out-of-view item can no longer split a run. Two groups of world glass with such an entity between them now share
+  a copy, the accepted behavior within a run. No such case exists in `hw_doom`.
+
+##### B. Copy only the rectangle the refracting items need (`PostProcess`, `TransparentPass`, `Camera`)
+
+- `Camera.ScreenBounds(mins, maxs, out)`: projects the 8 corners into 0..1 of the view, whole screen when a corner is at
+  or behind the near plane. Refraction only runs in the capture path, where the viewport starts at 0,0 and the
+  target has the size of the view (`R.SetupGL`), so 0..1 times `PostProcess.width` and `height` are the pixels.
+- `BrushModelRenderer`: `refractsWorldBatch`, `refractsWorldTurbulentChain` and `refractsEntity` become strength
+  getters (0 = does not refract, an entity answers for its strongest chain), so the plan and the padding cannot
+  disagree. `TransparentPass.#isRefractive` is the same question, `> 0`.
+- `TransparentPass.PlanCopyRects(items, copyBefore, rectOf, rects)`, a pure static beside `PlanSceneCopies`: every copy
+  gets the union of the rectangles of the items that use it, including later items of its run, each padded by
+  `REFRACTION_MAX_SHIFT` times its strength. Strength has no upper limit (`_qs_waterrefraction`, material `refraction`,
+  `r_refraction`), so the padding reads it instead of assuming 1. Only refracting items get a rectangle, on reused
+  arrays. Liquids take the same path and gain too.
+- `PostProcess.copySceneColor(rect)` blits that rectangle, floor and ceil to whole pixels, same rectangle on both sides as
+  a multisampled source requires. `null` is the whole screen. The JSDoc states that outside the rectangle the copy
+  holds an old frame.
+- `REFRACTION_MAX_SHIFT` then lives in `refraction.glsl` and in TypeScript. A test reads the chunk and compares them.
+  No clamp in the shader: correct padding makes one unnecessary, and it would cost a uniform.
+
+##### C. Measurement in the repo (`scripts/renderer-capture/`)
+
+The harness was rebuilt for each pass. `gpu-bench.mjs` keeps it: real GPU, timer query around the scene, copy counts,
+named views. `docs/browser-verification.md` gets the trap that produced a wrong first measurement here: `camera_override`
+moves only the view, the server keeps sending the entities of the player's position, so brush entities at the view
+are missing without an error. Load with `?serverthread`, then `noclip` and `setOrigin` on the player's edict.
+
+#### Phasing
+
+Each phase ends with typecheck, lint and tests green, and is a checkpoint.
+
+0. **Bench:** `gpu-bench.mjs` with the five views, the doc section, and a baseline for the record.
+1. **Cull (A):** expected to reach 0 to +1.0 ms over off, the larger part of the win, for a small diff.
+2. **Rectangle copies (B):** expected to reach about 0 to +0.6 ms. Most of the gain is where panes are small on the
+   screen, none where the bounds of a pane cover it. If Phase 1 already meets the goal, this one is optional: it adds the most
+   code of the pass and a duplicated constant.
+
+##### What actually shipped in Phase 0
+
+- `scripts/renderer-capture/gpu-bench.mjs`, documented in `docs/browser-verification.md`, section 9. The views and what
+  to compare are in a bench file (`views/hw_doom-glass.json`) rather than in the script, so the script stays free of
+  any one game. It warns on software GL and at a view where no setting made a color copy.
+- The file server and the console typing of `capture.mjs` moved to `harness.mjs`, shared by both. `capture.mjs` ran
+  end to end after the move (`hw_test_gameloop`, nine views).
+- The bench is steadier than the prototypes, which is why it was worth having: rounds agree within about 0.1 to 0.2 ms
+  at MSAA 4, not the 0.4 to 0.7 ms of the Context table. Differences of a phase are read against this table.
+
+Baseline (`d1ff5b9`, scene GPU ms, range over 2 rounds, color copies with refraction on):
+
+| View | MSAA 4 off | MSAA 4 on | Copies | MSAA 0 off | MSAA 0 on |
+|---|---:|---:|---:|---:|---:|
+| spot | 8.00–8.09 | 9.36–9.37 | 6 | 5.93–6.04 | 6.83–7.03 |
+| pane-fills-screen | 7.16–7.23 | 7.57–7.60 | 3 | 5.75–6.00 | 5.88–6.09 |
+| pane-strips | 8.97–8.98 | 9.42–9.48 | 3 | 7.31–7.45 | 7.93–7.94 |
+| two-panes | 6.99–7.04 | 7.89–8.06 | 3 | 5.32–5.70 | 5.92–6.49 |
+| through-glass | 7.78–7.86 | 9.37–9.40 | 6 | 5.66–5.79 | 6.59 |
+
+#### Testing
+
+- `isEntityInView` and `rendersTransparentPass`: an entity behind the frustum gets no item and no copy, in
+  `TransparentPass.Collect`. This is the regression that would quietly bring the cost back. The existing
+  `rendersTransparentPass` tests need a frustum that contains their entity.
+- `PlanCopyRects`: the union over a run, padding by strength, a strength of 2 pads twice as far, a rectangle per copy
+  when the owner changes, the whole screen when `ScreenBounds` says so.
+- `Camera.ScreenBounds`: a box in view, a box crossing the near plane, a box partly off-screen is clamped.
+- `copySceneColor(rect)` in `post-process-color-copy.test.ts`: the blit arguments with and without MSAA, whole pixels,
+  `null` copies everything.
+- The constant in TypeScript equals the one in `refraction.glsl`.
+- **Browser pass** (`browser-ui-verification`): before/after at the five views with the clock frozen. Pixel-identical,
+  with `gl_msaa` 0 and 4, `r_framegraph` without violations, and at Phase 2 a material with `refraction` 2 at a pane
+  edge, where wrong padding shows as a seam of old pixels.
+- `gpu-bench.mjs` before/after on the developer's machine for each phase, recorded here.
