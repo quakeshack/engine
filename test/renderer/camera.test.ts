@@ -150,6 +150,87 @@ void describe('Camera', () => {
     });
   });
 
+  void describe('Camera.ScreenBounds', () => {
+    const rect = { x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0 };
+
+    beforeEach(() => {
+      Camera.refdef.viewangles.setTo(0.0, 0.0, 0.0);
+      Camera.UpdateViewVectors();
+      Camera.UpdateMatrices();
+      Camera.UpdateProjection(FOV, 1.0);
+    });
+
+    /**
+     * Asserts where a rectangle is.
+     * @param expected Lower left and upper right corner, 0..1.
+     */
+    function assertRect(...expected: [number, number, number, number]): void {
+      assertNear(rect.x0, expected[0], 1e-3);
+      assertNear(rect.y0, expected[1], 1e-3);
+      assertNear(rect.x1, expected[2], 1e-3);
+      assertNear(rect.y1, expected[3], 1e-3);
+    }
+
+    void test('covers the middle of the view for a box centered in it', () => {
+      // at distance 100 of a 90 degree view the screen reaches 100 units to either side, so 50 is halfway
+      Camera.ScreenBounds(new Vector(100.0, -50.0, -50.0), new Vector(100.0, 50.0, 50.0), rect);
+
+      assertRect(0.25, 0.25, 0.75, 0.75);
+    });
+
+    void test('takes the nearest face of a box for its size on the screen', () => {
+      Camera.ScreenBounds(new Vector(100.0, -50.0, -50.0), new Vector(1000.0, 50.0, 50.0), rect);
+
+      assertRect(0.25, 0.25, 0.75, 0.75);
+    });
+
+    // gl_FragCoord and the blit count from the bottom, WorldToScreen from the top: mixing them up copies the wrong half
+    void test('has y going up, as the framebuffer has it', () => {
+      Camera.ScreenBounds(new Vector(100.0, -10.0, 50.0), new Vector(100.0, 10.0, 90.0), rect);
+
+      assert(rect.y0 > 0.5);
+      assert(rect.y1 > rect.y0);
+    });
+
+    void test('agrees with WorldToScreen, also in a view that is turned, pitched and rolled', () => {
+      Camera.refdef.viewangles.setTo(10.0, 70.0, 5.0);
+      Camera.UpdateViewVectors();
+      Camera.UpdateMatrices();
+
+      const point = Camera.vpn.copy().multiply(200.0).add(Camera.vright.copy().multiply(30.0)).add(Camera.vup.copy().multiply(20.0));
+      const onScreen = Camera.WorldToScreen(point)!;
+
+      Camera.ScreenBounds(point, point, rect);
+
+      assertNear(rect.x0 * VIEW_SIZE, onScreen[0], 1e-2);
+      assertNear(VIEW_SIZE - rect.y0 * VIEW_SIZE, onScreen[1], 1e-2);
+    });
+
+    void test('clamps a box that reaches beyond the screen', () => {
+      Camera.ScreenBounds(new Vector(100.0, -500.0, -50.0), new Vector(100.0, 50.0, 50.0), rect);
+
+      assertRect(0.25, 0.25, 1.0, 0.75);
+    });
+
+    void test('is the whole view for a box the eye is inside of', () => {
+      Camera.ScreenBounds(new Vector(-800.0, -800.0, -64.0), new Vector(800.0, 800.0, 64.0), rect);
+
+      assertRect(0.0, 0.0, 1.0, 1.0);
+    });
+
+    void test('is the whole view for a box that reaches behind the eye, its projected corners would mean nothing', () => {
+      Camera.ScreenBounds(new Vector(-10.0, 400.0, -10.0), new Vector(100.0, 420.0, 10.0), rect);
+
+      assertRect(0.0, 0.0, 1.0, 1.0);
+    });
+
+    void test('is empty for a box in front of the eye but off-screen', () => {
+      Camera.ScreenBounds(new Vector(100.0, -500.0, -10.0), new Vector(100.0, -400.0, 10.0), rect);
+
+      assert(rect.x1 <= rect.x0);
+    });
+  });
+
   void describe('Camera.CullBox', () => {
     /**
      * Creates the bounds of a cube around a point.

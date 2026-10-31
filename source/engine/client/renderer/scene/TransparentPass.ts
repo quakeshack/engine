@@ -12,7 +12,7 @@ import type { ModelRenderer } from '../models/ModelRenderer.ts';
 import { modelRendererRegistry } from '../models/ModelRendererRegistry.ts';
 import PostProcess from '../postprocess/PostProcess.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
-import Camera from './Camera.ts';
+import Camera, { type ScreenRect } from './Camera.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -57,6 +57,12 @@ export interface TransparentItem extends SortKindDistance {
 const SORT_EPSILON = 0.0001;
 
 /**
+ * Largest shift of a refracting surface per axis and unit of strength, as a share of the screen. Must match
+ * `REFRACTION_MAX_SHIFT` in `include/refraction.glsl`: the copy of the scene has to reach as far as the shader samples.
+ */
+export const REFRACTION_MAX_SHIFT = 0.02;
+
+/**
  * Everything blended in a frame, drawn in one back-to-front pass: transparent world leafs, turbulent surfaces,
  * fog volumes, translucent entities, sprites, decals and particles. Gathering the items and drawing them are
  * separate steps so the order can be tested without a GL context.
@@ -78,6 +84,12 @@ class TransparentPass {
 
   /** Where the scene is copied for the refracting items of the frame being drawn, see `PlanSceneCopies()`. */
   static readonly #copyBefore: boolean[] = [];
+
+  /** What each copy of the frame being drawn has to cover, see `PlanCopyRects()`. Reused, it only holds numbers. */
+  static readonly #copyRects: ScreenRect[] = [];
+
+  /** The screen bounds of the item `PlanCopyRects()` is looking at. */
+  static readonly #itemBounds: ScreenRect = { x0: 0.0, y0: 0.0, x1: 1.0, y1: 1.0 };
 
   /**
    * Resolves deterministic tie-break priority for the kinds.
@@ -154,6 +166,60 @@ class TransparentPass {
   }
 
   /**
+   * Works out what each copy of a plan from `PlanSceneCopies` has to cover: the screen bounds of the refracting items
+   * that use it, each grown by how far it can shift. Strength has no upper limit, it comes from the map, the material
+   * and `r_refraction`, so the shift is taken from the strength of the item.
+   * @param items The items in drawing order.
+   * @param copyBefore The plan.
+   * @param strengthOf How strongly an item refracts, 0 when it does not.
+   * @param boundsOf Fills in the screen bounds of an item.
+   * @param rects Receives one rectangle per copy, in drawing order. Reused, and only as long as it has to be.
+   */
+  static PlanCopyRects<T>(
+    items: readonly T[],
+    copyBefore: readonly boolean[],
+    strengthOf: (item: T) => number,
+    boundsOf: (item: T, out: ScreenRect) => void,
+    rects: ScreenRect[],
+  ): void {
+    const bounds = TransparentPass.#itemBounds;
+    let copies = 0;
+    let rect: ScreenRect | null = null;
+
+    for (let i = 0; i < items.length; i++) {
+      if (copyBefore[i]) {
+        if (copies === rects.length) {
+          rects.push({ x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0 });
+        }
+
+        rect = rects[copies++];
+        rect.x0 = Infinity;
+        rect.y0 = Infinity;
+        rect.x1 = -Infinity;
+        rect.y1 = -Infinity;
+      }
+
+      if (rect === null) {
+        continue;
+      }
+
+      const strength = strengthOf(items[i]);
+
+      if (strength <= 0.0) {
+        continue;
+      }
+
+      const shift = strength * REFRACTION_MAX_SHIFT;
+
+      boundsOf(items[i], bounds);
+      rect.x0 = Math.min(rect.x0, bounds.x0 - shift);
+      rect.y0 = Math.min(rect.y0, bounds.y0 - shift);
+      rect.x1 = Math.max(rect.x1, bounds.x1 + shift);
+      rect.y1 = Math.max(rect.y1, bounds.y1 + shift);
+    }
+  }
+
+  /**
    * Whether two refracting items drawn one after the other can use one copy of the scene: the liquids of the world
    * and its glass among themselves can, but not a brush entity, which can stand in front of what the world drew
    * before it, nor the world liquids and the world glass, which cover each other.
@@ -211,7 +277,7 @@ class TransparentPass {
       for (let i = 0; i < worldSurfaces.length; i++) {
         const batch = worldSurfaces[i].batch;
         brushRenderer!.setRefractionDistance(worldSurfaces[i].dist);
-        const kind = brushRenderer!.refractsWorldBatch(worldmodel, batch) ? TransparentKind.RefractiveWorldSurface : TransparentKind.WorldSurface;
+        const kind = brushRenderer!.refractionOfWorldBatch(worldmodel, batch) ? TransparentKind.RefractiveWorldSurface : TransparentKind.WorldSurface;
         items.push({ dist: worldSurfaces[i].dist, kind, data: batch });
       }
 
@@ -311,6 +377,10 @@ class TransparentPass {
     PostProcess.invalidateSceneDepthCopy();
 
     const copyBefore = TransparentPass.PlanSceneCopies(items, TransparentPass.#isRefractive, TransparentPass.#copyBefore, TransparentPass.SharesCopy);
+    const copyRects = TransparentPass.#copyRects;
+    let copies = 0;
+
+    TransparentPass.PlanCopyRects(items, copyBefore, TransparentPass.#refractionOf, TransparentPass.#screenBoundsOf, copyRects);
 
     gl.depthMask(false);
 
@@ -333,7 +403,7 @@ class TransparentPass {
       // the depth is only copied again when something wrote it since the last copy, an opaque liquid
       if (copyBefore[i]) {
         PostProcess.sceneDepthCopy();
-        PostProcess.copySceneColor();
+        PostProcess.copySceneColor(copyRects[copies++]);
       }
 
       if (kindChanges) {
@@ -367,26 +437,57 @@ class TransparentPass {
    * @returns True for the liquids and glass that refract in this pass at the distance of the item.
    */
   static #isRefractive(this: void, item: TransparentItem): boolean {
+    return TransparentPass.#refractionOf(item) > 0.0;
+  }
+
+  /**
+   * How strongly an item refracts what is behind it.
+   * @returns The strength at the distance of the item, 0 when it does not refract.
+   */
+  static #refractionOf(this: void, item: TransparentItem): number {
     const brushRenderer = TransparentPass.#brushRenderer;
     const worldmodel = TransparentPass.#worldmodel;
 
     if (brushRenderer === null) {
-      return false;
+      return 0.0;
     }
 
     brushRenderer.setRefractionDistance(item.dist);
 
     switch (item.kind) {
       case TransparentKind.RefractiveWorldSurface:
-        return true;
+        return worldmodel !== null ? brushRenderer.refractionOfWorldBatch(worldmodel, item.data as WorldSurfaceBatch) : 0.0;
       case TransparentKind.Turbulent:
-        return worldmodel !== null && brushRenderer.refractsWorldTurbulentChain(worldmodel, item.data as WorldSurfaceBatch);
+        return worldmodel !== null ? brushRenderer.refractionOfWorldTurbulentChain(worldmodel, item.data as WorldSurfaceBatch) : 0.0;
       case TransparentKind.Entity: {
         const entity = item.data as ClientEdict;
-        return entity.model !== null && brushRenderer.refractsEntity(entity.model, entity);
+        return entity.model !== null ? brushRenderer.refractionOfEntity(entity.model, entity) : 0.0;
       }
       default:
-        return false;
+        return 0.0;
+    }
+  }
+
+  /**
+   * The part of the view a refracting item covers.
+   * @param out Filled with the rectangle.
+   */
+  static #screenBoundsOf(this: void, item: TransparentItem, out: ScreenRect): void {
+    switch (item.kind) {
+      case TransparentKind.RefractiveWorldSurface:
+      case TransparentKind.Turbulent: {
+        const batch = item.data as WorldSurfaceBatch;
+        Camera.ScreenBounds(batch.mins, batch.maxs, out);
+        break;
+      }
+      case TransparentKind.Entity: {
+        const entity = item.data as ClientEdict;
+        TransparentPass.#brushRenderer!.getEntityScreenBounds(entity.model as BrushModel, entity, out);
+        break;
+      }
+      default:
+        Camera.WholeScreen(out);
+        break;
     }
   }
 

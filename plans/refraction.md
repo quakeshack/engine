@@ -1,6 +1,6 @@
 # Screen-space refraction for translucent liquids and glass
 
-**Status:** Done (2026-10): Phases 1 to 3 shipped, and the duplicate liquid and translucent draws found on the way are fixed. Water and glass ship together in this pass.
+**Status:** Done (2026-10): Phases 1 to 3 shipped, and the duplicate liquid and translucent draws found on the way are fixed. Water and glass ship together in this pass. The [glass pass](#third-optimization-pass-glass-planned-2026-10-31) at the end of this file shipped Phases 0 to 2.
 
 ## Context
 
@@ -305,7 +305,7 @@ turbulent kind another depth copy, refraction or not: up to 8 color and 16 depth
   before checking or drawing an item, so the copy plan and the uniform agree.
 - **Not done:** a lower-resolution color copy. A multisampled source cannot be scaled by the resolving blit, and once
   the count was down a copy was 0.1 to 0.2 ms.
-- **Not done, dismissed as low yield (2026-10-29):** copying only the screen rectangle the refracting items of a copy
+- **Not done, dismissed as low yield (2026-10-29), done after all in the third pass below:** copying only the screen rectangle the refracting items of a copy
   cover (their projected bounds, padded by the largest shift of the group, full screen when a corner is behind the
   camera, the shader clamping to the copied rectangle). It would save at most the 0.1 to 0.2 ms of each color copy,
   scaled by the area no longer copied: most for a small or distant surface, nothing for a liquid that fills the
@@ -506,6 +506,48 @@ Baseline (`d1ff5b9`, scene GPU ms, range over 2 rounds, color copies with refrac
 
 The developer's smoke test of Phase 1 on the real map: much better.
 
+##### What actually shipped in Phase 2
+
+- `Camera.ScreenBounds` (and `WholeScreen`, `ScreenRect`), `TransparentPass.PlanCopyRects`, `copySceneColor(rect)`, as
+  designed. The three predicates became `refractionOfWorldBatch`, `refractionOfWorldTurbulentChain` and
+  `refractionOfEntity`, which answer with the strength. `REFRACTION_MAX_SHIFT` in `TransparentPass.ts`, compared with
+  the shader by a test.
+- **Deviations, found by reading the draw path, not in the design and not in the prototype:**
+  - The rectangle of an entity uses `lerp.origin`, where it is drawn (`getEntityScreenBounds`). The cull and the sort
+    keep `origin`. A pane on a moving door is between two server positions, and the prototype's rectangle would have
+    left a seam along it.
+  - A turned inline submodel copies the whole screen: its bounds are those of its vertices at rest. A model bounded by
+    its radius keeps its bounds, those hold at any angle.
+  - One pixel of margin all around: a linear sample at the edge of the rectangle reads the next pixel.
+- The strength getters keep the order of the predicates: strength first, and only then the alpha of a liquid, which
+  takes `MaterialBinder.Emit`. The first draft had it the other way, which charged every liquid every frame on maps
+  without refraction. A test holds it there.
+- Tests: all 8 safeguards were broken on purpose in a scratch copy (origin, turned models either way, y direction,
+  behind the eye, fixed padding, margin, order of alpha and strength), each fails at least one test.
+- **Bench** (scene GPU ms, MSAA 4, the game paused at every view; rounds agree within 0.1 ms). The goal is met at all five
+  views. The baseline was taken with the game running, but its off column matches this one within 0.1 ms, so the
+  columns compare. Copy counts are those of Phase 1: this phase makes copies smaller, not fewer.
+
+| View | Off | On | Over off, baseline | Phase 1 | Phase 2 | On, saved against the baseline |
+|---|---:|---:|---:|---:|---:|---:|
+| spot | 8.03–8.05 | 8.07–8.14 | +1.33 | +0.77 | **+0.07** | 1.26 |
+| pane-fills-screen | 7.09–7.16 | 6.78–6.89 | +0.40 | −0.10 | **−0.29** | 0.75 |
+| pane-strips | 8.95–8.98 | 9.39–9.42 | +0.47 | +0.51 | **+0.44** | 0.05 |
+| two-panes | 6.96–6.98 | 7.14–7.16 | +0.95 | about 0 | **+0.18** | 0.83 |
+| through-glass | 7.84–7.85 | 7.60–7.64 | +1.57 | +0.14 | **−0.22** | 1.76 |
+
+  The `two-panes` figure of Phase 1 came from a run with the game running; +0.18 is the steadier number. A first run of
+  this phase was unusable: it went bimodal with the game running through it, which is why `gpu-bench.mjs` pauses now.
+  The developer also reports that it feels much better in play.
+- **Browser pass:** screenshots of the bench, refraction on, MSAA 4, compared with Phase 1 and the baseline, all five
+  views: two identical; `spot` 276 and `through-glass` 965 pixels, each inside a box the size of the spinning pickup;
+  `pane-strips` 20716 inside the room of the flickering light, like the pair before it (22256). No difference along a
+  pane, which is where a rectangle that is too small shows. This also closes `through-glass` at MSAA 4 for Phase 1.
+- **Not verified:** frame-graph violations, anything at MSAA 0 (the saved screenshots show different game states and
+  say nothing), and in a browser a pane that moves or turns or a strength above 1: `hw_doom` has none. Those are covered
+  by unit tests only.
+- `pane-strips` still makes the second depth copy of Phase 1, and refraction costs about the same there as before. Not looked into.
+
 #### Testing
 
 - `isEntityInView` and `rendersTransparentPass`: an entity behind the frustum gets no item and no copy, in
@@ -521,3 +563,7 @@ The developer's smoke test of Phase 1 on the real map: much better.
   with `gl_msaa` 0 and 4, `r_framegraph` without violations, and at Phase 2 a material with `refraction` 2 at a pane
   edge, where wrong padding shows as a seam of old pixels.
 - `gpu-bench.mjs` before/after on the developer's machine for each phase, recorded here.
+
+#### Open questions
+
+- The second depth copy at `pane-strips`, the one view where this pass gained nothing. It is within the goal.

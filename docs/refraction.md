@@ -75,8 +75,8 @@ At 1024 units the shift is a pixel or two at 1080p. `0` means no limit.
   things included. Within one owner nothing is copied again: the faces of the world's liquids do not see each other (water
   seen through water), which keeps a map full of liquid down to a few copies. A brush entity out of the frustum is not
   in the pass at all, so glass behind the camera does not get a copy.
-- `BrushModelRenderer` decides which items refract (`refractsWorldTurbulentChain`, `refractsWorldBatch`,
-  `refractsEntity`) with the same alpha the draw uses, so a surface samples a copy only when one was made for it. The
+- `BrushModelRenderer` decides which items refract (`refractionOfWorldTurbulentChain`, `refractionOfWorldBatch`,
+  `refractionOfEntity`) with the same alpha the draw uses, so a surface samples a copy only when one was made for it. The
   strengths are set for the pass by `prepareRefraction` and back to 0 after it. Refracting world glass is its own
   item kind (`RefractiveWorldSurface`), drawn by the `brush-refract` program.
 - The world's liquids and translucent surfaces are packed once per face, in batches shared by the leafs that list
@@ -87,9 +87,14 @@ At 1024 units the shift is a pixel or two at 1080p. `0` means no limit.
   in front of the surface falls back to the unshifted one, so near geometry does not bleed into the liquid. Only the
   color is copied and refracted: the surface blends its emissive over the unshifted emissive behind it, so bloom of
   what is behind the surface is kept, just not shifted (bloom blurs it anyway).
+- A color copy covers only what its items can sample (`TransparentPass.PlanCopyRects`): their bounds on the screen, grown
+  by how far each can shift at its strength. Outside of that rectangle the copy holds older pixels, so
+  `REFRACTION_MAX_SHIFT` in `TransparentPass.ts` and in `include/refraction.glsl` have to agree, and a shader that shifts
+  further has to say so. An item whose bounds are not known on the screen copies everything: a box with a corner behind
+  the eye, a turned inline model.
 - The depth copy is shared by the whole transparent pass (`PostProcess.sceneDepthCopy`) and made again only after an
-  opaque liquid wrote depth. A copy costs a full-screen blit, a resolve when multisampled; on an integrated GPU at
-  1080p a copy cost 0.2 to 0.5 ms, and copying per run was most of what refraction cost.
+  opaque liquid wrote depth. A full-screen copy costs a blit, a resolve when multisampled; on an integrated GPU at
+  1080p about 0.2 to 0.5 ms, and copies are most of what refraction costs.
 - `TransparentPass` tells the brush renderer the distance of each item before it checks or draws it
   (`setRefractionDistance`), so the copy plan and the strength in the shader follow `r_refraction_distance` alike.
 - Refraction needs the scene capture, which every frame with liquids has. Without it nothing refracts.

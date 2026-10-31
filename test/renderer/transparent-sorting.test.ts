@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
-import TransparentPass, { TransparentKind, type TransparentItem } from '../../source/engine/client/renderer/scene/TransparentPass.ts';
+import TransparentPass, { REFRACTION_MAX_SHIFT, TransparentKind, type TransparentItem } from '../../source/engine/client/renderer/scene/TransparentPass.ts';
+import type { ScreenRect } from '../../source/engine/client/renderer/scene/Camera.ts';
 import type { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import type { WorldSurfaceBatch } from '../../source/engine/common/model/BSP.ts';
+import { assertNear } from '../support/assertions.ts';
 
 void describe('TransparentPass.Compare', () => {
   void test('sorts farther items first', () => {
@@ -130,5 +133,93 @@ void describe('TransparentPass.PlanSceneCopies', () => {
 
     assert.equal(result, copyBefore);
     assert.deepEqual(result, [false]);
+  });
+});
+
+void describe('TransparentPass.PlanCopyRects', () => {
+  interface PlannedItem {
+    readonly strength: number;
+    readonly bounds: ScreenRect;
+  }
+
+  /**
+   * Builds an item of the plan.
+   * @param strength How strongly it refracts.
+   * @param bounds Lower left and upper right corner, 0..1.
+   * @returns The item.
+   */
+  function item(strength: number, ...bounds: [number, number, number, number]): PlannedItem {
+    return { strength, bounds: { x0: bounds[0], y0: bounds[1], x1: bounds[2], y1: bounds[3] } };
+  }
+
+  /**
+   * Plans the rectangles of the copies.
+   * @param items The items in drawing order.
+   * @param copyBefore Where the copies are.
+   * @param rects Where they go, a reused array in the test that asks for it.
+   * @returns The rectangles.
+   */
+  function plan(items: PlannedItem[], copyBefore: boolean[], rects: ScreenRect[] = []): ScreenRect[] {
+    TransparentPass.PlanCopyRects(items, copyBefore, (planned) => planned.strength, (planned, out) => Object.assign(out, planned.bounds), rects);
+
+    return rects;
+  }
+
+  void test('makes no rectangle when nothing is copied', () => {
+    assert.deepEqual(plan([item(0, 0.1, 0.1, 0.2, 0.2)], [false]), []);
+  });
+
+  void test('grows the rectangle by how far the surface can shift', () => {
+    const [rect] = plan([item(1, 0.4, 0.4, 0.5, 0.5)], [true]);
+
+    assertNear(rect.x0, 0.4 - REFRACTION_MAX_SHIFT);
+    assertNear(rect.y1, 0.5 + REFRACTION_MAX_SHIFT);
+  });
+
+  // `_qs_waterrefraction 2` or a material's `refraction` shift further: with a fixed padding they would sample old
+  // pixels around the edge of the surface
+  void test('grows it further for a stronger surface, strength has no upper limit', () => {
+    const [rect] = plan([item(3, 0.4, 0.4, 0.5, 0.5)], [true]);
+
+    assertNear(rect.x0, 0.4 - 3 * REFRACTION_MAX_SHIFT);
+    assertNear(rect.x1, 0.5 + 3 * REFRACTION_MAX_SHIFT);
+  });
+
+  void test('covers every item of a run, not only the one the copy is made for', () => {
+    const rects = plan([item(1, 0.1, 0.1, 0.2, 0.2), item(1, 0.7, 0.6, 0.8, 0.9)], [true, false]);
+
+    assert.equal(rects.length, 1);
+    assertNear(rects[0].x0, 0.1 - REFRACTION_MAX_SHIFT);
+    assertNear(rects[0].y1, 0.9 + REFRACTION_MAX_SHIFT);
+  });
+
+  void test('gives each copy its own rectangle, in drawing order', () => {
+    const rects = plan([item(1, 0.1, 0.1, 0.2, 0.2), item(1, 0.7, 0.7, 0.8, 0.8)], [true, true]);
+
+    assert.equal(rects.length, 2);
+    assertNear(rects[0].x1, 0.2 + REFRACTION_MAX_SHIFT);
+    assertNear(rects[1].x0, 0.7 - REFRACTION_MAX_SHIFT);
+  });
+
+  void test('leaves out items that do not refract, they sample nothing', () => {
+    const rects = plan([item(0, 0.0, 0.0, 1.0, 1.0), item(1, 0.4, 0.4, 0.5, 0.5), item(0, 0.0, 0.0, 1.0, 1.0)], [false, true, false]);
+
+    assertNear(rects[0].x0, 0.4 - REFRACTION_MAX_SHIFT);
+    assertNear(rects[0].x1, 0.5 + REFRACTION_MAX_SHIFT);
+  });
+
+  void test('starts over on a reused array, nothing of the last frame stays in a rectangle', () => {
+    const rects = plan([item(1, 0.0, 0.0, 1.0, 1.0)], [true]);
+
+    plan([item(1, 0.4, 0.4, 0.5, 0.5)], [true], rects);
+
+    assert.equal(rects.length, 1);
+    assertNear(rects[0].x0, 0.4 - REFRACTION_MAX_SHIFT);
+  });
+
+  void test('asks for the same shift as the shader, or the copy stops short of what it samples', () => {
+    const chunk = readFileSync(new URL('../../source/engine/client/shaders/include/refraction.glsl', import.meta.url), 'utf8');
+
+    assert.equal(Number(/const float REFRACTION_MAX_SHIFT = ([\d.]+);/.exec(chunk)![1]), REFRACTION_MAX_SHIFT);
   });
 });

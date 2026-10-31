@@ -568,7 +568,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
 
     renderer.prepareRefraction(createWorld('1'));
 
-    assert(renderer.refractsEntity(model, createEntity(model, 0.5)));
+    assert(renderer.refractionOfEntity(model, createEntity(model, 0.5)));
   });
 
   void test('opaque water does not refract, it shows nothing behind it', () => {
@@ -577,7 +577,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
 
     renderer.prepareRefraction(createWorld('1'));
 
-    assert(!renderer.refractsEntity(model, createEntity(model, 1.0)));
+    assert(!renderer.refractionOfEntity(model, createEntity(model, 1.0)));
   });
 
   void test('a translucent entity without liquids does not refract', () => {
@@ -586,7 +586,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
 
     renderer.prepareRefraction(createWorld('1'));
 
-    assert(!renderer.refractsEntity(model, createEntity(model, 0.5)));
+    assert(!renderer.refractionOfEntity(model, createEntity(model, 0.5)));
   });
 
   void test('nothing refracts on a map that does not ask for it', () => {
@@ -595,7 +595,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
 
     renderer.prepareRefraction(createWorld(undefined));
 
-    assert(!renderer.refractsEntity(model, createEntity(model, 0.5)));
+    assert(!renderer.refractionOfEntity(model, createEntity(model, 0.5)));
   });
 
   void test('nothing refracts without the scene capture, there is no copy of the scene to sample', () => {
@@ -605,7 +605,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
     PostProcess.active = false;
     renderer.prepareRefraction(createWorld('1'));
 
-    assert(!renderer.refractsEntity(model, createEntity(model, 0.5)));
+    assert(!renderer.refractionOfEntity(model, createEntity(model, 0.5)));
   });
 
   /**
@@ -632,7 +632,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
     try {
       renderer.prepareRefraction(world);
 
-      assert(renderer.refractsWorldTurbulentChain(world, chain));
+      assert(renderer.refractionOfWorldTurbulentChain(world, chain));
     } finally {
       restore();
     }
@@ -646,7 +646,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
     try {
       renderer.prepareRefraction(world);
 
-      assert(!renderer.refractsWorldTurbulentChain(world, chain));
+      assert(!renderer.refractionOfWorldTurbulentChain(world, chain));
     } finally {
       restore();
     }
@@ -659,7 +659,7 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
     renderer.prepareRefraction(createWorld('1'));
     renderer.prepareRefraction(null);
 
-    assert(!renderer.refractsEntity(model, createEntity(model, 0.5)));
+    assert(!renderer.refractionOfEntity(model, createEntity(model, 0.5)));
   });
 });
 
@@ -876,8 +876,8 @@ void describe('BrushModelRenderer translucent world surfaces', () => {
 
     renderer.prepareRefraction(model);
 
-    assert(!renderer.refractsWorldBatch(model, fence));
-    assert(renderer.refractsWorldBatch(model, window));
+    assert(!renderer.refractionOfWorldBatch(model, fence));
+    assert(renderer.refractionOfWorldBatch(model, window));
   });
 
   void test('a window does not refract when the player turned refraction off', () => {
@@ -888,7 +888,7 @@ void describe('BrushModelRenderer translucent world surfaces', () => {
     restores.push(patchMembers(rendererCvars, { refraction: { value: 0 } }));
     renderer.prepareRefraction(model);
 
-    assert(!renderer.refractsWorldBatch(model, window));
+    assert(!renderer.refractionOfWorldBatch(model, window));
   });
 });
 
@@ -940,15 +940,86 @@ void describe('BrushModelRenderer glass of brush entities', () => {
   void test('translucent glass of an opaque entity refracts', () => {
     const model = createModel(MaterialFlags.MF_TRANSPARENT | MaterialFlags.MF_REFRACT);
 
-    assert(createRenderer().refractsEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict));
+    assert(createRenderer().refractionOfEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict));
   });
 
   void test('an opaque refracting material refracts only when the entity is translucent', () => {
     const model = createModel(MaterialFlags.MF_REFRACT);
     const renderer = createRenderer();
 
-    assert(!renderer.refractsEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict));
-    assert(renderer.refractsEntity(model, { model, alpha: 0.5 } as unknown as ClientEdict));
+    assert(!renderer.refractionOfEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict));
+    assert(renderer.refractionOfEntity(model, { model, alpha: 0.5 } as unknown as ClientEdict));
+  });
+});
+
+void describe('BrushModelRenderer.getEntityScreenBounds', () => {
+  const out = { x0: -1, y0: -1, x1: -1, y1: -1 };
+  let boxes: Vector[][] = [];
+  let restore = (): void => {};
+
+  beforeEach(() => {
+    boxes = [];
+    restore = patchMembers(Camera, {
+      ScreenBounds(mins: Vector, maxs: Vector, rect: typeof out) {
+        boxes.push([mins.copy(), maxs.copy()]);
+        Object.assign(rect, { x0: 0.25, y0: 0.25, x1: 0.75, y1: 0.75 });
+      },
+    });
+  });
+
+  afterEach(() => {
+    restore();
+  });
+
+  /**
+   * Builds an inline window that stands 100 units down +x at rest.
+   * @returns The model.
+   */
+  function createWindow(): BrushModel {
+    const model = new BrushModel('*1');
+
+    model.submodel = true;
+    model.mins = new Vector(100, -32, -32);
+    model.maxs = new Vector(108, 32, 32);
+
+    return model;
+  }
+
+  /**
+   * Builds the part of an entity the method reads.
+   * @param origin Where the server last said it is.
+   * @param drawnAt Where it is drawn right now, between two server frames.
+   * @param angles How it is turned.
+   * @returns The entity.
+   */
+  function createEntity(origin: Vector, drawnAt: Vector, angles = new Vector()): ClientEdict {
+    return { origin, lerp: { origin: drawnAt, angles } } as unknown as ClientEdict;
+  }
+
+  // The draw uses lerp.origin. A pane on a moving door is between two server positions, and a copy made for where the
+  // server said it is would miss the pane by the width of the difference: a seam of last frame's pixels along it.
+  void test('uses where a moving pane is drawn, not where the server said it is', () => {
+    new BrushModelRenderer().getEntityScreenBounds(createWindow(), createEntity(new Vector(0, 0, 0), new Vector(0, 40, 0)), out);
+
+    assert.deepEqual([...boxes[0][0]], [100, 8, -32]);
+    assert.deepEqual([...boxes[0][1]], [108, 72, 32]);
+  });
+
+  void test('covers the whole view for a turned inline model, its bounds are those of its vertices at rest', () => {
+    new BrushModelRenderer().getEntityScreenBounds(createWindow(), createEntity(new Vector(), new Vector(), new Vector(0, 45, 0)), out);
+
+    assert.equal(boxes.length, 0);
+    assert.deepEqual(out, { x0: 0, y0: 0, x1: 1, y1: 1 });
+  });
+
+  void test('keeps the bounds of a turned model that is bounded by its radius, that holds at any angle', () => {
+    const model = new BrushModel('maps/b_batt0.bsp');
+
+    model.radius = 16;
+    new BrushModelRenderer().getEntityScreenBounds(model, createEntity(new Vector(), new Vector(), new Vector(0, 45, 0)), out);
+
+    assert.deepEqual([...boxes[0][0]], [-16, -16, -16]);
+    assert.deepEqual([...boxes[0][1]], [16, 16, 16]);
   });
 });
 
@@ -1057,7 +1128,7 @@ void describe('BrushModelRenderer refraction asked for by a material', () => {
     const material = createMaterial(MaterialFlags.MF_TURBULENT, 0.5, 0);
 
     assert.equal(drawStrength(renderer, material), 0.0);
-    assert(!renderer.refractsWorldTurbulentChain(createWaterWorld(material), CHAIN));
+    assert(!renderer.refractionOfWorldTurbulentChain(createWaterWorld(material), CHAIN));
   });
 
   void test('MF_REFRACT makes a liquid refract on a map that does not ask, at strength 1', () => {
@@ -1065,7 +1136,7 @@ void describe('BrushModelRenderer refraction asked for by a material', () => {
     const material = createMaterial(MaterialFlags.MF_TURBULENT | MaterialFlags.MF_REFRACT, 0.5, null);
 
     assert.equal(drawStrength(renderer, material), 1.0);
-    assert(renderer.refractsWorldTurbulentChain(createWaterWorld(material), CHAIN));
+    assert(renderer.refractionOfWorldTurbulentChain(createWaterWorld(material), CHAIN));
   });
 
   void test('a liquid that is not marked does not refract on a map that does not ask', () => {
@@ -1073,7 +1144,7 @@ void describe('BrushModelRenderer refraction asked for by a material', () => {
     const material = createMaterial(MaterialFlags.MF_TURBULENT, 0.5, null);
 
     assert.equal(drawStrength(renderer, material), 0.0);
-    assert(!renderer.refractsWorldTurbulentChain(createWaterWorld(material), CHAIN));
+    assert(!renderer.refractionOfWorldTurbulentChain(createWaterWorld(material), CHAIN));
   });
 
   void test('an opaque liquid does not refract whatever it asks for', () => {
@@ -1081,13 +1152,13 @@ void describe('BrushModelRenderer refraction asked for by a material', () => {
     const material = createMaterial(MaterialFlags.MF_TURBULENT | MaterialFlags.MF_REFRACT, null, 2.0);
 
     assert.equal(drawStrength(renderer, material), 0.0);
-    assert(!renderer.refractsWorldTurbulentChain(createWaterWorld(material), CHAIN));
+    assert(!renderer.refractionOfWorldTurbulentChain(createWaterWorld(material), CHAIN));
   });
 
   void test('the alpha of the material makes a liquid translucent without a key on the map', () => {
     const renderer = beginPass('1');
 
-    assert(renderer.refractsWorldTurbulentChain(createWaterWorld(createMaterial(MaterialFlags.MF_TURBULENT, 0.4, null)), CHAIN));
+    assert(renderer.refractionOfWorldTurbulentChain(createWaterWorld(createMaterial(MaterialFlags.MF_TURBULENT, 0.4, null)), CHAIN));
   });
 
   void test('a refraction strength alone makes glass refract, the flag is not needed', () => {
@@ -1099,11 +1170,45 @@ void describe('BrushModelRenderer refraction asked for by a material', () => {
     model.textures.push(glass);
     model.chains.push([0, 0, 6]);
 
-    assert(renderer.refractsEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict));
+    assert(renderer.refractionOfEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict));
 
     glass.refraction = 0;
 
-    assert(!renderer.refractsEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict));
+    assert(!renderer.refractionOfEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict));
+  });
+
+  void test('an entity answers with its strongest surface, which decides how far its copy has to reach', () => {
+    const renderer = beginPass(undefined);
+    const model = new BrushModel('*1');
+
+    model.submodel = true;
+    model.textures.push(createMaterial(MaterialFlags.MF_TRANSPARENT, 1.0, 0.5), createMaterial(MaterialFlags.MF_TRANSPARENT, 1.0, 2.0));
+    model.chains.push([0, 0, 6], [1, 6, 6]);
+
+    assert.equal(renderer.refractionOfEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict), 2.0);
+  });
+
+  void test('a liquid of an entity counts only when it is drawn translucent', () => {
+    const renderer = beginPass(undefined);
+    const model = new BrushModel('*1');
+
+    model.submodel = true;
+    model.textures.push(createMaterial(MaterialFlags.MF_TURBULENT, 1.0, 2.0), createMaterial(MaterialFlags.MF_TRANSPARENT, 1.0, 0.5));
+    model.chains.push([0, 0, 6], [1, 6, 6]);
+
+    assert.equal(renderer.refractionOfEntity(model, { model, alpha: 1.0 } as unknown as ClientEdict), 0.5);
+  });
+
+  // every liquid of a map is asked every frame: resolving the alpha of one that cannot refract is wasted on all of them
+  void test('does not resolve the alpha of a liquid that does not refract', () => {
+    const renderer = beginPass(undefined);
+    const material = createMaterial(MaterialFlags.MF_TURBULENT, 0.5, null);
+    let resolved = 0;
+
+    restores.push(patchMembers(MaterialBinder, { Emit: () => { resolved++; } }));
+
+    assert.equal(renderer.refractionOfWorldTurbulentChain(createWaterWorld(material), CHAIN), 0.0);
+    assert.equal(resolved, 0);
   });
 
   void test('a map has to capture the scene for a material that asks for refraction, flag or strength', () => {
@@ -1136,10 +1241,10 @@ void describe('BrushModelRenderer refraction asked for by a material', () => {
     world.textures.push(createMaterial(MaterialFlags.MF_TRANSPARENT | MaterialFlags.MF_REFRACT, null, null));
 
     renderer.setRefractionDistance(100);
-    assert(renderer.refractsWorldBatch(world, batch));
+    assert(renderer.refractionOfWorldBatch(world, batch));
 
     renderer.setRefractionDistance(1024);
-    assert(!renderer.refractsWorldBatch(world, batch));
+    assert(!renderer.refractionOfWorldBatch(world, batch));
   });
 
   void test('an r_refraction_distance of 0 refracts at any distance', () => {

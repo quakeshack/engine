@@ -7,6 +7,7 @@ import PostProcessEntries, { type ResolvedPostProcessEntry } from './PostProcess
 import Frame from '../frame/Frame.ts';
 import RenderTarget from '../frame/RenderTarget.ts';
 import { eventBus } from '../../../common/EventBus.ts';
+import type { ScreenRect } from '../scene/Camera.ts';
 import type { PostProcessPulseDescriptor, PostProcessPulseOptions, PostProcessStack, PostProcessStackOptions } from '../../../../shared/GameInterfaces.ts';
 
 let gl: WebGL2RenderingContext = null!;
@@ -465,13 +466,24 @@ export default class PostProcess {
    *
    * The emissive is not copied: a refracting surface blends its own over it unshifted, which bloom blurs anyway, and
    * a second full-screen blit per copy is what made refraction expensive.
+   *
+   * Only `rect` is copied, a little more for filtering. Outside of it the copy still holds whatever was there before,
+   * an older copy or the last frame, so a pass must not sample beyond the rectangle it asked for: it has to include
+   * what the pass can reach by shifting.
+   * @param rect The part of the scene that is sampled, the whole of it when left out.
    * @returns The target whose `colorTexture(0)` holds the color.
    */
-  static copySceneColor(): RenderTarget {
+  static copySceneColor(rect: ScreenRect | null = null): RenderTarget {
     const source = RenderTarget.bound;
     const copy = PostProcess.colorCopy!;
     const width = PostProcess.width;
     const height = PostProcess.height;
+
+    // whole pixels around the rectangle, and one more: a linear sample at its edge reads the next pixel as well
+    const x0 = rect === null ? 0 : Math.min(Math.max(Math.floor(rect.x0 * width) - 1, 0), width);
+    const y0 = rect === null ? 0 : Math.min(Math.max(Math.floor(rect.y0 * height) - 1, 0), height);
+    const x1 = rect === null ? width : Math.min(Math.max(Math.ceil(rect.x1 * width) + 1, x0), width);
+    const y1 = rect === null ? height : Math.min(Math.max(Math.ceil(rect.y1 * height) + 1, y0), height);
 
     console.assert(source !== null && (source === PostProcess.scene || source === PostProcess.msaaTarget), 'the scene is the target while its color is copied');
 
@@ -482,7 +494,7 @@ export default class PostProcess {
 
     // the read buffer is state of the source framebuffer, and resolveMSAA() leaves the emissive selected
     gl.readBuffer(gl.COLOR_ATTACHMENT0);
-    gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.blitFramebuffer(x0, y0, x1, y1, x0, y0, x1, y1, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     Frame.endPass();
 
     source!.bind();

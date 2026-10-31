@@ -21,6 +21,16 @@ export interface RefdefState {
 type Vec4 = [number, number, number, number];
 
 /**
+ * A rectangle of the view in 0..1, with y going up like the framebuffer and `gl_FragCoord`.
+ */
+export interface ScreenRect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/**
  * The view of the current frame: the refdef that `FirstPersonView` and `Viewport` fill in, the vectors, frustum and matrices derived
  * from it, and the queries that depend on them (culling a box, projecting a point to the screen).
  *
@@ -194,6 +204,65 @@ class Camera {
       m[2]*v[0] + m[6]*v[1] + m[10]*v[2] + m[14]*v[3],
       m[3]*v[0] + m[7]*v[1] + m[11]*v[2] + m[15]*v[3],
     ];
+  }
+
+  /**
+   * Sets a rectangle to the whole view.
+   */
+  static WholeScreen(out: ScreenRect): void {
+    out.x0 = 0.0;
+    out.y0 = 0.0;
+    out.x1 = 1.0;
+    out.y1 = 1.0;
+  }
+
+  /**
+   * The rectangle of the view that a box in world space covers. A box with a corner behind the eye has no such
+   * rectangle, what is left of it reaches beyond the screen, so it covers the whole view. A box that is off-screen
+   * comes out empty, with `x1 <= x0` or `y1 <= y0`.
+   * @param mins Lower corner in world units.
+   * @param maxs Upper corner in world units.
+   * @param out Filled with the rectangle, clamped to the view.
+   */
+  static ScreenBounds(mins: Vector, maxs: Vector, out: ScreenRect): void {
+    const view = Camera.viewMatrix!;
+    const projection = Camera.projectionMatrix!;
+    const origin = Camera.refdef.vieworg;
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+
+    console.assert(view !== null && projection !== null, 'matrices required');
+
+    for (let corner = 0; corner < 8; corner++) {
+      const dx = ((corner & 1) !== 0 ? maxs[0] : mins[0]) - origin[0];
+      const dy = ((corner & 2) !== 0 ? maxs[1] : mins[1]) - origin[1];
+      const dz = ((corner & 4) !== 0 ? maxs[2] : mins[2]) - origin[2];
+      const viewX = view[0] * dx + view[4] * dy + view[8] * dz;
+      const viewY = view[1] * dx + view[5] * dy + view[9] * dz;
+      const viewZ = view[2] * dx + view[6] * dy + view[10] * dz;
+
+      // the same swizzle as WorldToScreen: gl_Position = projection * vec4(x, z, -y, 1.0)
+      const clipX = projection[0] * viewX + projection[4] * viewZ - projection[8] * viewY + projection[12];
+      const clipY = projection[1] * viewX + projection[5] * viewZ - projection[9] * viewY + projection[13];
+      const clipW = projection[3] * viewX + projection[7] * viewZ - projection[11] * viewY + projection[15];
+
+      if (clipW <= 0.0) {
+        Camera.WholeScreen(out);
+        return;
+      }
+
+      x0 = Math.min(x0, clipX / clipW);
+      y0 = Math.min(y0, clipY / clipW);
+      x1 = Math.max(x1, clipX / clipW);
+      y1 = Math.max(y1, clipY / clipW);
+    }
+
+    out.x0 = Math.min(Math.max((x0 + 1.0) * 0.5, 0.0), 1.0);
+    out.y0 = Math.min(Math.max((y0 + 1.0) * 0.5, 0.0), 1.0);
+    out.x1 = Math.min(Math.max((x1 + 1.0) * 0.5, 0.0), 1.0);
+    out.y1 = Math.min(Math.max((y1 + 1.0) * 0.5, 0.0), 1.0);
   }
 
   /**

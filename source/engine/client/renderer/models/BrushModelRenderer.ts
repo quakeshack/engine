@@ -21,7 +21,7 @@ import LightSampler from '../lighting/LightSampler.ts';
 import EntityLighting from '../lighting/EntityLighting.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
 import Host from '../../../common/Host.ts';
-import Camera from '../scene/Camera.ts';
+import Camera, { type ScreenRect } from '../scene/Camera.ts';
 import Visibility from '../scene/Visibility.ts';
 import DefaultTextures from '../resources/DefaultTextures.ts';
 import MaterialBinder from './MaterialBinder.ts';
@@ -468,6 +468,24 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
+   * The part of the view a brush entity covers while it is drawn, for the copy of the scene it refracts.
+   * @param out Filled with the rectangle.
+   */
+  getEntityScreenBounds(clmodel: BrushModel, entity: ClientEdict, out: ScreenRect): void {
+    const angles = entity.lerp.angles;
+
+    // the bounds of an inline submodel are those of its vertices at rest, they say nothing once it has turned
+    if (clmodel.submodel && (angles[0] !== 0.0 || angles[1] !== 0.0 || angles[2] !== 0.0)) {
+      Camera.WholeScreen(out);
+      return;
+    }
+
+    // not `entity.origin`: a moving pane is drawn at the interpolated origin, and would leave the rectangle behind
+    BrushModelRenderer.#loadEntityBounds(clmodel, entity.lerp.origin);
+    Camera.ScreenBounds(BrushModelRenderer.#entityMins, BrushModelRenderer.#entityMaxs, out);
+  }
+
+  /**
    * Whether a brush entity has anything for the transparent pass to draw.
    * @returns True when it is translucent as a whole, or has translucent surfaces or liquids.
    */
@@ -578,7 +596,7 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Tells the renderer how far the item of the transparent pass that is checked (`refractsWorldBatch`, ...) or drawn
+   * Tells the renderer how far the item of the transparent pass that is checked (`refractionOfWorldBatch`, ...) or drawn
    * next is, so a far one refracts less, and beyond `r_refraction_distance` not at all: there the shift is a pixel
    * or two, not worth a copy of the scene. The transparent pass sets it before each, from the distance it sorts by,
    * so the decision whether to copy the scene and the strength the draw uses agree.
@@ -621,52 +639,57 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Whether a translucent world batch refracts in this pass, so it is drawn by `brush-refract` and the scene has to
-   * be copied before it.
-   * @returns True for a refracting material while refraction is on.
+   * How strongly a translucent world batch refracts in this pass. Above 0 it is drawn by `brush-refract` and the scene
+   * has to be copied before it.
+   * @returns The strength, 0 when it does not refract.
    */
-  refractsWorldBatch(clmodel: BrushModel, batch: WorldSurfaceBatch): boolean {
-    return this.#refractionOf(clmodel.textures[batch.texture] as BaseMaterial) > 0.0;
+  refractionOfWorldBatch(clmodel: BrushModel, batch: WorldSurfaceBatch): number {
+    return this.#refractionOf(clmodel.textures[batch.texture] as BaseMaterial);
   }
 
   /**
-   * Whether a turbulent chain of the world refracts in this pass, so the scene has to be copied before it is drawn.
-   * @returns True when it is drawn translucent and refracts, by the map or by its material.
+   * How strongly a turbulent chain of the world refracts in this pass. Above 0 the scene has to be copied before it.
+   * @returns The strength, 0 unless it is drawn translucent and refracts, by the map or by its material.
    */
-  refractsWorldTurbulentChain(clmodel: BrushModel, chain: WorldSurfaceBatch): boolean {
+  refractionOfWorldTurbulentChain(clmodel: BrushModel, chain: WorldSurfaceBatch): number {
     const worldspawn = clientRuntimeState.clientEntities.getEntity(0);
     const material = clmodel.textures[chain.texture] as BaseMaterial;
 
-    return this.#refractionOf(material) > 0.0 && this.#turbulentAlpha(material, worldspawn) < 1.0;
+    const strength = this.#refractionOf(material);
+
+    return strength > 0.0 && this.#turbulentAlpha(material, worldspawn) < 1.0 ? strength : 0.0;
   }
 
   /**
-   * Whether a brush entity has a liquid that refracts in this pass, so the scene has to be copied before it is drawn.
-   * @returns True when one of its liquids is drawn translucent and refracts, by the map or by its material.
+   * How strongly a brush entity refracts in this pass: the strongest of its glass and of its liquids that are drawn
+   * translucent. Above 0 the scene has to be copied before it.
+   * @returns The strength, 0 when nothing of it refracts.
    */
-  refractsEntity(model: BaseModel, entity: ClientEdict): boolean {
+  refractionOfEntity(model: BaseModel, entity: ClientEdict): number {
     if (!(model instanceof BrushModel)) {
-      return false;
+      return 0.0;
     }
 
-    if (this.#hasRefractingGlass(model, entity)) {
-      return true;
-    }
-
-    if (this.#refractionScale === 0.0 || rendererCvars.drawturbulents.value === 0) {
-      return false;
-    }
+    const liquids = this.#refractionScale !== 0.0 && rendererCvars.drawturbulents.value !== 0;
+    let strongest = 0.0;
 
     for (let i = 0; i < model.chains.length; i++) {
       const material = model.textures[model.chains[i][0]] as BaseMaterial;
+      const strength = this.#refractionOf(material);
 
-      if ((material.flags & MaterialFlags.MF_SKIP) === 0 && (material.flags & MaterialFlags.MF_TURBULENT) !== 0
-        && this.#refractionOf(material) > 0.0 && this.#turbulentAlpha(material, entity) < 1.0) {
-        return true;
+      // the alpha of a liquid takes resolving, so only for one that would change the answer
+      if (strength <= strongest) {
+        continue;
+      }
+
+      if (this.#refractsGlassChain(material, entity)
+        || (liquids && (material.flags & MaterialFlags.MF_SKIP) === 0 && (material.flags & MaterialFlags.MF_TURBULENT) !== 0
+          && this.#turbulentAlpha(material, entity) < 1.0)) {
+        strongest = strength;
       }
     }
 
-    return false;
+    return strongest;
   }
 
   /**
