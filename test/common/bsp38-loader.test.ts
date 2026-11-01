@@ -542,6 +542,7 @@ void describe('QSMatLoader (used by BSP38Loader, BSP29Loader and BSP2Loader alik
       loadRenderData: true,
       files: {
         LoadFile: () => Promise.resolve(null),
+        LoadOptionalTextFile: () => Promise.resolve(null),
         LoadTextFile: () => Promise.resolve(JSON.stringify({ version: 1, materials: { 'e1u1/glass': {} } })),
       },
     });

@@ -43,7 +43,6 @@ const CONSTANTS: Readonly<Record<string, number>> = {
   CULL_FACE: 0x0B44,
   LESS: 0x0201,
   VIEWPORT: 0x0BA2,
-  ARRAY_BUFFER: 0x8892,
   STATIC_DRAW: 0x88E4,
   FLOAT: 0x1406,
 };
