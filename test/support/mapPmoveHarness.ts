@@ -253,6 +253,9 @@ function installEngine(baseDir: string): void {
         return null;
       }
     },
+    async LoadOptionalTextFile(name: string) {
+      return await this.LoadTextFile(name);
+    },
   };
 
   engineMocks.Con = con;

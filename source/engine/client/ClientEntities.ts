@@ -151,11 +151,16 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
 
   classname: string | null;
   readonly num: number;
-  model: BaseModel | null;
+  #model: BaseModel | null = null;
+  #frame = 0;
+  /**
+   * Time (`clientRuntimeState.time`) at which `model` or `frame` last changed. Sprites that follow
+   * their entity's own clock restart their sequence from here.
+   */
+  animationStartTime = 0.0;
   modelindex: number;
   framePrevious: number | null;
   frameTime: number;
-  frame: number;
   skinnum: number;
   colormap: number;
   effects: effect;
@@ -233,11 +238,9 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   constructor(num: number) {
     this.classname = null;
     this.num = num;
-    this.model = null;
     this.modelindex = 0;
     this.framePrevious = null;
     this.frameTime = 0.0;
-    this.frame = 0;
     this.skinnum = 0;
     this.colormap = 0;
     this.effects = 0;
@@ -316,6 +319,41 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
 
     Object.freeze(this.lerp);
     Object.seal(this);
+  }
+
+  /**
+   * The model to draw. Setting a different model restarts the entity's animation clock
+   * ({@link ClientEdict.animationStartTime}).
+   * @returns The model, `null` when the entity is not drawn.
+   */
+  get model(): BaseModel | null {
+    return this.#model;
+  }
+
+  set model(model: BaseModel | null) {
+    if (model !== this.#model) {
+      this.animationStartTime = clientRuntimeState.time;
+    }
+
+    this.#model = model;
+  }
+
+  /**
+   * The frame to draw, for a sprite the sequence to play. Setting a different value restarts the
+   * entity's animation clock ({@link ClientEdict.animationStartTime}); writing the value it already
+   * has does not, so the server's repeated `frame` updates leave a running sequence alone.
+   * @returns The frame number.
+   */
+  get frame(): number {
+    return this.#frame;
+  }
+
+  set frame(frame: number) {
+    if (frame !== this.#frame) {
+      this.animationStartTime = clientRuntimeState.time;
+    }
+
+    this.#frame = frame;
   }
 
   /**

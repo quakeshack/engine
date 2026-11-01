@@ -26,6 +26,7 @@ import { ServerCollision } from './physics/ServerCollision.ts';
 import type { ServerDependencies } from './ServerDependencies.ts';
 import { BrushModel, ModelScope } from '../common/Mod.ts';
 import { ServerClient } from './Client.ts';
+import type { ModelPrecacheFlags } from '../../shared/ModelPrecacheFlags.ts';
 
 export { ServerEntityState } from './ServerEntityState.ts';
 
@@ -70,6 +71,8 @@ interface ServerState {
   models: ServerModel[];
   soundPrecache: string[];
   modelPrecache: string[];
+  /** Hints sent with each model of `modelPrecache`, by the same index. */
+  modelPrecacheFlags: ModelPrecacheFlags[];
   lightstyles: string[];
   active: boolean;
   loading: boolean;
@@ -176,6 +179,7 @@ export default class Server {
     models: [],
     soundPrecache: [],
     modelPrecache: [],
+    modelPrecacheFlags: [],
     lightstyles: [],
     active: false,
     loading: false,
@@ -856,6 +860,7 @@ export default class Server {
     this.server.soundPrecache.length = 1;
     this.server.soundPrecache[0] = '';
 
+    this.server.modelPrecacheFlags.length = 0;
     this.server.modelPrecache.length = 2 + worldmodel.submodels.length;
     this.server.modelPrecache[0] = '';
     this.server.modelPrecache[1] = worldmodel.name;

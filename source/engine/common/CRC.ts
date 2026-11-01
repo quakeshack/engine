@@ -52,3 +52,42 @@ export class CRC16CCITT {
     return crcvalue;
   }
 }
+
+/**
+ * CRC-32 checksum helper (the one of PNG, zlib and Ethernet: polynomial 0xEDB88320, reflected).
+ */
+export class CRC32 {
+  static readonly #table = CRC32.#buildTable();
+
+  static #buildTable(): Uint32Array {
+    const table = new Uint32Array(256);
+
+    for (let index = 0; index < 256; index++) {
+      let value = index;
+
+      for (let bit = 0; bit < 8; bit++) {
+        value = (value & 1) !== 0 ? (value >>> 1) ^ 0xedb88320 : value >>> 1;
+      }
+
+      table[index] = value >>> 0;
+    }
+
+    return table;
+  }
+
+  /**
+   * Calculate the checksum for a block of bytes.
+   * @param data The bytes.
+   * @param start A checksum to continue from, 0 for a new one.
+   * @returns CRC-32 checksum as an unsigned number.
+   */
+  static Block(data: Uint8Array, start = 0): number {
+    let crcvalue = (start ^ 0xffffffff) >>> 0;
+
+    for (const byte of data) {
+      crcvalue = CRC32.#table[(crcvalue ^ byte) & 0xff] ^ (crcvalue >>> 8);
+    }
+
+    return (crcvalue ^ 0xffffffff) >>> 0;
+  }
+}

@@ -142,6 +142,7 @@ function createCountingFiles(gate: (() => Promise<void>) | null = null): { files
         return createAliasModelFile();
       },
       LoadTextFile: () => Promise.resolve(null),
+      LoadOptionalTextFile: () => Promise.resolve(null),
     },
     reads: () => reads,
   };
@@ -181,7 +182,7 @@ void describe('AliasMDLLoader collision geometry', () => {
   async function load(collisionGeometry: boolean): Promise<AliasModel> {
     const loader = new AliasMDLLoader(createModelLoadContext());
 
-    return await loader.load(createAliasModelFile(), MODEL_NAME, { collisionGeometry });
+    return await loader.load(createAliasModelFile(), MODEL_NAME, { collisionGeometry, sidecar: true });
   }
 
   void test('keeps bounds, frame names and counts without geometry by default', async () => {
@@ -239,7 +240,7 @@ void describe('Mod collision geometry cache', () => {
 
     assert.equal(light.hasCollisionGeometry, false);
 
-    const full = asAliasModel(await mod.ForNameAsync(MODEL_NAME, true, ModelScope.server, { collisionGeometry: true }));
+    const full = asAliasModel(await mod.ForNameAsync(MODEL_NAME, true, ModelScope.server, { collisionGeometry: true, sidecar: true }));
 
     assert.equal(full.hasCollisionGeometry, true);
     assert.equal(reads(), 2);
@@ -250,7 +251,7 @@ void describe('Mod collision geometry cache', () => {
   void test('a model that has its geometry answers a plain load without reading the file again', async () => {
     const { mod, reads } = createServerMod();
 
-    await mod.ForNameAsync(MODEL_NAME, true, ModelScope.server, { collisionGeometry: true });
+    await mod.ForNameAsync(MODEL_NAME, true, ModelScope.server, { collisionGeometry: true, sidecar: true });
     const again = asAliasModel(await mod.ForNameAsync(MODEL_NAME, true, ModelScope.server));
 
     assert.equal(again.hasCollisionGeometry, true);
@@ -261,8 +262,8 @@ void describe('Mod collision geometry cache', () => {
     const { mod, reads } = createServerMod();
 
     await mod.ForNameAsync(MODEL_NAME, true, ModelScope.server);
-    await mod.ForNameAsync(MODEL_NAME, true, ModelScope.server, { collisionGeometry: true });
-    await mod.ForNameAsync(MODEL_NAME, true, ModelScope.server, { collisionGeometry: true });
+    await mod.ForNameAsync(MODEL_NAME, true, ModelScope.server, { collisionGeometry: true, sidecar: true });
+    await mod.ForNameAsync(MODEL_NAME, true, ModelScope.server, { collisionGeometry: true, sidecar: true });
 
     assert.equal(reads(), 2);
   });
@@ -275,7 +276,7 @@ void describe('Mod collision geometry cache', () => {
       }));
 
       const plain = mod.ForNameAsync(MODEL_NAME, true, ModelScope.server);
-      const asking = mod.ForNameAsync(MODEL_NAME, true, ModelScope.server, { collisionGeometry: true });
+      const asking = mod.ForNameAsync(MODEL_NAME, true, ModelScope.server, { collisionGeometry: true, sidecar: true });
 
       await new Promise<void>((resolve) => setImmediate(resolve));
       assert.equal(releases.length, 2, 'both loads are waiting for the file');
@@ -300,6 +301,7 @@ void describe('Mod collision geometry cache', () => {
 /** The part of the server state `PrecacheModel` works on. */
 interface PrecacheServer {
   modelPrecache: string[];
+  modelPrecacheFlags: number[];
   models: Array<BaseModel | Promise<BaseModel | null> | null>;
 }
 
@@ -310,7 +312,7 @@ void describe('ServerEngineAPI.PrecacheModel', () => {
    */
   function createApi(): { api: ServerEngineAPI, server: PrecacheServer, reads: () => number } {
     const { mod, reads } = createServerMod();
-    const server: PrecacheServer = { modelPrecache: [''], models: [null] };
+    const server: PrecacheServer = { modelPrecache: [''], modelPrecacheFlags: [], models: [null] };
     const sv = { server, mod } as unknown as Server;
 
     return { api: new ServerEngineAPI(sv, () => ({ registered: true, hipnotic: false, rogue: false })), server, reads };

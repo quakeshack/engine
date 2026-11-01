@@ -13,6 +13,7 @@ import { ServerClient } from './Client.ts';
 import { ServerEntityState } from './ServerEntityState.ts';
 import { PmovePlayer } from '../common/Pmove.ts';
 import type Server from './Server.ts';
+import { ModelPrecacheList } from '../network/ModelPrecacheList.ts';
 
 type BitsWriter = 'writeByte' | 'writeShort' | 'writeLong';
 type DynamicEntityFieldValue = SerializableType | undefined;
@@ -293,10 +294,7 @@ export class ServerMessages {
 
     message.writeByte(this.sv.svs.maxclients);
     message.writeString(worldspawnEntity.message || this.sv.server.mapname!);
-    for (let i = 1; i < this.sv.server.modelPrecache.length; i++) {
-      message.writeString(this.sv.server.modelPrecache[i]);
-    }
-    message.writeByte(0);
+    ModelPrecacheList.write(message, this.sv.server.modelPrecache, this.sv.server.modelPrecacheFlags);
     for (let i = 1; i < this.sv.server.soundPrecache.length; i++) {
       message.writeString(this.sv.server.soundPrecache[i]);
     }

@@ -10,6 +10,10 @@ export interface ShadowRenderContext {
   readonly lightSpaceMatrix: Float64Array;
   readonly casterFade: number;
   readonly isPointLight: boolean;
+  /** Point light world-space origin (the top-down pass's cutoff origin, the camera, when `isPointLight` is false). */
+  readonly pointLightOrigin: Float32Array;
+  /** Unit vector the top-down shadow travels along, from the sky toward the ground; read when `isPointLight` is false. */
+  readonly lightDirection: Float32Array;
 }
 
 /**
@@ -67,7 +71,7 @@ export class ModelRenderer {
 
   /**
    * Render a single entity's shadow into the active shadow map.
-   * Default no-op — sprites and other non-occluding types cast no shadow.
+   * Default no-op — model types that do not occlude cast no shadow.
    */
   renderShadow(_model: BaseModel, _entity: ClientEdict, _ctx: ShadowRenderContext): void {}
 

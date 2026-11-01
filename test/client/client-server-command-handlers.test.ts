@@ -12,7 +12,9 @@ import '../support/consoleBridge.ts';
 import { clientPmove } from '../../source/engine/client/ClientPhysics.ts';
 import { MoveVars } from '../../source/engine/common/Pmove.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
-import { createGameModuleStub } from '../support/fixtures.ts';
+import { createBoundsModel, createGameModuleStub } from '../support/fixtures.ts';
+import ClientEntities, { type ClientEdict } from '../../source/engine/client/ClientEntities.ts';
+import Vector from '../../source/shared/Vector.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 import { withEngineMocks } from '../support/withEngineMocks.ts';
 
@@ -147,6 +149,72 @@ void describe('svc.cvar', () => {
     } finally {
       clientPmove.movevars = previousMoveVars;
     }
+  });
+});
+
+void describe('svc.spawnstatic', () => {
+  /**
+   * Sends one static entity wearing a model and returns what the client made of it.
+   * @param random Whether the model asks for a random sync base.
+   * @returns The entity the client allocated.
+   */
+  function spawnStaticWithModel(random: boolean): ClientEdict | null {
+    const mockedRegistry = createMockClientRegistry();
+    const { message } = mockedRegistry.NET;
+    const model = createBoundsModel(new Vector(-8, -8, -8), new Vector(8, 8, 8), 'gfx/flame.gif');
+    const previousClientEntities = clientRuntimeState.clientEntities;
+    const previousModels = clientRuntimeState.model_precache;
+    const clientEntities = new ClientEntities();
+    const allocate = clientEntities.allocateStaticEntity.bind(clientEntities);
+    let spawned: ClientEdict | null = null;
+
+    model.random = random;
+    clientEntities.allocateStaticEntity = (classname: string): ClientEdict => {
+      spawned = allocate(classname);
+      return spawned;
+    };
+    clientRuntimeState.clientEntities = clientEntities;
+    clientRuntimeState.model_precache = [model, model];
+
+    message.writeByte(Protocol.svc.spawnstatic);
+    message.writeString('light_flame_small_yellow');
+    message.writeByte(1);
+    message.writeByte(0);
+    message.writeByte(0);
+    message.writeByte(0);
+    message.writeByte(0);
+    message.writeByte(255);
+    message.writeByte(0);
+    message.writeAngleVector(new Vector(0, 0, 0));
+    message.writeCoordVector(new Vector(16, 32, 48));
+
+    try {
+      void withMockClientRegistry(mockedRegistry, () => {
+        parseServerMessage();
+      });
+
+      return spawned;
+    } finally {
+      clientRuntimeState.clientEntities = previousClientEntities;
+      clientRuntimeState.model_precache = previousModels;
+    }
+  }
+
+  void test('gives a static entity with a random-phase model its own sync base', () => {
+    const syncbases = new Set<number>();
+
+    for (let i = 0; i < 8; i++) {
+      const entity = spawnStaticWithModel(true);
+      assert.ok(entity);
+      syncbases.add(entity.syncbase);
+    }
+
+    assert.ok(syncbases.size > 1, 'eight flames do not all start in step');
+    assert.ok([...syncbases].every((syncbase) => syncbase >= 0 && syncbase < 1));
+  });
+
+  void test('leaves the sync base at zero for a model that is not random', () => {
+    assert.equal(spawnStaticWithModel(false)?.syncbase, 0);
   });
 });
 

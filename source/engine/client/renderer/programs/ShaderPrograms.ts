@@ -90,8 +90,8 @@ class ShaderPrograms {
 
       // for rendering sprites (usually effects)
       Promise.resolve(GL.CreateProgram('sprite',
-        ['uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uFogColor', 'uFogParams', 'uInterpolation', 'uAlpha', 'uBloomEmissiveScale'],
-          [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 2]],
+        ['uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uFogColor', 'uFogParams', 'uInterpolation', 'uAlpha', 'uBlendMode', 'uLight', 'uBloomEmissiveScale'],
+          [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 3], ['aBlend', gl.FLOAT, 2]],
           ['tTexture'])),
 
       // for rendering decals
@@ -218,6 +218,12 @@ class ShaderPrograms {
         ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uInterpolation', 'uCasterFade'],
         [['aPositionA', gl.FLOAT, 3], ['aPositionB', gl.FLOAT, 3]],
         [])),
+
+      // shadow depth pass for sprites (both passes), the vertex of 'sprite'; light passes through transparent pixels
+      Promise.resolve(GL.CreateProgram('shadow-sprite',
+        ['uLightSpaceMatrix', 'uCasterFade', 'uBlendMode'],
+        [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 3], ['aBlend', gl.FLOAT, 2]],
+        ['tTexture'])),
     ]);
 
     eventBus.publish('renderer.shaders.initialized');

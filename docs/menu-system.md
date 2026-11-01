@@ -248,7 +248,7 @@ directly (useful for pages a mod keeps a private reference to and never register
   currently active (see above) — classic virtual 320×200, pixel-doubled and centered, for every
   page that doesn't declare its own — **a different coordinate system from the HUD's `Gfx`/`sbar`
   helpers**, which use resolution-aware absolute pixel offsets, and also different from
-  `ClientEngineAPI.DrawPic`/`DrawString` (resolution-aware, used outside the menu stack
+  `ClientEngineAPI.DrawPic`/`DrawString`/`DrawSprite` (resolution-aware, used outside the menu stack
   entirely). Widgets built for menu pages are not directly reusable inside HUD draw code without
   going through `M`'s primitives (see [Non-modal panels](#non-modal-panels-hud-embedded-ui) for
   how HUD code uses them correctly).

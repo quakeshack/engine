@@ -2,6 +2,7 @@ import type { ConsoleOutput } from './Services.ts';
 import { MissingResourceError } from './Errors.ts';
 import { ModelLoaderRegistry } from './model/ModelLoaderRegistry.ts';
 import { AliasMDLLoader } from './model/loaders/AliasMDLLoader.ts';
+import { ImageSpriteLoader } from './model/loaders/ImageSpriteLoader.ts';
 import { SpriteSPRLoader } from './model/loaders/SpriteSPRLoader.ts';
 import { BSP29Loader } from './model/loaders/BSP29Loader.ts';
 import { BSP2Loader } from './model/loaders/BSP2Loader.ts';
@@ -9,6 +10,7 @@ import { WavefrontOBJLoader } from './model/loaders/WavefrontOBJLoader.ts';
 import ParsedQC from './model/parsers/ParsedQC.ts';
 import { BSP38Loader } from './model/loaders/BSP38Loader.ts';
 import type { BaseModel } from './model/BaseModel.ts';
+import type { SpriteImageDecoding } from './model/sprite/SpriteImageDecoding.ts';
 import { BrushModel } from './model/BSP.ts';
 import { DEFAULT_MODEL_LOAD_OPTIONS, type ModelFiles, type ModelLoadContext, type ModelLoadOptions } from './model/ModelLoadContext.ts';
 
@@ -51,6 +53,8 @@ export interface ModDependencies {
   readonly con: ConsoleOutput;
   /** Whether loaders create textures and the other data only a renderer needs. A server realm says no. */
   readonly loadRenderData: boolean;
+  /** Decodes the pixels of image sprites. Only a realm that draws has one. */
+  readonly spriteImages?: SpriteImageDecoding | null;
   /** Names of client models that outlive a clear of the client scope (the models effects spawn at runtime). */
   readonly keptClientModels?: () => string[];
 }
@@ -120,6 +124,7 @@ export class Mod {
       files: dependencies.files,
       con: dependencies.con,
       loadRenderData: dependencies.loadRenderData,
+      spriteImages: dependencies.spriteImages ?? null,
     };
 
     this.#files = dependencies.files;
@@ -131,6 +136,7 @@ export class Mod {
     this.modelLoaderRegistry.register(new BSP29Loader(context));
     this.modelLoaderRegistry.register(new AliasMDLLoader(context));
     this.modelLoaderRegistry.register(new SpriteSPRLoader(context));
+    this.modelLoaderRegistry.register(new ImageSpriteLoader(context));
     this.modelLoaderRegistry.register(new WavefrontOBJLoader(context));
   }
 
@@ -244,7 +250,7 @@ export class Mod {
     const existing = this.known[model.name];
 
     if (existing !== undefined && existing !== model) {
-      if (existing.hasCollisionGeometry && !model.hasCollisionGeometry) {
+      if ((existing.hasCollisionGeometry && !model.hasCollisionGeometry) || (!existing.sidecarSkipped && model.sidecarSkipped)) {
         return;
       }
 
@@ -276,12 +282,12 @@ export class Mod {
   async LoadModelAsync(name: string, crash: boolean, scope: ModelScope = ModelScope.shared, options: ModelLoadOptions = DEFAULT_MODEL_LOAD_OPTIONS): Promise<BaseModel | null> {
     const scopedModel = this.ResolveScopedModel(name, scope);
 
-    if (scopedModel !== null && (!options.collisionGeometry || scopedModel.hasCollisionGeometry)) {
+    if (scopedModel !== null && (!options.collisionGeometry || scopedModel.hasCollisionGeometry) && (!options.sidecar || !scopedModel.sidecarSkipped)) {
       return scopedModel;
     }
 
-    // A load with collision geometry is a different load than one without, so they must not share a pending promise.
-    const pendingKey = options.collisionGeometry ? `${name}?collision` : name;
+    // A load with collision geometry, or one that skips the sidecar, is a different load than the plain one, so they must not share a pending promise.
+    const pendingKey = `${name}${options.collisionGeometry ? '?collision' : ''}${options.sidecar ? '' : '?nosidecar'}`;
 
     if (this.pendingLoads[pendingKey] === undefined) {
       this.pendingLoads[pendingKey] = (async () => {

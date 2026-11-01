@@ -202,6 +202,7 @@ void describe('BSP38Loader', () => {
             throw new Error(`unexpected LoadFile(${name}) — .wal loading must not run when _qs_wal is off`);
           },
           LoadTextFile: () => Promise.resolve(null),
+          LoadOptionalTextFile: () => Promise.resolve(null),
         },
       });
       const buffer = patched.buffer.slice(patched.byteOffset, patched.byteOffset + patched.byteLength) as ArrayBuffer;
@@ -472,6 +473,7 @@ void describe('QSMatLoader (used by BSP38Loader, BSP29Loader and BSP2Loader alik
       loadRenderData: true,
       files: {
         LoadFile: () => Promise.resolve(null),
+        LoadOptionalTextFile: () => Promise.resolve(null),
         LoadTextFile(name: string): Promise<string | null> {
           if (name !== 'textures/test.qsmat.json') {
             return Promise.resolve(null);
@@ -515,6 +517,7 @@ void describe('QSMatLoader (used by BSP38Loader, BSP29Loader and BSP2Loader alik
       loadRenderData: true,
       files: {
         LoadFile: () => Promise.resolve(null),
+        LoadOptionalTextFile: () => Promise.resolve(null),
         LoadTextFile: () => Promise.resolve(JSON.stringify({
           version: 1,
           materials: {

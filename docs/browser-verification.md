@@ -104,7 +104,7 @@ guessing from a screenshot.
 ## 5. Reach a gated menu/HUD page without its full physical trigger
 
 The page's composition root (`bootstrap/createBrowserClient.ts`) exposes `window.engine` in the browser (`Frame`, whose `records` and `violations` are the passes of the last frame in a development build, `CL`, `COM`, `Con`,
-`ConsoleOverlay`, `Host`, `M`, `Key`, etc.; `SV` is `null` unless the page runs with `?serverthread`, by default the server is in a worker and `CL.cls.serverController.state` is what the page knows of it). From a Playwright `page.evaluate()`:
+`ConsoleOverlay`, `Host`, `M`, `Key`, `Draw`, `SpriteAssets` (its `Load()` makes the playbacks `Draw.Sprite()` draws), etc.; `SV` is `null` unless the page runs with `?serverthread`, by default the server is in a worker and `CL.cls.serverController.state` is what the page knows of it). From a Playwright `page.evaluate()`:
 
 ```js
 const { M, Key } = window.engine;

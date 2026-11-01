@@ -178,6 +178,9 @@ export class BaseModel {
   /** Legacy client-side model flags. Alias models populate this, other model types leave it at zero. */
   flags = modelFlags.MF_NONE;
 
+  /** True when the model was loaded without looking for its sidecar file, because the game said there is none. */
+  sidecarSkipped = false;
+
   /** True when animation frames should be selected randomly. Alias models populate this, other model types leave it at false. */
   random = false;
 
@@ -218,6 +221,7 @@ export class BaseModel {
     this.origin = new Vector();
     this.flags = 0;
     this.random = false;
+    this.sidecarSkipped = false;
 
     // Runtime-only rendering state.
     this.cmds = null;

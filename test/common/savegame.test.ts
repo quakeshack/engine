@@ -931,6 +931,9 @@ void describe('Host.save/load integration', () => {
       LoadTextFile(name: string) {
         return Promise.resolve(name.endsWith('.json') ? savedText : null);
       },
+      LoadOptionalTextFile(name: string) {
+        return this.LoadTextFile(name);
+      },
       WriteTextFile(filename: string, data: string) {
         if (!filename.endsWith('.json')) {
           return false;

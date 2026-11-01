@@ -470,6 +470,8 @@ export default class ShadowMap {
         lightSpaceMatrix,
         casterFade,
         isPointLight,
+        pointLightOrigin: cutoffOrigin,
+        lightDirection: ShadowMap.lightDir,
       });
     }
   }

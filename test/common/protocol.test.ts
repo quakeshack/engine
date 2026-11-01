@@ -5,8 +5,8 @@ import * as Protocol from '../../source/engine/network/Protocol.ts';
 
 void describe('Protocol', () => {
   // A version change breaks every connected peer, so it has to be a deliberate edit here too.
-  void test('stays at protocol version 42', () => {
-    assert.equal(Protocol.version, 42);
+  void test('stays at protocol version 43', () => {
+    assert.equal(Protocol.version, 43);
   });
 
   void test('copies and resets user commands without aliasing vectors', () => {

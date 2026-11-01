@@ -43,6 +43,8 @@ import Mod from '../common/Mod.ts';
 import Chase from './Chase.ts';
 import VID from './VID.ts';
 import GL from './GL.ts';
+import rendererCvars from './renderer/resources/RendererCvars.ts';
+import { SpriteImageDecoding } from './renderer/sprite/SpriteImageDecoding.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
 import SaveSlots from './menu/SaveSlots.ts';
@@ -179,6 +181,11 @@ export default class ClientHost {
       files: com,
       con: Con,
       loadRenderData: true,
+      spriteImages: new SpriteImageDecoding(Con, () => ({
+        maxTextureSize: GL.maxtexturesize,
+        maxLayers: GL.maxArrayTextureLayers,
+        maxBytes: rendererCvars.spriteMemory.value * 1048576,
+      })),
       keptClientModels: () => Object.keys(clientRuntimeState.clientEntities.tempEntityModels),
     });
     net.Init();

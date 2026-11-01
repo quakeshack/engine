@@ -15,6 +15,11 @@ and does not use it.
 | Written by the engine | Never | `COM.WriteFile`, `COM.WriteTextFile` | `COM.WriteGeneratedFile` |
 | Kept | For the running build and game version | Forever | For the running build and game version |
 
+`COM.LoadOptionalFile` and `COM.LoadOptionalTextFile` read a file that may well not exist, such as the settings file of a
+sprite: the same lookup as `LoadFile`, but a miss prints nothing. It still costs a request in the browser (nothing lists
+the files of a game directory), so ask only for what is likely to be there, or let the game say there is none
+(`PrecacheModel(name, { sidecar: false })`).
+
 All are addressed by the same path, `<game directory>/<file name>`, lower case. `COM.LoadFile` asks the
 user store first, then the generated files of the running build and game version, then the asset source.
 A user file overrides everything of the same name. A generated file overrides content, because one only

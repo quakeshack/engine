@@ -1,4 +1,5 @@
 import type { ConsoleOutput } from '../Services.ts';
+import type { SpriteImageDecoding } from './sprite/SpriteImageDecoding.ts';
 
 /** The file access a model loader needs. */
 export interface ModelFiles {
@@ -12,6 +13,12 @@ export interface ModelFiles {
    * @returns The file's text, `null` when it does not exist.
    */
   LoadTextFile(filename: string): Promise<string | null>;
+  /**
+   * Reads a text file that may well not exist, such as the sidecar of a sprite. A miss is not reported, but it
+   * can still cost a request in a browser, so ask only for a file that is likely to be there.
+   * @returns The file's text, `null` when it does not exist.
+   */
+  LoadOptionalTextFile(filename: string): Promise<string | null>;
 }
 
 /**
@@ -23,6 +30,8 @@ export interface ModelLoadContext {
   readonly con: ConsoleOutput;
   /** Whether textures and the other data only a renderer needs are created while loading. */
   readonly loadRenderData: boolean;
+  /** Decodes the pixels of image sprites (GIF, PNG, WebP). `null` in a realm that does not draw. */
+  readonly spriteImages: SpriteImageDecoding | null;
 }
 
 /**
@@ -35,7 +44,12 @@ export interface ModelLoadOptions {
    * always keeps it.
    */
   readonly collisionGeometry: boolean;
+  /**
+   * Look for the sidecar settings of an image sprite (`<file>.json`). `false` is the hint of a game that knows
+   * there is none, and saves the lookup, which costs a request per realm in a browser.
+   */
+  readonly sidecar: boolean;
 }
 
 /** The options of a plain load: bounds and metadata only where the realm allows it. */
-export const DEFAULT_MODEL_LOAD_OPTIONS: ModelLoadOptions = Object.freeze({ collisionGeometry: false });
+export const DEFAULT_MODEL_LOAD_OPTIONS: ModelLoadOptions = Object.freeze({ collisionGeometry: false, sidecar: true });
