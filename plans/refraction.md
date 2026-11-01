@@ -1,6 +1,6 @@
 # Screen-space refraction for translucent liquids and glass
 
-**Status:** Done (2026-10): Phases 1 to 3 shipped, and the duplicate liquid and translucent draws found on the way are fixed. Water and glass ship together in this pass. The [glass pass](#third-optimization-pass-glass-planned-2026-10-31) at the end of this file shipped Phases 0 to 2.
+**Status:** Done (2026-11): Phases 1 to 3 and the three optimization passes shipped, and the duplicate liquid and translucent draws found on the way are fixed. Water and glass ship together in this pass. The [glass pass](#third-optimization-pass-glass-2026-10-31) at the end of this file shipped Phases 0 to 2. Decisions that replaced parts of this plan later are in [After Phase 3](#after-phase-3-material-settings-a-copy-per-owner). Still open: the [second depth copy at `pane-strips`](#open-questions-1) and what Phase 2 of the glass pass lists as not verified.
 
 ## Context
 
@@ -36,7 +36,8 @@ Translucent liquids and glass are plain alpha blends today: what is behind them 
 - Passing refraction through the game-driven effects field is out of scope for now.
 - **Seen from below too:** a surface refracts when the camera is in the liquid as well, on top of the `warp` effect.
 - **Strength is a number:** `_qs_waterrefraction` takes a strength (`"1"` is the default strength, `"0"` or absent is
-  off, `"0.5"` is half); qsmat stays at the flag for now.
+  off, `"0.5"` is half); qsmat stays at the flag for now (replaced, see
+  [After Phase 3](#after-phase-3-material-settings-a-copy-per-owner)).
 - **Glass receives no shadows:** a translucent surface passes light through, so `brush-refract` drops all shadow
   samplers, the directional one included.
 
@@ -56,7 +57,8 @@ Translucent liquids and glass are plain alpha blends today: what is behind them 
   dispersion.
 - Refraction driven by the game (entity keys, `effects` bits, network protocol changes).
 - Refraction on alias models, sprites or particles.
-- A per-material refraction strength in qsmat.
+- A per-material refraction strength in qsmat (shipped after all, see
+  [After Phase 3](#after-phase-3-material-settings-a-copy-per-owner)).
 
 ## Design
 
@@ -263,6 +265,25 @@ world leafs should move to it too.
   MSAA 0 and 4, no frame violations or WebGL errors. Not covered: the qsmat file path itself, and the bending of
   world glass in numbers (the test pane stood in front of animated sky).
 
+### After Phase 3: material settings, a copy per owner
+
+`70073a2`, and what followed from it on 2026-11-01. These replace the decisions and sections they name.
+
+- **Per material:** a qsmat entry can set `alpha` and `refraction`. `refraction` implies `MF_REFRACT` and wins over the
+  map's strength, `0` keeps one liquid from refracting. `MF_REFRACT` now makes a liquid refract too, at strength 1
+  instead of the map's, which replaces "the flag on liquids does nothing" in Phase 3 and "qsmat stays at the flag".
+- **A copy per owner:** `TransparentPass.SharesCopy` copies again within a run where the owner changes (a brush entity,
+  the world's liquids, the world's glass), so a glass wall in front of a pool no longer erases it. This replaces the
+  "one copy per contiguous run" of design B. World liquids among themselves still share a copy.
+- **`r_refraction` was a cheat variable** from `70073a2` until 2026-11-01, and is archived again: on a server without
+  `sv_cheats` a player on a weak GPU could not turn refraction off, and `r_refraction_distance` cannot do it, its `0`
+  means no limit. The goal above stands.
+- **Quake 2 translucency (2026-11-01):** `BSP38Loader` took `SURF_TRANS33` and `SURF_TRANS66` only as `MF_TRANSPARENT`,
+  so these surfaces blended with the alpha of their texture alone, although `70073a2` documented otherwise. It now sets
+  `alpha` to 0.33 and 0.66, with `SURF_TRANS33` first as in `R_DrawAlphaSurfaces`. A qsmat entry without `alpha`
+  keeps it. Materials go by texture name, so the most translucent texinfo decides for all faces of a texture; Quake 2
+  decides per face.
+
 ## Testing
 
 - `PlanSceneCopies`: copies before the first refractive item, not again within a run, again after any non-refractive
@@ -343,10 +364,11 @@ Done ahead of bigger maps, not measured on a GPU (the session renders on SwiftSh
 Browser pass (SwiftShader, `start`, MSAA 0 and 4, time pinned): spawn and 64-unit views bit-identical before/after,
 `r_refraction 0` identical everywhere, differences only on liquids 830 to 990 units away (inside the fade).
 
-### Third optimization pass: glass (planned, 2026-10-31)
+### Third optimization pass: glass (2026-10-31)
 
-Refraction costs a noticeable frame rate on glass-heavy maps. Everything here is proposed, nothing is implemented; the
-numbers come from prototypes in a scratch copy of the tree.
+Refraction costs a noticeable frame rate on glass-heavy maps. This pass shipped: the sections below are the plan as
+written, and each phase ends with what actually shipped. The numbers of the Context come from prototypes in a scratch
+copy of the tree.
 
 #### Context
 
@@ -399,7 +421,8 @@ differences above that mean anything in a single row. The rows agree on the dire
 - Occlusion queries for glass in the frustum behind a wall.
 - Tighter bounds per chain: `*32` wraps around the camera at the spot, so its rectangle is the whole screen, but it
   also covers much of it.
-- A new player setting: `r_refraction_distance` is saved and can already be turned down, `r_refraction` stays a cheat.
+- A new player setting: `r_refraction_distance` is saved and can already be turned down, `r_refraction` stays a cheat
+  (archived again since, see [After Phase 3](#after-phase-3-material-settings-a-copy-per-owner)).
 
 #### Design
 

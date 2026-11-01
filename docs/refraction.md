@@ -19,11 +19,13 @@ Refraction is opt-in per map. Set `_qs_waterrefraction` on `worldspawn` to a str
 - `1` is the default strength, `0.5` half of it, `2` twice as much. `0`, a negative value, anything that is not a
   number or no key at all turns it off.
 - Only a liquid drawn translucent refracts: the map has to make it so with `_wateralpha`, `_slimealpha`, `_lavaalpha`
-  or `_telealpha`, the material with its `alpha` (see below), or a brush entity with `alpha` below 1. An opaque liquid
-  shows nothing behind it and is drawn as it always was.
+  or `_telealpha`, the material with its `alpha` (see below), or a brush entity with `alpha` below 1. On a Quake 2 map
+  the surface flags `SURF_TRANS33` and `SURF_TRANS66` set that alpha to 0.33 and 0.66. An opaque liquid shows nothing
+  behind it and is drawn as it always was.
 - A material can ask for refraction without the map: with the flag `MF_REFRACT` (strength 1) or its own `refraction`
-  strength, which also wins over the map's. `"refraction": 0` keeps one liquid from refracting on a map that asks for
-  it. The worldspawn alpha keys still win over a liquid's material `alpha`.
+  strength. Either one replaces the map's strength for that liquid, so the flag alone means strength 1 even on a map
+  that sets `"_qs_waterrefraction" "2"`. `"refraction": 0` keeps one liquid from refracting on a map that asks for it.
+  The worldspawn alpha keys still win over a liquid's material `alpha`.
 
 ```json
 "*slime0": {
@@ -57,8 +59,8 @@ A material refracts when its `.qsmat.json` entry has the flag `MF_REFRACT` (see 
 
 ## For players
 
-`r_refraction` (a cheat variable, not saved, default `1`) scales the strength the map asks for (glass has strength 1); `0` turns
-refraction off and liquids and glass are blended as without it.
+`r_refraction` (saved, default `1`) scales every strength: the map's, a material's `refraction` and the 1 of
+`MF_REFRACT`. `0` turns refraction off and liquids and glass are blended as without it.
 
 `r_refraction_distance` (saved, default `1024`) is how far away liquids and glass still refract. The strength fades
 out over the last quarter of it, so nothing snaps; farther surfaces are blended, which saves a copy of the scene.
@@ -97,4 +99,6 @@ At 1024 units the shift is a pixel or two at 1080p. `0` means no limit.
   1080p about 0.2 to 0.5 ms, and copies are most of what refraction costs.
 - `TransparentPass` tells the brush renderer the distance of each item before it checks or draws it
   (`setRefractionDistance`), so the copy plan and the strength in the shader follow `r_refraction_distance` alike.
-- Refraction needs the scene capture, which every frame with liquids has. Without it nothing refracts.
+- Refraction needs the scene capture; without it nothing refracts. `R.PreRenderScene` requests it for liquids and fog
+  volumes, and while `r_refraction` is above 0 for any map with a refracting material
+  (`BrushModelRenderer.HasRefractingMaterials`), so glass refracts on a map that has no liquids.

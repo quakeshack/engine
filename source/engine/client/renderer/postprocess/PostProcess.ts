@@ -136,7 +136,7 @@ export default class PostProcess {
   /**
    * Depth texture of the scene. Once the scene is resolved it is what the effects of the chain read; while the scene
    * is drawn it is attached to the framebuffer (unless the frame is multisampled), so a pass samples
-   * {@link PostProcess.copySceneDepth} instead.
+   * {@link PostProcess.sceneDepthCopy} instead.
    * @returns The texture, `null` before {@link PostProcess.init}.
    */
   static get depthTexture(): GLRenderTexture | null {
@@ -239,7 +239,8 @@ export default class PostProcess {
 
   /**
    * Tells the post-process system whether something in the scene needs to sample the captured color or depth
-   * (turbulent surfaces, fog volumes, underwater fog), independent of whether a screen-space effect is active.
+   * (turbulent surfaces, fog volumes, underwater fog, refracting materials), independent of whether a screen-space
+   * effect is active.
    * The frame preparation calls it every frame; the request stays until it is called again.
    */
   static requestSceneCapture(required: boolean): void {

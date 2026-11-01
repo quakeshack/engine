@@ -5,7 +5,7 @@ This is a modern TypeScript port of Quake 1 with some features sprinkled on top.
 Added features include, but are not limited to:
 
 * **Modern Environments**: Dedicated Node.js server, WebGL-based browser client, multithreading, and optimized networking.
-* **Enhanced Visuals**: 32-bit textures, WAD3 support, colored static and dynamic lighting (`.lit` files), [PBR materials](./docs/qsmat-format.md), smooth model animations, and semi-transparent water/lava/slime surfaces.
+* **Enhanced Visuals**: 32-bit textures, WAD3 support, colored static and dynamic lighting (`.lit` files), [PBR materials](./docs/qsmat-format.md), smooth model animations, semi-transparent water/lava/slime surfaces, and screen-space [refraction](./docs/refraction.md) of translucent liquids and glass.
 * **Advanced Map Features**: BSP2 format for large maps, Quake II BSP (BSP38) map loading, high-resolution lightmaps (`LMSCALE`), static skyboxes, and [volumetric fog](./docs/volumetric-fog.md).
 * **Modern Geometry Details**: BSPX lump support across both Quake 1 and Quake II map formats (including per-pixel lighting from `LIGHTINGDIR`, dynamic lighting through `LIGHTGRID_OCTREE`, etc. — see [BSPX Support](./docs/bspx.md) for what's covered per format).
 * **Multiplayer Enhancements**: Built-in peer-to-peer multiplayer using [WebRTC](./docs/webrtc.md) and client-side game code.

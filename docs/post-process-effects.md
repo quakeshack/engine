@@ -226,3 +226,5 @@ overlays -> screen  reads -
 ```
 
 `scene -> scene-msaa -> scene` is the scene that was drawn multisampled and was resolved at its end. A `scene-depth-copy` is a pass that needed the depth of the scene while it is drawn (turbulent surfaces, a fog volume): the depth is copied into a texture of its own and the frame goes on drawing into the multisampled target, so what is drawn after it is antialiased as well. `reads -` there is a multisampled depth renderbuffer, which is not a texture; without multisampling the pass reads `scene.depth`.
+
+A `scene-color-copy` does the same for the color of the scene, for surfaces that refract what is behind them (see [Refraction](refraction.md)). The transparent pass makes one before each group of refracting surfaces, so a frame can have several, and none when nothing refracts. Each covers only the part of the screen its surfaces can sample. It shows `reads -` when multisampled and `reads scene.color0` otherwise, for the same reason as the depth copy. The color copies share one `scene-depth-copy`, which is made again only after something wrote depth.

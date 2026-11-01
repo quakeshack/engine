@@ -63,7 +63,7 @@ const SORT_EPSILON = 0.0001;
 export const REFRACTION_MAX_SHIFT = 0.02;
 
 /**
- * Everything blended in a frame, drawn in one back-to-front pass: transparent world leafs, turbulent surfaces,
+ * Everything blended in a frame, drawn in one back-to-front pass: translucent world surfaces, turbulent surfaces,
  * fog volumes, translucent entities, sprites, decals and particles. Gathering the items and drawing them are
  * separate steps so the order can be tested without a GL context.
  */
@@ -252,7 +252,7 @@ class TransparentPass {
 
   /**
    * Gathers everything blended that the view may show, unsorted.
-   * @param worldEntity The world entity, whose brush model supplies the transparent leafs, turbulent chains and fog volumes.
+   * @param worldEntity The world entity, whose brush model supplies the translucent surfaces, turbulent chains and fog volumes.
    * @returns The items of this frame. The array is reused by the next call.
    */
   static Collect(worldEntity: ClientEdict): TransparentItem[] {

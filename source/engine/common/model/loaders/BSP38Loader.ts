@@ -311,6 +311,23 @@ export class BSP38Loader extends ModelLoader {
   }
 
   /**
+   * How opaque a Quake 2 surface is by its SURF_* texinfo flags. `SURF_TRANS33` wins when both are set, as it does in
+   * Quake 2's `R_DrawAlphaSurfaces`.
+   * @returns The alpha, `null` for a surface these flags say nothing about.
+   */
+  static #translateSurfaceAlpha(q2Flags: number): number | null {
+    if (q2Flags & Q2SurfFlags.TRANS33) {
+      return 0.33;
+    }
+
+    if (q2Flags & Q2SurfFlags.TRANS66) {
+      return 0.66;
+    }
+
+    return null;
+  }
+
+  /**
    * Load BSP38 texinfo entries and register one placeholder material per
    * distinct texture name (`loadmodel.textures`), resolving each texinfo's
    * texture name to a numeric index the same way BSP29/BSP2 index their
@@ -338,7 +355,16 @@ export class BSP38Loader extends ModelLoader {
         loadmodel.textures.push(new QuakeMaterial(textureName, 1, 1));
       }
 
-      loadmodel.textures[textureIndex].flags |= BSP38Loader.#translateSurfaceFlags(flags);
+      const material = loadmodel.textures[textureIndex];
+      const alpha = BSP38Loader.#translateSurfaceAlpha(flags);
+
+      material.flags |= BSP38Loader.#translateSurfaceFlags(flags);
+
+      // a material is per texture name, a texinfo per face: like the flags, the alpha cannot differ between faces of a
+      // texture, so the most translucent texinfo decides, whichever comes first
+      if (alpha !== null) {
+        material.alpha = Math.min(alpha, material.alpha ?? 1.0);
+      }
 
       loadmodel.texinfo.push({
         vecs: [

@@ -49,16 +49,16 @@ through it, so `ERROR: 2:41: 'x' : undeclared identifier` is reported as
 
 | Chunk | Contents | Included by |
 | :--- | :--- | :--- |
-| `depth.glsl` | `uPerspective`, `linearizeDepth` | `fog-volume`, `turbulent`, `underwater-fog` (.frag) |
-| `refraction.glsl` | `tSceneColor`, `uRefraction`, `refractedScreenUV(depth, uv, distortion, surfaceDepth)` (shift, falling back where the sample is in front of the surface), `composeRefraction(scene, uv, surface, alpha)`; includes `depth.glsl` | `turbulent`, `brush-refract` (.frag) |
+| `depth.glsl` | `uPerspective`, `linearizeDepth` | `fog-volume`, `turbulent`, `underwater-fog` (.frag), `refraction.glsl` |
+| `refraction.glsl` | `tSceneColor`, `uRefraction`, `REFRACTION_MAX_SHIFT` (has to match the one in `TransparentPass.ts`, which sizes the copies), `refractedScreenUV(depth, uv, distortion, surfaceDepth)` (shift, falling back where the sample is in front of the surface), `composeRefraction(scene, uv, surface, alpha)`; includes `depth.glsl` | `turbulent`, `brush-refract` (.frag) |
 | `brush-vertex.glsl` | the vertex stage of a brush surface, `emitBrushVertex()` | `brush`, `brush-refract` (.vert) |
 | `brush-fragment-inputs.glsl` | the uniforms, samplers (no shadow maps) and inputs of the brush fragment stage | `brush-shading.glsl` |
 | `brush-shading.glsl` | `pointLightAttenuation(position, radius, color)`, `shadeBrushSurface(shadow, pointDlight, color, emissive, alpha)` (everything but the shadows); includes `brush-fragment-inputs.glsl` | `brush`, `brush-refract` (.frag) |
 | `hash.glsl` | `hash2D` | `shadow-alias`, `shadow-brush` (.frag) |
 | `shadow-point.glsl` | `uPointShadowBias`, `uPointShadowNormalBias`, `samplePointShadowMap(map, position, normal, light, far)` (normal offset and PCF in the receiver's plane, the only point shadow bias there is) | `brush.frag`, `shadow-entity.glsl` |
-| `shadow-entity.glsl` | entity shadow uniforms, `vWorldPos`, `sampleLocalShadow`, `samplePointShadow` | `alias`, `mesh`, `player` (.frag) |
-| `fog-vertex.glsl` | `uFogParams`, `vFog` (out), `computeFog(dist)` | `alias`, `mesh`, `player`, `brush`, `turbulent`, `sprite`, `decal`, `particle` (.vert) |
-| `fog-fragment.glsl` | `vFog` (in), `uFogColor` | the matching fragment shaders and `sky.frag` |
+| `shadow-entity.glsl` | entity shadow uniforms, `vWorldPos`, `sampleLocalShadow`, `samplePointShadow` | `entity-lighting.glsl` |
+| `fog-vertex.glsl` | `uFogParams`, `vFog` (out), `computeFog(dist)` | `entity-vertex.glsl`, `brush-vertex.glsl`, `turbulent`, `sprite`, `decal`, `particle` (.vert) |
+| `fog-fragment.glsl` | `vFog` (in), `uFogColor` | the matching fragment shaders, `brush-fragment-inputs.glsl` and `sky.frag` |
 | `entity-varyings-out.glsl` / `entity-varyings-in.glsl` | the vertex outputs / fragment inputs shared by the lit entity programs | `entity-vertex.glsl` / `entity-lighting.glsl` |
 | `entity-vertex.glsl` | the vertex side of a lit entity: shared uniforms, `emitEntityVertex(position, normal, texCoord)` (position, shadow coordinates, light vectors, fog) | `alias`, `mesh`, `player` (.vert) |
 | `entity-lighting.glsl` | the fragment side: `computeEntityLighting(shininess, intensity, lighting, specular)` (top-down and point shadows, shade and dynamic light, Blinn-Phong) | `alias`, `mesh`, `player` (.frag) |

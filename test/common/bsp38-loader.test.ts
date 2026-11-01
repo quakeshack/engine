@@ -32,6 +32,28 @@ async function loadBSP38Map(loadRenderData = false): Promise<BrushModel> {
   return await mod.ForNameAsync('maps/bsp38_areaportal.bsp', true) as BrushModel;
 }
 
+/**
+ * Load the shared BSP38 test fixture with the SURF_* flags of its texinfos replaced. All of them use one texture.
+ * @param flagsOf The flags of a texinfo, by its index.
+ * @returns The loaded model.
+ */
+async function loadBSP38MapWithSurfaceFlags(flagsOf: (texinfoIndex: number) => number): Promise<BrushModel> {
+  const raw = await fs.readFile(new URL('../../data/bsp38-tests/maps/bsp38_areaportal.bsp', import.meta.url));
+  const buffer = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
+  const view = new DataView(buffer);
+
+  // the header is magic, version, then an offset and a length per lump; texinfo is lump 5, with 76 byte records
+  // that hold their flags at byte 32
+  const lumpOffset = view.getUint32(8 + 5 * 8, true);
+  const lumpLength = view.getUint32(8 + 5 * 8 + 4, true);
+
+  for (let index = 0; index < lumpLength / 76; index++) {
+    view.setInt32(lumpOffset + index * 76 + 32, flagsOf(index), true);
+  }
+
+  return await new BSP38Loader(createModelLoadContext()).load(buffer, 'maps/bsp38_areaportal.bsp') as BrushModel;
+}
+
 void describe('BSP38Loader', () => {
   void describe('format detection', () => {
     void test('reports the Quake 2 BSP38 magic number, extension and name', () => {
@@ -199,6 +221,48 @@ void describe('BSP38Loader', () => {
 
       assert.equal(model.textures[0].width, 1);
       assert.equal(model.textures[0].height, 1);
+    });
+  });
+
+  void describe('Quake 2 translucent surfaces', () => {
+    // bspflags.h: SURF_WARP 0x8, SURF_TRANS33 0x10, SURF_TRANS66 0x20
+    const WARP = 0x8;
+    const TRANS33 = 0x10;
+    const TRANS66 = 0x20;
+
+    void test('draws SURF_TRANS33 and SURF_TRANS66 at the alpha Quake 2 uses, and at 0.33 when both are set', async () => {
+      const cases: [number, number][] = [[TRANS33, 0.33], [TRANS66, 0.66], [TRANS33 | TRANS66, 0.33]];
+
+      for (const [flags, alpha] of cases) {
+        const model = await loadBSP38MapWithSurfaceFlags(() => flags);
+
+        assert.equal(model.textures[0].alpha, alpha);
+        assert.ok(model.textures[0].flags & MaterialFlags.MF_TRANSPARENT);
+      }
+    });
+
+    void test('leaves a surface without these flags opaque', async () => {
+      const model = await loadBSP38MapWithSurfaceFlags(() => 0);
+
+      assert.equal(model.textures[0].alpha, null);
+      assert.equal(model.textures[0].flags & MaterialFlags.MF_TRANSPARENT, 0);
+    });
+
+    void test('makes a liquid translucent too, which stays a liquid', async () => {
+      const model = await loadBSP38MapWithSurfaceFlags(() => WARP | TRANS66);
+
+      assert.equal(model.textures[0].alpha, 0.66);
+      assert.ok(model.textures[0].flags & MaterialFlags.MF_TURBULENT);
+    });
+
+    void test('lets the most translucent texinfo of a texture decide, in whichever order they come', async () => {
+      const opaqueFirst = await loadBSP38MapWithSurfaceFlags((index) => [0, TRANS66, TRANS33][index % 3]);
+      const translucentFirst = await loadBSP38MapWithSurfaceFlags((index) => [TRANS33, TRANS66, 0][index % 3]);
+
+      assert.ok(opaqueFirst.texinfo.length >= 3, 'the fixture must have a texinfo of each kind for this test to mean anything');
+      assert.equal(opaqueFirst.textures.length, 1);
+      assert.equal(opaqueFirst.textures[0].alpha, 0.33);
+      assert.equal(translucentFirst.textures[0].alpha, 0.33);
     });
   });
 
@@ -468,12 +532,33 @@ void describe('QSMatLoader (used by BSP38Loader, BSP29Loader and BSP2Loader alik
     assert.equal(model.textures[0].width, 128);
     assert.equal(model.textures[0].height, 32);
   });
+
+  void test('an entry without alpha leaves a translucent Quake 2 surface translucent', async () => {
+    // the PBR material does not take over the flags of the placeholder it replaces, only the alpha carries this over
+    const context = createModelLoadContext({
+      loadRenderData: true,
+      files: {
+        LoadFile: () => Promise.resolve(null),
+        LoadTextFile: () => Promise.resolve(JSON.stringify({ version: 1, materials: { 'e1u1/glass': {} } })),
+      },
+    });
+    const placeholder = new QuakeMaterial('e1u1/glass', 1, 1);
+    const model = new BrushModel('qsmat-test-translucent');
+
+    placeholder.flags = MaterialFlags.MF_TRANSPARENT;
+    placeholder.alpha = 0.33;
+    model.worldspawnInfo = { _qs_mat: 'textures/test.qsmat.json' };
+    model.textures = [placeholder];
+
+    await QSMatLoader.load(model, context);
+
+    assert.ok(model.textures[0] instanceof PBRMaterial);
+    assert.equal(model.textures[0].alpha, 0.33);
+    assert.ok(model.textures[0].flags & MaterialFlags.MF_TRANSPARENT);
+  });
 });
 
 void describe('QSMatLoader.applySurfaceParameters', () => {
-  /**
-   *
-   */
   /**
    * Builds a material as the loader does, before it applies the entry.
    * @param flags Its flags.
