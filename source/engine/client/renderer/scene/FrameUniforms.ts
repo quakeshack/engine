@@ -79,6 +79,9 @@ class FrameUniforms {
         // units — see ShadowMap.updateTopDownMatrix's near/far planes).
         gl.uniform1f(program.uShadowMaxDepthNDC, ShadowMap.maxDepth!.value / (2.0 * ShadowMap.range!.value));
       }
+      if (program.uShadowBlockerBiasNDC !== undefined) {
+        gl.uniform1f(program.uShadowBlockerBiasNDC, ShadowMap.blockerReceiverBias / (2.0 * ShadowMap.range!.value));
+      }
       if (program.uShadowLightDir !== undefined) {
         gl.uniform3fv(program.uShadowLightDir, ShadowMap.lightDir);
       }

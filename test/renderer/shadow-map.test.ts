@@ -6,6 +6,10 @@ import { publishGlReady } from '../support/glEvents.ts';
 
 import GL from '../../source/engine/client/GL.ts';
 import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts';
+import type { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
+import { AliasModel } from '../../source/engine/common/model/AliasModel.ts';
+import type { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
+import { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { assertNear } from '../support/assertions.ts';
@@ -82,6 +86,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     GL.UseProgram = () => program as unknown as ReturnType<typeof GL.UseProgram>;
     ShadowMap.renderEntitiesShadow = (...args) => {
       renderEntitiesCalls.push(args);
+      return 0;
     };
 
     ShadowMap.pointTarget = createFakeRenderTarget('shadow-point');
@@ -184,6 +189,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     GL.UseProgram = () => program as unknown as ReturnType<typeof GL.UseProgram>;
     ShadowMap.renderEntitiesShadow = (...args) => {
       renderEntitiesCalls.push(args);
+      return 0;
     };
 
     ShadowMap.pointTarget = createFakeRenderTarget('shadow-point');
@@ -296,7 +302,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     GL.BindVAO = () => {};
     GL.UnbindVAO = () => {};
     GL.UseProgram = () => program as unknown as ReturnType<typeof GL.UseProgram>;
-    ShadowMap.renderEntitiesShadow = () => {};
+    ShadowMap.renderEntitiesShadow = () => 0;
 
     ShadowMap.pointTarget = createFakeRenderTarget('shadow-point');
     ShadowMap.pointDepthCubes = [{}] as unknown as typeof ShadowMap.pointDepthCubes;
@@ -816,6 +822,7 @@ void describe('ShadowMap.renderTopDownShadow', () => {
     publishGlReady();
     ShadowMap.renderEntitiesShadow = (...args) => {
       renderEntitiesCalls.push(args);
+      return 0;
     };
 
     ShadowMap.topdownTarget = createFakeRenderTarget('shadow-topdown');
@@ -878,5 +885,215 @@ void describe('ShadowMap.renderTopDownShadow', () => {
     }
 
     assert.equal(bindFramebufferCalls, 0);
+  });
+});
+
+void describe('ShadowMap.renderTopDownBlockers', () => {
+  void test('draws the opaque world surfaces of the revealed leafs into the blocker map, testing them against the caster map', () => {
+    const previousGL = GL.gl;
+    const previousBindVAO = GL.BindVAO;
+    const previousUnbindVAO = GL.UnbindVAO;
+    const previousUseProgram = GL.UseProgram;
+    const previousRange = ShadowMap.range;
+    const previousTopdownTarget = ShadowMap.topdownTarget;
+    const previousBlockerTarget = ShadowMap.topdownBlockerTarget;
+    const previousDepthTexture = ShadowMap.topdownDepthTexture;
+
+    const log: string[] = [];
+    const mockGl = {
+      DEPTH_BUFFER_BIT: 0,
+      DEPTH_TEST: 1,
+      CULL_FACE: 2,
+      FRONT: 3,
+      SCISSOR_TEST: 4,
+      bindFramebuffer() {},
+      viewport() {},
+      enable() {},
+      disable() {},
+      clearDepth(depth: number) {
+        log.push(`clear depth to ${depth}`);
+      },
+      clear() {
+        log.push('clear');
+      },
+      scissor(x: number, y: number, width: number, height: number) {
+        log.push(`scissor ${x} ${y} ${width} ${height}`);
+      },
+      colorMask() {},
+      cullFace() {},
+      uniform3f() {},
+      uniform1f() {},
+      uniformMatrix3fv() {},
+      uniformMatrix4fv() {},
+      drawArrays(_mode: number, first: number, count: number) {
+        log.push(`draw ${first} ${count}`);
+      },
+    };
+    const casterUnit = 7;
+    const program = { uOrigin: null, uAngles: null, uLightSpaceMatrix: null, uCasterEpsilon: null, tShadowMap: casterUnit };
+    const casterMap = {
+      bind(unit: number) {
+        log.push(`bind caster map ${unit}`);
+      },
+    };
+
+    // Textures: 0 opaque, 1 translucent (fence, glass), 2 skip. The last leaf is not revealed from the view leaf.
+    const MF_TRANSPARENT = 1;
+    const MF_SKIP = 8;
+    const revealedLeaf = { skychain: 3, cmds: [[0, 0, 12], [1, 12, 6], [2, 18, 3]], visframe: 1 };
+    const secondRevealedLeaf = { skychain: 1, cmds: [[0, 21, 9]], visframe: 1 };
+    const hiddenLeaf = { skychain: 1, cmds: [[0, 30, 24]] };
+
+    const restoreEngineMocks = installEngineMocks({
+      CL: {
+        state: {
+          worldmodel: createRenderedWorld([revealedLeaf, secondRevealedLeaf, hiddenLeaf], {
+            opaqueVAO: {},
+            textures: [{ flags: 0 }, { flags: MF_TRANSPARENT }, { flags: MF_SKIP }],
+          }),
+        },
+      },
+    });
+
+    // The pass calls only the context functions the mock has.
+    GL.gl = mockGl as unknown as WebGL2RenderingContext;
+    publishGlReady();
+    GL.BindVAO = () => {};
+    GL.UnbindVAO = () => {};
+    GL.UseProgram = () => program as unknown as ReturnType<typeof GL.UseProgram>;
+
+    ShadowMap.range = createCvarStub(512);
+    ShadowMap.topdownTarget = createFakeRenderTarget('shadow-topdown', log);
+    ShadowMap.topdownBlockerTarget = createFakeRenderTarget('shadow-topdown-blockers', log);
+    ShadowMap.topdownDepthTexture = casterMap as unknown as typeof ShadowMap.topdownDepthTexture;
+    // two casters' footprints, x, y, width, height
+    ShadowMap.topdownFootprints.push(100, 200, 30, 40, 300, 50, 20, 10);
+
+    try {
+      ShadowMap.renderTopDownBlockers();
+    } finally {
+      ShadowMap.topdownFootprints.length = 0;
+      GL.BindVAO = previousBindVAO;
+      GL.UnbindVAO = previousUnbindVAO;
+      GL.UseProgram = previousUseProgram;
+      ShadowMap.range = previousRange;
+      ShadowMap.topdownTarget = previousTopdownTarget;
+      ShadowMap.topdownBlockerTarget = previousBlockerTarget;
+      ShadowMap.topdownDepthTexture = previousDepthTexture;
+
+      GL.gl = previousGL;
+      if (previousGL) {
+        publishGlReady();
+      } else {
+        eventBus.publish('gl.shutdown');
+      }
+      restoreEngineMocks();
+    }
+
+    // The caster map is read, never drawn to: the surfaces go into the blocker map, open (depth 1) only inside the
+    // footprints and drawn within their bounds. Translucent surfaces let the shadow through and skip surfaces are
+    // never drawn, so neither ends a shadow.
+    assert.deepEqual(log, [
+      'bind shadow-topdown-blockers',
+      'clear depth to 0',
+      'clear',
+      'clear depth to 1',
+      'scissor 100 200 30 40',
+      'clear',
+      'scissor 300 50 20 10',
+      'clear',
+      'scissor 100 50 220 190',
+      `bind caster map ${casterUnit}`,
+      'draw 0 12',
+      'draw 21 9',
+    ]);
+  });
+
+  void test('does nothing when no caster left a footprint', () => {
+    const log: string[] = [];
+    const previousBlockerTarget = ShadowMap.topdownBlockerTarget;
+    const restoreEngineMocks = installEngineMocks({ CL: { state: { worldmodel: createRenderedWorld([]) } } });
+    ShadowMap.topdownBlockerTarget = createFakeRenderTarget('shadow-topdown-blockers', log);
+
+    try {
+      ShadowMap.renderTopDownBlockers();
+    } finally {
+      ShadowMap.topdownBlockerTarget = previousBlockerTarget;
+      restoreEngineMocks();
+    }
+
+    assert.deepEqual(log, []);
+  });
+});
+
+void describe('ShadowMap.computeTopDownFootprint', () => {
+  const previous = { range: ShadowMap.range, yaw: ShadowMap.yaw, pitch: ShadowMap.pitch };
+
+  beforeEach(() => {
+    ShadowMap.range = createCvarStub(512);
+    ShadowMap.yaw = createCvarStub(0);
+    ShadowMap.pitch = createCvarStub(-90);
+  });
+
+  afterEach(() => {
+    ShadowMap.range = previous.range;
+    ShadowMap.yaw = previous.yaw;
+    ShadowMap.pitch = previous.pitch;
+  });
+
+  /**
+   * A caster as far as the footprint reads it.
+   * @returns The entity.
+   */
+  function createCaster(model: BaseModel, origin: Vector, angles: Vector = new Vector()): ClientEdict {
+    return { model, lerp: { origin, angles } } as unknown as ClientEdict;
+  }
+
+  // 2048 texels over 2 * 512 world units
+  const TEXELS_PER_UNIT = 2;
+
+  void test('holds a rotated model whole, centered on its origin', () => {
+    // the camera above the caster puts it at the center of the map
+    ShadowMap.updateTopDownMatrix(new Vector(100, 50, 0));
+    const model = new AliasModel('progs/soldier.mdl');
+    model.mins = new Vector(-16, -16, -24);
+    model.maxs = new Vector(16, 16, 40);
+
+    const footprint = ShadowMap.computeTopDownFootprint(createCaster(model, new Vector(100, 50, 0), new Vector(0, 45, 0)))!;
+
+    // a corner (16, 16, 40) of the bounds lies hypot(16, 16, 40) from the origin, in any rotation
+    const reach = Math.hypot(16, 16, 40) * TEXELS_PER_UNIT;
+    assert.ok(footprint[0] <= 1024 - reach && footprint[2] >= 1024 + reach, `x ${footprint[0]}..${footprint[2]}`);
+    assert.ok(footprint[1] <= 1024 - reach && footprint[3] >= 1024 + reach, `y ${footprint[1]}..${footprint[3]}`);
+    assert.ok(footprint[2] - footprint[0] < 2 * reach + 16, 'tight around the model');
+  });
+
+  // a door's bounds are in world space and its origin is 0 0 0: a square around the origin would cover the map
+  void test('centers an unrotated brush entity on its bounds, not its origin', () => {
+    ShadowMap.updateTopDownMatrix(new Vector(1032, 0, 0));
+    const door = new BrushModel('*3');
+    door.mins = new Vector(1000, -32, 0);
+    door.maxs = new Vector(1064, 32, 64);
+
+    const footprint = ShadowMap.computeTopDownFootprint(createCaster(door, new Vector(0, 0, 0)))!;
+
+    // the door's center is under the camera, the center of the map
+    assert.ok(footprint[0] <= 1024 - 32 * TEXELS_PER_UNIT && footprint[2] >= 1024 + 32 * TEXELS_PER_UNIT, `x ${footprint[0]}..${footprint[2]}`);
+    assert.ok(footprint[2] - footprint[0] < 300, `x ${footprint[0]}..${footprint[2]}`);
+  });
+
+  void test('is clipped to the map, and nothing for a caster outside of it', () => {
+    ShadowMap.updateTopDownMatrix(new Vector(0, 0, 0));
+    const model = new AliasModel('progs/soldier.mdl');
+    model.mins = new Vector(-16, -16, -24);
+    model.maxs = new Vector(16, 16, 40);
+
+    // 510 units from the camera along both axes reaches past the map's edges, whichever way they run
+    const atEdge = ShadowMap.computeTopDownFootprint(createCaster(model, new Vector(510, 510, 0)))!;
+
+    assert.ok(atEdge[0] === 0 || atEdge[2] === 2048, `x ${atEdge[0]}..${atEdge[2]}`);
+    assert.ok(atEdge[1] === 0 || atEdge[3] === 2048, `y ${atEdge[1]}..${atEdge[3]}`);
+
+    assert.equal(ShadowMap.computeTopDownFootprint(createCaster(model, new Vector(2000, 0, 0))), null);
   });
 });

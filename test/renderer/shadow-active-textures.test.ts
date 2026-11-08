@@ -6,6 +6,7 @@ import type { GLCubeTexture, GLRenderTexture } from '../../source/engine/client/
 import { createCvarStub } from '../support/cvarStub.ts';
 
 const depth = { name: 'depth' } as unknown as GLRenderTexture;
+const blockers = { name: 'blockers' } as unknown as GLRenderTexture;
 const dummy = { name: 'dummy' } as unknown as GLRenderTexture;
 const cubes = [{ name: 'cube0' }, { name: 'cube1' }, { name: 'cube2' }] as unknown as GLCubeTexture[];
 const dummyCube = { name: 'dummy cube' } as unknown as GLCubeTexture;
@@ -14,6 +15,7 @@ void describe('ShadowMap active textures', () => {
   const previous = {
     enabled: ShadowMap.enabled,
     depth: ShadowMap.topdownDepthTexture,
+    blockers: ShadowMap.topdownBlockerTexture,
     dummy: ShadowMap.topdownDummyTexture,
     cubes: ShadowMap.pointDepthCubes,
     dummyCube: ShadowMap.pointDummyCube,
@@ -23,6 +25,7 @@ void describe('ShadowMap active textures', () => {
   beforeEach(() => {
     ShadowMap.enabled = createCvarStub(1);
     ShadowMap.topdownDepthTexture = depth;
+    ShadowMap.topdownBlockerTexture = blockers;
     ShadowMap.topdownDummyTexture = dummy;
     ShadowMap.pointDepthCubes = cubes;
     ShadowMap.pointDummyCube = dummyCube;
@@ -32,6 +35,7 @@ void describe('ShadowMap active textures', () => {
   afterEach(() => {
     ShadowMap.enabled = previous.enabled;
     ShadowMap.topdownDepthTexture = previous.depth;
+    ShadowMap.topdownBlockerTexture = previous.blockers;
     ShadowMap.topdownDummyTexture = previous.dummy;
     ShadowMap.pointDepthCubes = previous.cubes;
     ShadowMap.pointDummyCube = previous.dummyCube;
@@ -54,6 +58,19 @@ void describe('ShadowMap active textures', () => {
       ShadowMap.topdownDummyTexture = null;
 
       assert.equal(ShadowMap.getActiveTopDownTexture(), null);
+    });
+  });
+
+  void describe('getActiveTopDownBlockerTexture', () => {
+    void test('is the blocker map while shadows are on', () => {
+      assert.equal(ShadowMap.getActiveTopDownBlockerTexture(), blockers);
+    });
+
+    // the blocker map is not drawn while shadows are off, so it would end the shadow at stale surfaces
+    void test('is the dummy, which blocks nothing, while shadows are off', () => {
+      ShadowMap.enabled = createCvarStub(0);
+
+      assert.equal(ShadowMap.getActiveTopDownBlockerTexture(), dummy);
     });
   });
 

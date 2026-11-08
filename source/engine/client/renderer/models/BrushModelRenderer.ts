@@ -1490,6 +1490,10 @@ export class BrushModelRenderer extends ModelRenderer {
     if (program.tShadowMap !== undefined && topDownShadow) {
       topDownShadow.bind(program.tShadowMap);
     }
+    const topDownBlockers = ShadowMap.getActiveTopDownBlockerTexture();
+    if (program.tShadowBlockerMap !== undefined && topDownBlockers) {
+      topDownBlockers.bind(program.tShadowBlockerMap);
+    }
     const pointShadows = ShadowMap.getActivePointTextures();
 
     if (program.tPointShadowMap0 !== undefined && pointShadows[0]) {

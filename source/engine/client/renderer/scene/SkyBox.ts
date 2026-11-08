@@ -56,6 +56,7 @@ class SkyBox {
       vieworg: Camera.refdef.vieworg,
       bloomSkyStrength: rendererCvars.bloomSkyStrength?.value ?? 0.0,
       shadowTexture: ShadowMap.getActiveTopDownTexture(),
+      shadowBlockerTexture: ShadowMap.getActiveTopDownBlockerTexture(),
       pointShadowTextures: ShadowMap.getActivePointTextures(),
       cullBox: (mins, maxs) => Camera.CullBox(mins, maxs),
     };

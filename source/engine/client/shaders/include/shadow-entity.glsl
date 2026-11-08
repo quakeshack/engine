@@ -1,11 +1,10 @@
 #include "shadow-point.glsl"
+#include "shadow-topdown.glsl"
 
 // Top-down shadow mapping — a single fixed-direction directional shadow,
 // centered on the camera every frame (see ShadowMap.renderTopDownShadow()).
-uniform sampler2DShadow tShadowMap;
 uniform float uShadowEnabled;
 uniform float uShadowDarkness;
-uniform float uShadowMaxDepthNDC;
 uniform vec3 uShadowLightDir;
 
 // Point light shadow mapping — up to 3 independent point-light shadow casters
@@ -42,14 +41,7 @@ float sampleLocalShadow(sampler2DShadow shadowMap, vec4 shadowCoordH) {
   float edgeDist = max(abs(shadowCoord.x * 2.0 - 1.0), abs(shadowCoord.y * 2.0 - 1.0));
   float fade = (1.0 - smoothstep(0.7, 1.0, edgeDist)) * zValid;
 
-  float rawShadow = texture(shadowMap, shadowCoord);
-
-  // Discount the occlusion when the nearest recorded caster is farther than
-  // uShadowMaxDepthNDC above this fragment — see brush.frag's
-  // sampleLocalShadowPCF for why (a caster overhead should not bleed its
-  // shadow through intervening geometry onto a much lower surface).
-  float inRange = texture(shadowMap, vec3(shadowCoord.xy, shadowCoord.z - uShadowMaxDepthNDC));
-  rawShadow = 1.0 - (1.0 - rawShadow) * inRange;
+  float rawShadow = limitTopDownShadowReach(texture(shadowMap, shadowCoord), shadowCoord);
 
   return mix(1.0, mix(uShadowDarkness, 1.0, rawShadow), fade);
 }

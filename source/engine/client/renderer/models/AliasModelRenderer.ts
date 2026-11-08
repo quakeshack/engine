@@ -181,6 +181,10 @@ export class AliasModelRenderer extends ModelRenderer {
     if (program!.tShadowMap !== undefined && topDownShadow) {
       topDownShadow.bind(program!.tShadowMap);
     }
+    const topDownBlockers = ShadowMap.getActiveTopDownBlockerTexture();
+    if (program!.tShadowBlockerMap !== undefined && topDownBlockers) {
+      topDownBlockers.bind(program!.tShadowBlockerMap);
+    }
     const pointShadows = ShadowMap.getActivePointTextures();
 
     // Bind point light cube shadow maps

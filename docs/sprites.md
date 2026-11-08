@@ -194,7 +194,8 @@ A sprite with `"shadow": true` casts a shadow; nothing else changes for it, and 
   top-down shadow when `r_shadow_pitch` is slanted (for example `-60`). A `parallel` sprite lies flat for that light, at
   the height of its origin, so it shadows only what is below it.
 - **The rules of every caster apply.** An entity with an `alpha` below 1, a light effect (`EF_DIMLIGHT`, ...) or
-  `EF_NOSHADOW` casts none, and the top-down shadow reaches only `r_shadow_max_depth` below its caster. Entities the
+  `EF_NOSHADOW` casts none, and the top-down shadow reaches only `r_shadow_max_depth` below its caster and stops at the
+  first world surface under it (a sprite on a ledge does not shadow the floor below the ledge). Entities the
   client owns cast no shadow of any model either: static decorations (`makeStatic`) and the game's client-only
   entities. A sprite that should cast stays an entity of the server.
 - **Sprites receive no shadow.** A sprite is drawn as bright as its texture (or its light, when `lit`), whatever shadow

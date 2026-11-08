@@ -12,11 +12,11 @@ layout(location = 1) out vec4 fragEmissive;
 #include "brush-shading.glsl"
 
 // Shadow mapping
-uniform sampler2DShadow tShadowMap;
+#include "shadow-topdown.glsl"
+
 uniform float uShadowEnabled;
 uniform float uShadowDarkness;
 uniform float uShadowMapSize;
-uniform float uShadowMaxDepthNDC;
 uniform vec3 uShadowLightDir;
 
 // Point light shadow mapping — up to 3 independent point-light shadow casters,
@@ -81,17 +81,7 @@ float sampleLocalShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoordH) {
   lit += 4.0  * texture(shadowMap, shadowCoord + vec3( 1.0,  2.0, 0.0) * texelSize);
   lit += 1.0  * texture(shadowMap, shadowCoord + vec3( 2.0,  2.0, 0.0) * texelSize);
   lit /= 256.0;
-
-  // Discount the occlusion when the nearest recorded caster is farther than
-  // uShadowMaxDepthNDC above this fragment along the shadow direction —
-  // otherwise a caster high overhead (e.g. standing on a catwalk) bleeds its
-  // shadow straight through the catwalk itself onto whatever floor happens
-  // to be far below, since the depth map has no notion of the catwalk ever
-  // being there. Reusing the same hardware-compare sampler with a shifted
-  // reference depth answers "is there still an occluder within range?" for
-  // free, with no extra texture or raw depth read needed.
-  float inRange = texture(shadowMap, vec3(shadowCoord.xy, shadowCoord.z - uShadowMaxDepthNDC));
-  lit = 1.0 - (1.0 - lit) * inRange;
+  lit = limitTopDownShadowReach(lit, shadowCoord);
 
   return mix(1.0, mix(uShadowDarkness, 1.0, lit), fade);
 }

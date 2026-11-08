@@ -216,6 +216,15 @@ void describe('FrameUniforms.Upload', () => {
     assert.deepEqual(calls[1], ['uniform1f', 'uShadowMaxDepthNDC', 0.125]);
   });
 
+  // the receivers compare it with depths of the map, not world units: unconverted, the bias would span the whole map and nothing would block
+  void test('converts the blocker bias into the normalized depth of the top-down map', () => {
+    GL.programs = [fakeProgram('uShadowBlockerBiasNDC')];
+
+    FrameUniforms.Upload();
+
+    assert.deepEqual(calls[1], ['uniform1f', 'uShadowBlockerBiasNDC', ShadowMap.blockerReceiverBias / (2 * 2048)]);
+  });
+
   void test('uploads both point-light shadow biases', () => {
     GL.programs = [fakeProgram('uPointShadowBias', 'uPointShadowNormalBias')];
 

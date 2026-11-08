@@ -7,7 +7,7 @@ import { eventBus } from '../../../common/EventBus.ts';
 import { MaterialFlags } from '../models/Materials.ts';
 import { effect } from '../../../../shared/Defs.ts';
 import Vector from '../../../../shared/Vector.ts';
-import type { BrushModel } from '../../../common/model/BSP.ts';
+import { BrushModel } from '../../../common/model/BSP.ts';
 import { WorldRenderState } from '../../../common/model/WorldRenderState.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
 import { modelRendererRegistry } from '../models/ModelRendererRegistry.ts';
@@ -30,6 +30,25 @@ const TOPDOWN_SHADOW_SIZE = 2048;
 
 /** Point light cube shadow map resolution (px per face). */
 const POINT_SHADOW_SIZE = 512;
+
+/**
+ * How far a receiver may lie below the first world surface under a caster and still take its shadow, in world units.
+ * Covers the receiver being that surface itself, sampled between texels on a slope. World geometry thinner than this
+ * would not stop a shadow; no Quake brush is that thin.
+ */
+const BLOCKER_RECEIVER_BIAS = 4.0;
+
+/**
+ * How far a world surface must lie below a caster to be taken as the surface under it, in world units, so the
+ * caster's own top, where it meets a world face, is not taken for one.
+ */
+const BLOCKER_CASTER_EPSILON = 1.0;
+
+/**
+ * Margin around a caster's footprint in the blocker map, in texels: how far beyond a caster's silhouette a receiver
+ * still reads it, through the 5×5 PCF taps (2 texels), their linear filtering and that of the blocker lookup (1 each).
+ */
+const FOOTPRINT_MARGIN_TEXELS = 4;
 
 /** Near plane for point light perspective projection, `POINT_SHADOW_NEAR` in shadow-point.glsl. */
 const POINT_NEAR = 1.0;
@@ -71,9 +90,11 @@ interface LightScoreCandidate {
  * (r_shadow_yaw/r_shadow_pitch), one orthographic depth map centered on the
  * camera every frame, only qualifying entities rendered as casters (world
  * geometry receives the shadow but never casts into this pass — see
- * renderTopDownShadow() for why). There is no per-frame light selection,
- * scoring, or hysteresis to reason about: the direction never changes, so
- * there is nothing to pop.
+ * renderTopDownShadow() for why). A second map of the same projection holds
+ * the first world surface below the casters, so the shadow stops there
+ * instead of passing through a floor (see renderTopDownBlockers()). There is
+ * no per-frame light selection, scoring, or hysteresis to reason about: the
+ * direction never changes, so there is nothing to pop.
  *
  * The point-light pool is unrelated and untouched by any of that — dynamic
  * lights (rockets, explosions) each get their own cube depth map, centered
@@ -92,12 +113,10 @@ export default class ShadowMap {
   static darkness: Cvar | null = null;
 
   /**
-   * Maximum reach of the top-down shadow below its caster, in world units.
-   * Without this cap, a caster high overhead (e.g. standing on a catwalk)
-   * would bleed its shadow straight through the catwalk itself onto whatever
-   * floor happens to be far below, since a single-layer depth map has no way
-   * to know the catwalk was ever there — see the shaders' sampleLocalShadow /
-   * sampleLocalShadowPCF for how this is enforced.
+   * Maximum reach of the top-down shadow below its caster, in world units, so
+   * a caster high above an open floor does not darken it. What keeps a shadow
+   * from passing through world geometry is the blocker map, not this cap (see
+   * renderTopDownBlockers() and limitTopDownShadowReach in shadow-topdown.glsl).
    */
   static maxDepth: Cvar | null = null;
 
@@ -113,7 +132,19 @@ export default class ShadowMap {
   /** Depth texture with hardware comparison (sampler2DShadow). */
   static topdownDepthTexture: GLRenderTexture | null = null;
 
-  /** 1×1 always-lit dummy texture used when the top-down shadow is off. */
+  /**
+   * Depth-only target of the blocker pass; its depth attachment is {@link ShadowMap.topdownBlockerTexture}.
+   */
+  static topdownBlockerTarget: RenderTarget | null = null;
+
+  /**
+   * Depth texture with hardware comparison (sampler2DShadow), in the projection of the top-down shadow: per texel the
+   * nearest world surface below a caster around it, cleared (1.0) where there is none. Only meaningful where the caster
+   * map holds a caster; it keeps the last frame's content when no caster was drawn.
+   */
+  static topdownBlockerTexture: GLRenderTexture | null = null;
+
+  /** 1×1 always-lit dummy texture used when the top-down shadow is off, for the caster and the blocker map alike. */
   static topdownDummyTexture: GLRenderTexture | null = null;
 
   /** Column-major 4×4 top-down light-space view-projection matrix, recomputed every frame from the camera position. */
@@ -121,6 +152,18 @@ export default class ShadowMap {
 
   /** Top-down shadow map resolution in pixels (read by shaders for PCF texel size). */
   static size: number = TOPDOWN_SHADOW_SIZE;
+
+  /** {@link BLOCKER_RECEIVER_BIAS}, for the receivers' uniform. */
+  static readonly blockerReceiverBias: number = BLOCKER_RECEIVER_BIAS;
+
+  /**
+   * Footprints of this frame's top-down casters in the shadow map, four values each: x, y, width and height in texels.
+   * Recorded by the caster pass, read by the blocker pass.
+   */
+  static readonly topdownFootprints: number[] = [];
+
+  /** Scratch rectangle of {@link ShadowMap.computeTopDownFootprint}: x0, y0, x1, y1 in texels. */
+  static readonly #footprint: Int32Array = new Int32Array(4);
 
   /**
    * Unit vector the top-down shadow travels along (from sky toward ground),
@@ -198,22 +241,19 @@ export default class ShadowMap {
     ShadowMap.yaw = new Cvar('r_shadow_yaw', '0', Cvar.FLAG.ARCHIVE, 'Top-down shadow direction yaw (degrees)');
     ShadowMap.pitch = new Cvar('r_shadow_pitch', '-90', Cvar.FLAG.ARCHIVE, 'Top-down shadow direction pitch (degrees, negative = down)');
 
-    // ── Top-down shadow depth texture ──────────────────────────────
-    ShadowMap.topdownDepthTexture = new GLRenderTexture();
-    ShadowMap.topdownDepthTexture.bind(0);
-    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, TOPDOWN_SHADOW_SIZE, TOPDOWN_SHADOW_SIZE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
-
-    // ── Depth-only FBO ─────────────────────────────────────────────
+    // ── Top-down caster and blocker depth textures and their depth-only FBOs ──
+    ShadowMap.topdownDepthTexture = ShadowMap.#createTopDownDepthTexture();
     ShadowMap.topdownTarget = new RenderTarget({
       name: 'shadow-topdown',
       color: [],
       depth: { storage: 'external', texture: ShadowMap.topdownDepthTexture },
+    });
+
+    ShadowMap.topdownBlockerTexture = ShadowMap.#createTopDownDepthTexture();
+    ShadowMap.topdownBlockerTarget = new RenderTarget({
+      name: 'shadow-topdown-blockers',
+      color: [],
+      depth: { storage: 'external', texture: ShadowMap.topdownBlockerTexture },
     });
 
     // ── 1×1 dummy (always-lit) ─────────────────────────────────────
@@ -277,6 +317,23 @@ export default class ShadowMap {
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+  }
+
+  /**
+   * A depth texture the size of the top-down shadow map, filtered and compared in hardware (sampler2DShadow).
+   * @returns The texture.
+   */
+  static #createTopDownDepthTexture(): GLRenderTexture {
+    const texture = new GLRenderTexture();
+    texture.bind(0);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, TOPDOWN_SHADOW_SIZE, TOPDOWN_SHADOW_SIZE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+    return texture;
   }
 
   // ─── Top-down matrix computation ───────────────────────────────────
@@ -403,20 +460,191 @@ export default class ShadowMap {
    * time, not just the spots actually shadowed by something. World geometry
    * still *receives* this shadow (a monster standing on the floor correctly
    * darkens the floor beneath it via the entity-caster pass below); it just
-   * never contributes its own occlusion into the same depth map.
+   * never contributes its own occlusion into the same depth map. What it
+   * does block is drawn afterwards by renderTopDownBlockers().
+   * @returns How many entities were drawn as casters.
    */
-  static renderTopDownShadow(viewOrigin: Vector): void {
+  static renderTopDownShadow(viewOrigin: Vector): number {
     if (!clientRuntimeState.worldmodel) {
-      return;
+      return 0;
     }
 
     ShadowMap.updateTopDownMatrix(viewOrigin);
+    ShadowMap.topdownFootprints.length = 0;
     ShadowMap.beginTopDown();
 
     const range = ShadowMap.range!.value;
-    ShadowMap.renderEntitiesShadow(ShadowMap.topdownMatrix, false, viewOrigin, range * range);
+    const casterCount = ShadowMap.renderEntitiesShadow(ShadowMap.topdownMatrix, false, viewOrigin, range * range);
 
     ShadowMap.endTopDown();
+    return casterCount;
+  }
+
+  /**
+   * Render the blocker map of the top-down shadow: per texel, the nearest
+   * world surface below the casters around it. Run after
+   * renderTopDownShadow(), with the same matrix, and only when it drew a
+   * caster.
+   *
+   * The caster map alone has one layer: it knows how far above a receiver
+   * the nearest caster is, not whether a floor lies in between, so a
+   * caster on a ledge would shadow the floor below the ledge as well. The
+   * opaque world surfaces of the revealed leafs are drawn here, and the
+   * shader discards every fragment that is not below a caster within the
+   * receivers' PCF footprint (shadow-blocker.frag), so the depth test keeps
+   * the first surface under the casters. A receiver farther below than that
+   * surface is out of the shadow (limitTopDownShadowReach in
+   * shadow-topdown.glsl). Roofs above the casters are discarded, so they
+   * do not shadow the floor as they would as casters.
+   *
+   * Brush entities are not drawn here: they cast into the caster map
+   * themselves, so the floor below one is in its shadow anyway.
+   *
+   * Only the footprints of the casters need the surfaces, and testing them
+   * against the casters is what costs: the depth is cleared to 0 (nothing
+   * passes) and back to 1 only inside each footprint, so the depth test
+   * rejects the world everywhere else before it is shaded, and the draw is
+   * scissored to the footprints. Outside them the map reads "blocked",
+   * which nothing notices, there is no caster there.
+   */
+  static renderTopDownBlockers(): void {
+    const worldmodel = clientRuntimeState.worldmodel as BrushModel | null;
+    const footprints = ShadowMap.topdownFootprints;
+    if (!worldmodel || footprints.length === 0) {
+      return;
+    }
+
+    ShadowMap.topdownBlockerTarget!.bind();
+    Frame.beginPass('shadow-topdown-blockers', ShadowMap.topdownBlockerTarget);
+    gl.viewport(0, 0, TOPDOWN_SHADOW_SIZE, TOPDOWN_SHADOW_SIZE);
+    gl.enable(gl.DEPTH_TEST);
+    gl.colorMask(false, false, false, false);
+    gl.disable(gl.CULL_FACE);
+
+    gl.clearDepth(0.0);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.clearDepth(1.0);
+    gl.enable(gl.SCISSOR_TEST);
+    let minX = TOPDOWN_SHADOW_SIZE;
+    let minY = TOPDOWN_SHADOW_SIZE;
+    let maxX = 0;
+    let maxY = 0;
+    for (let i = 0; i < footprints.length; i += 4) {
+      const x = footprints[i];
+      const y = footprints[i + 1];
+      const width = footprints[i + 2];
+      const height = footprints[i + 3];
+      gl.scissor(x, y, width, height);
+      gl.clear(gl.DEPTH_BUFFER_BIT);
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + width);
+      maxY = Math.max(maxY, y + height);
+    }
+    gl.scissor(minX, minY, maxX - minX, maxY - minY);
+
+    GL.BindVAO(worldmodel.opaqueVAO as WebGLVertexArrayObject);
+    const program = GL.UseProgram('shadow-blocker')!;
+    gl.uniform3f(program.uOrigin!, 0, 0, 0);
+    gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
+    gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ShadowMap.topdownMatrix);
+    // the caster map's [0,1] depth spans 2 * range world units, see updateTopDownMatrix()
+    gl.uniform1f(program.uCasterEpsilon!, BLOCKER_CASTER_EPSILON / (2.0 * ShadowMap.range!.value));
+    ShadowMap.topdownDepthTexture!.bind(program.tShadowMap!);
+
+    const renderState = WorldRenderState.of(worldmodel);
+    const visibleLeafs = renderState.visibleLeafs;
+    for (let i = 0; i < visibleLeafs.length; i++) {
+      const leaf = visibleLeafs[i];
+      for (let j = 0; j < renderState.skychains[leaf]; j++) {
+        const cmds = renderState.cmds[leaf][j];
+        const flags = (worldmodel.textures[cmds[0]] as { flags: number }).flags;
+        if (flags & (MaterialFlags.MF_SKIP | MaterialFlags.MF_TRANSPARENT)) {
+          continue;
+        }
+        gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
+      }
+    }
+
+    GL.UnbindVAO();
+    gl.disable(gl.SCISSOR_TEST);
+    gl.enable(gl.CULL_FACE);
+    gl.cullFace(gl.FRONT);
+    gl.colorMask(true, true, true, true);
+    Frame.endPass();
+    RenderTarget.unbind();
+  }
+
+  /**
+   * The square in the top-down shadow map that holds an entity's shadow in every pose and rotation, grown by the
+   * receivers' filter reach and clipped to the map. In the orthographic projection the shadow of a sphere is a disc of
+   * the same radius, so the square is that of the sphere around the model: centered on the bounds of a brush entity
+   * that is not rotated (a door's bounds are in world space, far from its origin at 0 0 0), on the origin otherwise.
+   * @param entity The caster, with a model.
+   * @returns The square, x0, y0, x1, y1 in texels, in a scratch array that the next call overwrites; `null` when it is
+   * outside the map.
+   */
+  static computeTopDownFootprint(entity: ClientEdict): Int32Array | null {
+    const model = entity.model!;
+    const origin = entity.lerp.origin;
+    const angles = entity.lerp.angles;
+    const mins = model.mins;
+    const maxs = model.maxs;
+
+    let centerX = origin[0];
+    let centerY = origin[1];
+    let centerZ = origin[2];
+    let radius: number;
+    if (model instanceof BrushModel && angles[0] === 0 && angles[1] === 0 && angles[2] === 0) {
+      centerX += (mins[0] + maxs[0]) * 0.5;
+      centerY += (mins[1] + maxs[1]) * 0.5;
+      centerZ += (mins[2] + maxs[2]) * 0.5;
+      radius = Math.hypot(maxs[0] - mins[0], maxs[1] - mins[1], maxs[2] - mins[2]) * 0.5;
+    } else {
+      radius = Math.hypot(
+        Math.max(-mins[0], maxs[0]),
+        Math.max(-mins[1], maxs[1]),
+        Math.max(-mins[2], maxs[2]),
+      );
+    }
+
+    const m = ShadowMap.topdownMatrix;
+    const ndcX = m[0] * centerX + m[4] * centerY + m[8] * centerZ + m[12];
+    const ndcY = m[1] * centerX + m[5] * centerY + m[9] * centerZ + m[13];
+    const texelX = (ndcX * 0.5 + 0.5) * TOPDOWN_SHADOW_SIZE;
+    const texelY = (ndcY * 0.5 + 0.5) * TOPDOWN_SHADOW_SIZE;
+    // the map spans 2 * range world units
+    const halfSize = radius * TOPDOWN_SHADOW_SIZE / (2.0 * ShadowMap.range!.value) + FOOTPRINT_MARGIN_TEXELS;
+
+    const footprint = ShadowMap.#footprint;
+    footprint[0] = Math.max(Math.floor(texelX - halfSize), 0);
+    footprint[1] = Math.max(Math.floor(texelY - halfSize), 0);
+    footprint[2] = Math.min(Math.ceil(texelX + halfSize), TOPDOWN_SHADOW_SIZE);
+    footprint[3] = Math.min(Math.ceil(texelY + halfSize), TOPDOWN_SHADOW_SIZE);
+    if (footprint[2] <= footprint[0] || footprint[3] <= footprint[1]) {
+      return null;
+    }
+    return footprint;
+  }
+
+  /**
+   * Records a top-down caster's footprint for the blocker pass.
+   */
+  static #recordTopDownFootprint(entity: ClientEdict): void {
+    const footprint = ShadowMap.computeTopDownFootprint(entity);
+    if (footprint === null) {
+      return;
+    }
+    ShadowMap.topdownFootprints.push(footprint[0], footprint[1], footprint[2] - footprint[0], footprint[3] - footprint[1]);
+  }
+
+  /**
+   * The texture to bind as the blocker map of the top-down shadow this frame: the real one while shadows are on, the
+   * dummy (nothing blocks) otherwise.
+   * @returns The texture, `null` before {@link ShadowMap.init}.
+   */
+  static getActiveTopDownBlockerTexture(): GLRenderTexture | null {
+    return ShadowMap.enabled !== null && ShadowMap.enabled.value ? ShadowMap.topdownBlockerTexture : ShadowMap.topdownDummyTexture;
   }
 
   /**
@@ -432,16 +660,18 @@ export default class ShadowMap {
   /**
    * Render visible entities (brush submodels, alias models, mesh models)
    * into the active shadow map.
+   * @returns How many entities were drawn as casters.
    */
   static renderEntitiesShadow(
     lightSpaceMatrix: Float64Array,
     isPointLight: boolean,
     cutoffOrigin: Vector,
     cutoffDistSq: number,
-  ): void {
+  ): number {
     if (rendererCvars.drawentities.value === 0) {
-      return;
+      return 0;
     }
+    let casterCount = 0;
     for (const entity of clientRuntimeState.clientEntities.getVisibleEntities()) {
       if (!ShadowMap._isShadowCasterEntity(entity)) {
         continue;
@@ -473,7 +703,12 @@ export default class ShadowMap {
         pointLightOrigin: cutoffOrigin,
         lightDirection: ShadowMap.lightDir,
       });
+      casterCount++;
+      if (!isPointLight) {
+        ShadowMap.#recordTopDownFootprint(entity);
+      }
     }
+    return casterCount;
   }
 
   /**

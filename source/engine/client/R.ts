@@ -276,11 +276,18 @@ class R {
     console.assert(ShadowMap.enabled !== null, 'shadow toggle required');
 
     // Top-down shadow pass — a single fixed-direction directional shadow,
-    // centered on the camera. World and entities both cast into it.
+    // centered on the camera, cast by entities only. The world surfaces right
+    // below the casters go into a second map that ends the shadow there.
     if (ShadowMap.enabled!.value) {
       FrameProfiler.begin('top-down');
-      ShadowMap.renderTopDownShadow(Camera.refdef.vieworg);
+      const casterCount = ShadowMap.renderTopDownShadow(Camera.refdef.vieworg);
       FrameProfiler.end();
+
+      if (casterCount > 0) {
+        FrameProfiler.begin('top-down blockers');
+        ShadowMap.renderTopDownBlockers();
+        FrameProfiler.end();
+      }
     }
 
     // Point light shadow pass — render world BSP into a cube depth map per
@@ -318,12 +325,17 @@ class R {
   }
 
   /**
-   * Renders the 3D scene of the frame into the current target, in pass order: shadow maps, the dynamic lightmap,
-   * the frame's GL and uniform setup, visibility, the turbulent boundary depth, sky, view model, then world and
+   * Renders the 3D scene of the frame into the current target, in pass order: visibility, shadow maps, the dynamic
+   * lightmap, the frame's GL and uniform setup, the turbulent boundary depth, sky, view model, then world and
    * entities.
    */
   static RenderScene() {
     Camera.SetFrustum();
+
+    // The top-down shadow's blocker pass draws the leafs revealed from this frame's view leaf.
+    FrameProfiler.begin('mark leafs');
+    Visibility.MarkLeafs();
+    FrameProfiler.end();
 
     FrameProfiler.begin('shadow maps');
     R.#renderShadowMaps();
@@ -340,10 +352,6 @@ class R {
     // uniforms are written here and not in PreRenderScene.
     FrameProfiler.begin('setup');
     R.SetupGL();
-    FrameProfiler.end();
-
-    FrameProfiler.begin('mark leafs');
-    Visibility.MarkLeafs();
     FrameProfiler.end();
 
     FrameProfiler.begin('turbulent boundary');

@@ -38,6 +38,9 @@ export interface SkyDrawContext {
   /** The top-down shadow map to sample (the real one or the dummy), `null` before shadow mapping is set up. */
   readonly shadowTexture: GLRenderTexture | null;
 
+  /** The blocker map of the top-down shadow (the real one or the dummy), `null` before shadow mapping is set up. */
+  readonly shadowBlockerTexture: GLRenderTexture | null;
+
   /** The point-light shadow cubes to sample (real or dummy), one per slot. */
   readonly pointShadowTextures: ReadonlyArray<GLCubeTexture | null>;
 
@@ -484,6 +487,9 @@ export class SimpleSkyBox extends SkyRenderer {
 
     if (program.tShadowMap !== undefined && context.shadowTexture) {
       context.shadowTexture.bind(program.tShadowMap);
+    }
+    if (program.tShadowBlockerMap !== undefined && context.shadowBlockerTexture) {
+      context.shadowBlockerTexture.bind(program.tShadowBlockerMap);
     }
     if (program.tPointShadowMap0 !== undefined && context.pointShadowTextures[0]) {
       context.pointShadowTextures[0].bind(program.tPointShadowMap0);
