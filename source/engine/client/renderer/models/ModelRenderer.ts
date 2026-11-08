@@ -34,6 +34,11 @@ export class ModelRenderer {
     return BaseModel;
   }
 
+  /** What the section of this renderer's entities is called in `r_speeds`, short and lowercase. */
+  get profileName(): string {
+    throw new NotImplementedError('ModelRenderer.profileName must be implemented');
+  }
+
   /**
    * Setup rendering state for this model type.
    * Called once before rendering multiple entities of the same type.

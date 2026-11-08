@@ -64,6 +64,10 @@ export class SpriteModelRenderer extends ModelRenderer {
   /** Below this, the quad is edge-on to the light: the cosine between the quad's normal and the light's direction. */
   static readonly #EDGE_ON = 0.01;
 
+  override get profileName(): string {
+    return 'sprites';
+  }
+
   /**
    * Get the model class this renderer handles.
    * @returns SpriteModel constructor.

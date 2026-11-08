@@ -47,6 +47,10 @@ interface AliasFrameSelection {
  * Handles frame interpolation, skinning, and player color translation.
  */
 export class AliasModelRenderer extends ModelRenderer {
+  override get profileName(): string {
+    return 'alias models';
+  }
+
   /**
    * Get the model class this renderer handles.
    * @returns AliasModel constructor.

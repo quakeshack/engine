@@ -51,7 +51,7 @@ export class RendererCvars {
   /** `r_sprite_memory`: megabytes of video memory one image sprite may take, bigger ones are reduced in size. */
   spriteMemory: Cvar = null!;
 
-  /** `r_speeds`: show draw call and frame time statistics. */
+  /** `r_speeds`: show draw call counters and the CPU and GPU time of every section of the frame. */
   speeds: Cvar = null!;
 
   /** `gl_polyblend`: tint the whole view with the damage, pickup and liquid color. */
@@ -103,7 +103,7 @@ export class RendererCvars {
     this.drawviewmodel = new Cvar('r_drawviewmodel', '1');
     this.drawturbulents = new Cvar('r_drawturbulents', '1', Cvar.FLAG.CHEAT);
     this.novis = new Cvar('r_novis', '0', Cvar.FLAG.CHEAT);
-    this.speeds = new Cvar('r_speeds', '0');
+    this.speeds = new Cvar('r_speeds', '0', Cvar.FLAG.NONE, 'Show draw call counters and the CPU and GPU time of every section of the frame, averaged over half a second. 2 also waits for the GPU at every section border, for browsers without GPU timer queries; this slows the frame down. r_profile prints the table to the console.');
     this.spriteMemory = new Cvar('r_sprite_memory', '64', Cvar.FLAG.ARCHIVE, 'Megabytes of video memory one image sprite (GIF, PNG, WebP) may take, mip levels included. Bigger sprites are halved in size until they fit, applies to sprites loaded afterwards.');
     this.polyblend = new Cvar('gl_polyblend', '1');
     this.cshiftpercent = new Cvar('gl_cshiftpercent', '100');

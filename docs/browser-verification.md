@@ -289,7 +289,8 @@ CAPTURE_GAME=<mod> BENCH_MSAA=4,0 node scripts/renderer-capture/gpu-bench.mjs \
   frozen beyond that (pickups spin, lights flicker, sky and liquids animate), so comparing two runs pixel by pixel
   shows those too: read where the pixels differ, not only how many.
 - It reports scene GPU time, not FPS: the page is capped near 60, and shadow maps and post-processing are outside the
-  query.
+  query. For the time of every pass in the running game, `r_speeds` and `r_bench` (`frame-profiling.md`); leave
+  `r_speeds` off while this runs, two timer queries cannot run at once.
 - **The player has to stand at the view.** A camera moved on the client alone (`camera_override` in `capture.mjs`)
   shows the map, but the server keeps sending the entities around the player, so brush entities near the view are
   missing without any error, and what they cost is not measured. The script therefore runs the server in the page

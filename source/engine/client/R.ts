@@ -23,6 +23,8 @@ import type { ClientEdict } from './ClientEntities.ts';
 import DefaultTextures from './renderer/resources/DefaultTextures.ts';
 import ShaderPrograms from './renderer/programs/ShaderPrograms.ts';
 import Fog from './renderer/scene/Fog.ts';
+import FrameBenchmark from './FrameBenchmark.ts';
+import FrameProfiler from './FrameProfiler.ts';
 import RenderStats from './renderer/scene/RenderStats.ts';
 import SkyBox from './renderer/scene/SkyBox.ts';
 import TransparentPass from './renderer/scene/TransparentPass.ts';
@@ -38,7 +40,6 @@ import Particles from './renderer/effects/Particles.ts';
 import Decals from './renderer/effects/Decals.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import viewCvars from './view/ViewCvars.ts';
-import Sys from './Sys.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -85,6 +86,7 @@ class R {
 
     // Pass 0: Opaque models.
     for (const [renderer, entities] of entitiesByRenderer) {
+      FrameProfiler.begin(renderer.profileName);
       renderer.setupRenderState(0);
       for (const entity of entities) {
         const model = entity.model!;
@@ -95,8 +97,10 @@ class R {
         }
 
         renderer.render(model, entity, 0);
+        RenderStats.c_entities++;
       }
       renderer.cleanupRenderState(0);
+      FrameProfiler.end();
     }
     GL.StreamFlush();
   }
@@ -237,15 +241,22 @@ class R {
       const brushRenderer = modelRendererRegistry.getRendererForModelClass(BrushModel);
       console.assert(brushRenderer !== null, 'brush renderer required');
       // Pass 0: World opaque surfaces
+      FrameProfiler.begin('world');
       brushRenderer!.render(worldEntity.model, worldEntity, 0);
+      FrameProfiler.end();
     }
 
     // Draw all other entities (pass 0 opaque only).
+    FrameProfiler.begin('entities');
     R.DrawEntitiesOnList();
+    FrameProfiler.end();
 
     gl.disable(gl.CULL_FACE);
+    FrameProfiler.begin('coronas');
     DynamicLights.RenderCoronas();
+    FrameProfiler.end();
 
+    FrameProfiler.begin('transparent');
     if (worldEntity && worldEntity.model) {
       gl.enable(gl.CULL_FACE);
       TransparentPass.Render(worldEntity);
@@ -254,6 +265,7 @@ class R {
       Decals.Draw();
       Particles.Draw();
     }
+    FrameProfiler.end();
   }
 
   /**
@@ -266,13 +278,18 @@ class R {
     // Top-down shadow pass — a single fixed-direction directional shadow,
     // centered on the camera. World and entities both cast into it.
     if (ShadowMap.enabled!.value) {
+      FrameProfiler.begin('top-down');
       ShadowMap.renderTopDownShadow(Camera.refdef.vieworg);
+      FrameProfiler.end();
     }
 
     // Point light shadow pass — render world BSP into a cube depth map per
     // active point-light slot, from the strongest nearby dlights' positions.
-    if (ShadowMap.selectPointLights(Camera.refdef.vieworg) > 0) {
+    RenderStats.c_point_shadows = ShadowMap.selectPointLights(Camera.refdef.vieworg);
+    if (RenderStats.c_point_shadows > 0) {
+      FrameProfiler.begin('point lights');
       ShadowMap.renderPointLightShadow();
+      FrameProfiler.end();
     }
   }
 
@@ -307,22 +324,42 @@ class R {
    */
   static RenderScene() {
     Camera.SetFrustum();
+
+    FrameProfiler.begin('shadow maps');
     R.#renderShadowMaps();
+    FrameProfiler.end();
 
     // The dynamic lightmap leaves out the lights that got a point shadow this frame (their light is computed and
     // shadowed per fragment), so it is built after selectPointLights; before it, a light that was just selected
     // would be added twice, one of them unshadowed, and one that just dropped out not at all.
+    FrameProfiler.begin('dynamic lightmap');
     DynamicLights.Push();
+    FrameProfiler.end();
 
     // The point-light state that FrameUniforms uploads is only final once selectPointLights has run, so the
     // uniforms are written here and not in PreRenderScene.
+    FrameProfiler.begin('setup');
     R.SetupGL();
+    FrameProfiler.end();
+
+    FrameProfiler.begin('mark leafs');
     Visibility.MarkLeafs();
+    FrameProfiler.end();
+
+    FrameProfiler.begin('turbulent boundary');
     R.#renderTurbulentBoundaryDepth();
+    FrameProfiler.end();
 
     gl.enable(gl.CULL_FACE);
+
+    FrameProfiler.begin('sky');
     SkyBox.Draw();
+    FrameProfiler.end();
+
+    FrameProfiler.begin('view model');
     R.DrawViewModel();
+    FrameProfiler.end();
+
     R.RenderWorld();
   }
 
@@ -330,17 +367,14 @@ class R {
    * Renders one frame of the 3D view, with the `r_speeds` bookkeeping around it.
    */
   static RenderView() {
-    let time1 = 0;
-    if (rendererCvars.speeds.value !== 0) {
-      gl.finish();
-      time1 = Sys.FloatMilliTime();
-    }
+    FrameProfiler.begin('scene');
     RenderStats.Reset();
     gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
     R.RenderScene();
     if (rendererCvars.speeds.value !== 0) {
-      RenderStats.Summarize(time1);
+      RenderStats.Summarize();
     }
+    FrameProfiler.end();
   }
 
   /**
@@ -349,6 +383,8 @@ class R {
   static async Init() {
     rendererCvars.register();
     Frame.Init();
+    FrameProfiler.Init();
+    FrameBenchmark.Init();
 
     DefaultTextures.Init();
     Lightmaps.Init();

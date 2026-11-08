@@ -14,6 +14,7 @@ This directory contains documentation for the QuakeShack engine codebase and fea
 - [Console](console.md) - Details regarding the console implementation.
 - [Dedicated Server](dedicated.md) - Information on running QuakeShack as a dedicated server in a Node.js environment.
 - [Events](events.md) - Documentation on the engine's event bus system.
+- [Frame Profiling](frame-profiling.md) - Where a frame spends its time in the running game: `r_speeds` (CPU and GPU time of every section of the frame), `r_profile`, and `r_bench` to compare settings at the player's spot; how to add a section.
 - [Game Module Contract](game-module-contract.md) - What the engine calls on a game module, in which order, who writes which field, and how `tsc` checks a game against the engine.
 - [Menu System](menu-system.md) - Stack-based, widget-driven menu framework and the `ClientEngineAPI.Menu` API for game code.
 - [Post-Process Effects](post-process-effects.md) - Game-controlled screen-space effects (color grading, blur, color shifts): stacks, channels, pulses, stages and how to extend them.

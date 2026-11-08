@@ -58,6 +58,7 @@ import FirstPersonView from './view/FirstPersonView.ts';
 import { buildConfig, com, net, urls } from './PageServices.ts';
 import Sys from './Sys.ts';
 import Camera from './renderer/scene/Camera.ts';
+import FrameProfiler from './FrameProfiler.ts';
 import Visibility from './renderer/scene/Visibility.ts';
 
 /** A savegame file: the server's half and what only the client knows. */
@@ -253,7 +254,13 @@ export default class ClientHost {
     try {
       await Host.BeginFrame(Sys.FloatTime());
 
-      if (ClientHost.Frame(Host.frametime, Host.realtime)) {
+      // the section must not span an await: the browser may draw a frame in between
+      FrameProfiler.countHostFrame();
+      FrameProfiler.begin('host');
+      const ran = ClientHost.Frame(Host.frametime, Host.realtime);
+      FrameProfiler.end();
+
+      if (ran) {
         Host.framecount++;
       }
     } catch (error) {
@@ -655,10 +662,14 @@ export default class ClientHost {
       return false;
     }
 
+    FrameProfiler.begin('commands');
     Cmd.Execute();
+    FrameProfiler.end();
 
     if (clientStaticState.state === Def.clientConnectionState.connected) {
+      FrameProfiler.begin('read messages');
       CL.ReadFromServer();
+      FrameProfiler.end();
     }
 
     const profiling = Host.speeds !== null && Host.speeds.value !== 0;
@@ -667,18 +678,26 @@ export default class ClientHost {
       console.profile('CL.ClientFrame');
     }
 
+    FrameProfiler.begin('client frame');
     CL.ClientFrame();
+    FrameProfiler.end();
 
     if (profiling) {
       console.profileEnd('CL.ClientFrame');
     }
 
+    FrameProfiler.begin('send command');
     CL.SendCmd();
+    FrameProfiler.end();
 
     // The server takes its turn right after the client sent its command, like a remote one would.
     // A hidden page only gets throttled timers, a single player world would crawl, so it waits for the player to come back.
     clientStaticState.serverController.setSimulationAllowed(M.AllowsSimulation() && !ClientHost.isPageHidden());
+    FrameProfiler.begin('local server');
     clientStaticState.serverController.runLocalFrame(frametime, realtime);
+    FrameProfiler.end();
+
+    FrameProfiler.begin('prediction');
 
     // Set up prediction for other players.
     CL.SetUpPlayerPrediction();
@@ -697,14 +716,22 @@ export default class ClientHost {
     // Set up prediction for other players.
     CL.SetUpPlayerPrediction();
 
-    // Build a refresh entity list.
-    clientRuntimeState.clientEntities.emit();
+    FrameProfiler.end();
 
+    // Build a refresh entity list.
+    FrameProfiler.begin('entity list');
+    clientRuntimeState.clientEntities.emit();
+    FrameProfiler.end();
+
+    FrameProfiler.begin('screen update');
     ScreenFrame.Update();
+    FrameProfiler.end();
 
     if (profiling) {
       console.profile('S.Update');
     }
+
+    FrameProfiler.begin('sound');
 
     if (clientStaticState.signon === 4) {
       S.Update(Camera.refdef.vieworg, Camera.vpn, Camera.vright, Camera.vup, Visibility.viewContents <= content.CONTENT_WATER);
@@ -712,7 +739,11 @@ export default class ClientHost {
       S.Update(Vector.origin, Vector.origin, Vector.origin, Vector.origin, false);
     }
 
+    FrameProfiler.end();
+
+    FrameProfiler.begin('cd audio');
     CDAudio.Update();
+    FrameProfiler.end();
 
     if (profiling) {
       console.profileEnd('S.Update');

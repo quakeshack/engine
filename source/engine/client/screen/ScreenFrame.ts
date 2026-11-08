@@ -15,6 +15,8 @@ import Frame from '../renderer/frame/Frame.ts';
 import PostProcess from '../renderer/postprocess/PostProcess.ts';
 import rendererCvars from '../renderer/resources/RendererCvars.ts';
 import Camera from '../renderer/scene/Camera.ts';
+import FrameBenchmark from '../FrameBenchmark.ts';
+import FrameProfiler from '../FrameProfiler.ts';
 import RenderStats from '../renderer/scene/RenderStats.ts';
 import Visibility from '../renderer/scene/Visibility.ts';
 import FirstPersonView from '../view/FirstPersonView.ts';
@@ -68,7 +70,9 @@ export default class ScreenFrame {
     // the fades and pulses of the post-process entries count the frames that are drawn
     PostProcess.advance();
 
+    FrameProfiler.begin('prepare view');
     ScreenFrame.Prepare(); // do some calculations independent of rendering
+    FrameProfiler.end();
 
     requestAnimationFrame((animationTime) => {
       // we are already shutting down
@@ -151,12 +155,17 @@ export default class ScreenFrame {
   static #draw(animationTime: number): void {
     FramePacing.Record(animationTime);
     Frame.beginFrame();
+    FrameBenchmark.Frame();
+    FrameProfiler.beginFrame();
 
     const clean = Screenshots.BeginClean();
 
     ScreenFrame.RenderScene();
     GL.Set2D();
+
+    FrameProfiler.begin('post-process');
     ScreenFrame.#resolve();
+    FrameProfiler.end();
 
     if (ConsoleOverlay.forcedup) {
       // ScreenFrame.RenderScene() (above) skips the 3D scene render entirely while forcedup — and with
@@ -172,11 +181,14 @@ export default class ScreenFrame {
     // including the console and menu, for this one frame.
     if (!clean) {
       Frame.beginPass('overlays', null);
+      FrameProfiler.begin('overlays');
       ScreenFrame.#drawOverlays();
+      FrameProfiler.end();
       Frame.endPass();
     }
 
     ScreenFrame.#finish(clean);
+    FrameProfiler.endFrame();
   }
 
   /**
@@ -239,7 +251,9 @@ export default class ScreenFrame {
    * @param clean Whether this frame is a clean screenshot.
    */
   static #finish(clean: boolean): void {
+    FrameProfiler.begin('stream flush');
     GL.StreamFlush();
+    FrameProfiler.end();
 
     if (!clean) {
       RenderStats.Print(FramePacing.FPS);

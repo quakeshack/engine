@@ -8,6 +8,8 @@ import Frame from '../frame/Frame.ts';
 import RenderTarget from '../frame/RenderTarget.ts';
 import { eventBus } from '../../../common/EventBus.ts';
 import type { ScreenRect } from '../scene/Camera.ts';
+import FrameProfiler from '../../FrameProfiler.ts';
+import RenderStats from '../scene/RenderStats.ts';
 import type { PostProcessPulseDescriptor, PostProcessPulseOptions, PostProcessStack, PostProcessStackOptions } from '../../../../shared/GameInterfaces.ts';
 
 let gl: WebGL2RenderingContext = null!;
@@ -423,6 +425,7 @@ export default class PostProcess {
     copy.bindForDraw();
     gl.blitFramebuffer(0, 0, PostProcess.width, PostProcess.height, 0, 0, PostProcess.width, PostProcess.height, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
     Frame.endPass();
+    RenderStats.c_scene_depth_copies++;
 
     source!.bind();
     PostProcess.#depthCopyCurrent = true;
@@ -497,6 +500,7 @@ export default class PostProcess {
     gl.readBuffer(gl.COLOR_ATTACHMENT0);
     gl.blitFramebuffer(x0, y0, x1, y1, x0, y0, x1, y1, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     Frame.endPass();
+    RenderStats.c_scene_color_copies++;
 
     source!.bind();
 
@@ -629,7 +633,9 @@ export default class PostProcess {
         output.target = null;
         output.viewport.set(savedViewport);
         Frame.beginPass(effect.passName, null, inputTexture, effect.sampledTextures);
+        FrameProfiler.begin(effect.passName);
         effect.apply(inputTexture, x, y, width, height, settings, output);
+        FrameProfiler.end();
         Frame.endPass();
       } else {
         // Intermediate effects render to the next ping-pong FBO
@@ -642,8 +648,10 @@ export default class PostProcess {
         output.viewport[2] = pixelWidth;
         output.viewport[3] = pixelHeight;
         Frame.beginPass(effect.passName, target, inputTexture, effect.sampledTextures);
+        FrameProfiler.begin(effect.passName);
         // Draw at ortho-space dimensions (VID.width/height) so the ortho matrix works
         effect.apply(inputTexture, 0, 0, VID.width, VID.height, settings, output);
+        FrameProfiler.end();
         Frame.endPass();
         inputTexture = target.colorTexture(0);
       }
@@ -698,7 +706,9 @@ export default class PostProcess {
       output.viewport[2] = w;
       output.viewport[3] = h;
       Frame.beginPass(effect.passName, target, input, effect.sampledTextures);
+      FrameProfiler.begin(effect.passName);
       effect.apply(input, 0, 0, VID.width, VID.height, settings, output);
+      FrameProfiler.end();
       Frame.endPass();
       input = target.colorTexture(0);
     }

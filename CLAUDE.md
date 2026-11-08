@@ -18,7 +18,7 @@ npx eslint --fix <file>             # strict config, fix all warnings
 
 - Substantial work (architecture changes, cross-cutting refactors, new subsystems) follows the `plan-first-workflow` skill.
 - Verify UI-facing changes in a real browser: the `browser-ui-verification` skill runs it in a Sonnet subagent. Say so if it couldn't verify.
-- Memory or performance concerns get measured attribution first (heap snapshots, profiles, `scripts/measure-bsp-memory.mts`, `scripts/renderer-capture/gpu-bench.mjs`), never a guessed fix. Check the plan in `plans/` for numbers already taken.
+- Memory or performance concerns get measured attribution first (heap snapshots, profiles, `scripts/measure-bsp-memory.mts`, `scripts/renderer-capture/gpu-bench.mjs`, `r_speeds`/`r_bench` in the game: `docs/frame-profiling.md`), never a guessed fix. Check the plan in `plans/` for numbers already taken.
 - LLMs know Quake internals only shallowly and this code has diverged a lot from WinQuake: check the source instead of trusting recalled engine details (`LLM.md`).
 
 ## Known Traps
