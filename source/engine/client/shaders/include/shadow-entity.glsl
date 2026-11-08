@@ -31,6 +31,11 @@ in vec3 vWorldPos;
  * hard clip, and floors at uShadowDarkness rather than going fully black.
  */
 float sampleLocalShadow(sampler2DShadow shadowMap, vec4 shadowCoordH) {
+  // a uniform, so the draw does not diverge: the reads are skipped with r_shadows 0, see brush.frag
+  if (uShadowEnabled < 0.5) {
+    return 1.0;
+  }
+
   vec3 shadowCoord = shadowCoordH.xyz / shadowCoordH.w * 0.5 + 0.5;
   float zValid = step(0.0, shadowCoord.z) * step(shadowCoord.z, 1.0);
 
@@ -46,8 +51,7 @@ float sampleLocalShadow(sampler2DShadow shadowMap, vec4 shadowCoordH) {
   float inRange = texture(shadowMap, vec3(shadowCoord.xy, shadowCoord.z - uShadowMaxDepthNDC));
   rawShadow = 1.0 - (1.0 - rawShadow) * inRange;
 
-  float shadow = mix(1.0, mix(uShadowDarkness, 1.0, rawShadow), fade);
-  return mix(1.0, shadow, step(0.5, uShadowEnabled));
+  return mix(1.0, mix(uShadowDarkness, 1.0, rawShadow), fade);
 }
 
 /**
@@ -57,6 +61,11 @@ float sampleLocalShadow(sampler2DShadow shadowMap, vec4 shadowCoordH) {
  * @param normal World-space surface normal of the fragment.
  */
 float samplePointShadow(samplerCubeShadow shadowMap, vec3 lightPos, float lightRadius, vec3 normal) {
+  // uniforms, so the draw does not diverge: no point shadows this frame, or a slot without a light, see brush.frag
+  if (uPointShadowEnabled < 0.5 || lightRadius <= 0.0) {
+    return 1.0;
+  }
+
   float fragDist = length(vWorldPos - lightPos);
   float f = max(lightRadius, 2.0);
   float cubeShadow = samplePointShadowMap(shadowMap, vWorldPos, normal, lightPos, f);

@@ -13,6 +13,8 @@ import { modelRendererRegistry } from '../models/ModelRendererRegistry.ts';
 import PostProcess from '../postprocess/PostProcess.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
 import Camera, { type ScreenRect } from './Camera.ts';
+import FrameProfiler from '../../FrameProfiler.ts';
+import RenderStats from './RenderStats.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -37,6 +39,18 @@ export enum TransparentKind {
   Particle = 6,
   RefractiveWorldSurface = 7,
 }
+
+/** What the `r_speeds` section of each kind is called, by {@link TransparentKind}. */
+const KIND_SECTION_NAMES: readonly string[] = [
+  'world surfaces',
+  'liquids',
+  'fog volumes',
+  'entities',
+  'sprites',
+  'decals',
+  'particles',
+  'refracting surfaces',
+];
 
 /**
  * The two things the transparent sort looks at.
@@ -365,7 +379,11 @@ class TransparentPass {
    * @param worldEntity The world entity, as for `Collect()`.
    */
   static Render(worldEntity: ClientEdict): void {
+    FrameProfiler.begin('collect');
     const items = TransparentPass.Collect(worldEntity);
+    FrameProfiler.end();
+
+    RenderStats.c_transparent_items = items.length;
 
     if (items.length === 0) {
       return;
@@ -402,8 +420,10 @@ class TransparentPass {
 
       // the depth is only copied again when something wrote it since the last copy, an opaque liquid
       if (copyBefore[i]) {
+        FrameProfiler.begin('scene copies');
         PostProcess.sceneDepthCopy();
         PostProcess.copySceneColor(copyRects[copies++]);
+        FrameProfiler.end();
       }
 
       if (kindChanges) {
@@ -411,6 +431,8 @@ class TransparentPass {
           continue;
         }
         TransparentPass.#activeKind = item.kind;
+        // closed by #endActiveKind, which only closes a kind that began
+        FrameProfiler.begin(KIND_SECTION_NAMES[item.kind]);
       }
 
       TransparentPass.#drawItem(item, particleFrame);
@@ -527,6 +549,10 @@ class TransparentPass {
         break;
       default:
         break;
+    }
+
+    if (TransparentPass.#activeKind !== -1) {
+      FrameProfiler.end();
     }
 
     TransparentPass.#activeKind = -1;

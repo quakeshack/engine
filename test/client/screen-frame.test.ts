@@ -107,6 +107,7 @@ void describe('ScreenFrame', () => {
       patchMembers(ConsoleOverlay, { forcedup: false, isOpen: false }),
       patchMembers(PostProcess, { colorTexture: {} as never }),
       patchMembers(rendererCvars, {
+        speeds: { value: 0 } as unknown as Cvar,
         drawviewmodel: {
           value: 1,
           set(this: { value: number }, value: number) {

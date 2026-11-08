@@ -1,10 +1,14 @@
-import { describe, test } from 'node:test';
+import { afterEach, beforeEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
-import Sound from '../../source/engine/client/Sound.ts';
+import clientCvars from '../../source/engine/client/ClientCvars.ts';
+import Host from '../../source/engine/common/Host.ts';
+import Sound, { SFX } from '../../source/engine/client/Sound.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { createTreeModel } from '../support/bspTree.ts';
+import { patchMembers } from '../support/clientState.ts';
+import { createCvarStub } from '../support/cvarStub.ts';
 import { installEngineMocks } from '../support/withEngineMocks.ts';
 
 void describe('Sound.IsPositionAudible', () => {
@@ -138,5 +142,274 @@ void describe('Sound.IsPositionAudible', () => {
     } finally {
       context.restore();
     }
+  });
+});
+
+void describe('Sound playback', () => {
+  /** An `AudioParam` that counts how often its value is written. */
+  interface CountingParam {
+    value: number;
+    readonly writes: number[];
+  }
+
+  /** What a buffer source of the fake context was asked to do. */
+  interface RecordedSource {
+    loop: boolean;
+    started: boolean;
+  }
+
+  /**
+   * Makes a parameter that records every value written to it.
+   * @param initial The value it starts with.
+   * @returns The parameter.
+   */
+  function countingParam(initial: number): CountingParam {
+    let current = initial;
+    const writes: number[] = [];
+
+    return {
+      writes,
+      get value() {
+        return current;
+      },
+      set value(next: number) {
+        current = next;
+        writes.push(next);
+      },
+    };
+  }
+
+  const pans: CountingParam[] = [];
+  const gains: CountingParam[] = [];
+  const sources: RecordedSource[] = [];
+  const files = new Map<string, (data: ArrayBuffer | null) => void>();
+  let state: AudioContextState = 'running';
+  let restore: () => void = () => {};
+
+  /** A context with what Channel and LoadSound use: panner and gain nodes, buffer sources, decoding. */
+  const context = {
+    get state() {
+      return state;
+    },
+    createStereoPanner() {
+      const pan = countingParam(0);
+      pans.push(pan);
+      return { pan, connect() {}, disconnect() {} };
+    },
+    createGain() {
+      const gain = countingParam(1);
+      gains.push(gain);
+      return { gain, connect() {}, disconnect() {} };
+    },
+    createBufferSource() {
+      const source: RecordedSource & Record<string, unknown> = {
+        loop: false,
+        started: false,
+        connect() {},
+        disconnect() {},
+        start() {
+          source.started = true;
+        },
+        stop() {
+          source.started = false;
+        },
+      };
+      sources.push(source);
+      return source;
+    },
+    decodeAudioData(_data: ArrayBuffer) {
+      return Promise.resolve({ duration: 1 } as AudioBuffer);
+    },
+  };
+
+  /**
+   * A sound that is loaded already.
+   * @param name Its name.
+   * @param loopstart Where it loops, `null` for a sound without a loop marker.
+   * @returns The sound.
+   */
+  function loadedSound(name: string, loopstart: number | null): SFX {
+    const sfx = new SFX(name);
+    sfx.state = SFX.STATE.AVAILABLE;
+    sfx.cache = { data: { duration: 1 } as AudioBuffer, length: 1, loopstart, size: 0 };
+    return sfx;
+  }
+
+  /**
+   * Starts loading a sound whose file arrives when the test says so, see {@link deliver}.
+   * @param name Its name.
+   * @returns The sound, loading.
+   */
+  function loadingSound(name: string): SFX {
+    const sfx = new SFX(name);
+    void Sound.LoadSound(sfx);
+    return sfx;
+  }
+
+  /**
+   * Lets the file of a loading sound arrive and waits until it is decoded and whoever waited for it ran.
+   * @param name The sound.
+   */
+  async function deliver(name: string): Promise<void> {
+    files.get(`sound/${name}`)!(new ArrayBuffer(4));
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+  }
+
+  /** Runs the update of one frame with the listener at the origin, looking along +x, with +y to its right. */
+  function update(): void {
+    Sound.Update(new Vector(0, 0, 0), new Vector(1, 0, 0), new Vector(0, 1, 0), new Vector(0, 0, 1), false);
+  }
+
+  beforeEach(() => {
+    pans.length = 0;
+    gains.length = 0;
+    sources.length = 0;
+    files.clear();
+    state = 'running';
+
+    const restoreEngineMocks = installEngineMocks({
+      CL: { state: { worldmodel: null, viewentity: 1 } },
+      COM: {
+        LoadFile: (name: string) => new Promise<ArrayBuffer | null>((resolve) => {
+          files.set(name, resolve);
+        }),
+      },
+    });
+    const restoreSound = patchMembers(Sound, {
+      _started: true,
+      _context: context as unknown as AudioContext,
+      _masterGain: {} as GainNode,
+      _underwaterFilter: null,
+      _staticChannels: [],
+      _channels: [],
+      _ambientChannels: [],
+      _nosound: createCvarStub(0),
+      volume: createCvarStub(1),
+      _ambientLevel: createCvarStub(0.3),
+      _ambientFade: createCvarStub(100),
+    });
+    const restoreCvars = patchMembers(clientCvars, { areaportals: createCvarStub(0) });
+    const restoreHost = patchMembers(Host, { realtime: 0 });
+
+    restore = () => {
+      restoreHost();
+      restoreCvars();
+      restoreSound();
+      restoreEngineMocks();
+    };
+  });
+
+  afterEach(() => {
+    restore();
+  });
+
+  void describe('writing to the audio graph', () => {
+    void test('writes an unchanged pan and volume once, not every frame', () => {
+      // the listener is known before the sound starts, as in a running game
+      update();
+      Sound.StaticSound(loadedSound('ambience/fire1.wav', 0), new Vector(0, 100, 0), 1, 1);
+      update();
+      update();
+      update();
+
+      assert.equal(pans[0].writes.length, 1);
+      assert.equal(gains[0].writes.length, 1);
+    });
+
+    // In Chrome every write to a suspended context stays queued and makes the next one slower: after twenty minutes
+    // of a paused game the static sounds took half a frame.
+    void test('writes nothing while the context is suspended, and what changed once it runs again', () => {
+      update();
+      state = 'suspended';
+      Sound.StaticSound(loadedSound('ambience/fire1.wav', 0), new Vector(0, 100, 0), 1, 1);
+      update();
+      update();
+
+      assert.deepEqual(pans[0].writes, []);
+      assert.deepEqual(gains[0].writes, []);
+
+      state = 'running';
+      update();
+
+      // the source is straight to the right of the listener
+      assert.deepEqual(pans[0].writes, [1]);
+      assert.equal(gains[0].writes.length, 1);
+    });
+  });
+
+  void describe('a sound that loads after the sounds were stopped', () => {
+    // a static sound started a looping source on its disposed channel, which nothing could stop any more
+    void test('does not start a static sound of the map before', async () => {
+      const sfx = loadingSound('ambience/fire1.wav');
+
+      Sound.StaticSound(sfx, new Vector(0, 100, 0), 1, 1);
+      Sound.StopAllSounds();
+      await deliver('ambience/fire1.wav');
+
+      assert.equal(sfx.state, SFX.STATE.AVAILABLE);
+      assert.deepEqual(sources, []);
+    });
+
+    void test('does not start a sound that was asked for before', async () => {
+      const sfx = loadingSound('weapons/pkup.wav');
+
+      Sound.StartSound(5, 1, sfx, new Vector(0, 100, 0), 1, 1);
+      Sound.StopAllSounds();
+      await deliver('weapons/pkup.wav');
+
+      assert.deepEqual(sources, []);
+    });
+
+    void test('still starts a sound that was asked for after', async () => {
+      const sfx = loadingSound('weapons/pkup.wav');
+
+      Sound.StopAllSounds();
+      Sound.StartSound(5, 1, sfx, new Vector(0, 100, 0), 1, 1);
+      await deliver('weapons/pkup.wav');
+
+      assert.equal(sources.length, 1);
+      assert.equal(sources[0].started, true);
+    });
+  });
+
+  void describe('a static sound without a loop marker', () => {
+    // the static sound used to write a loop start into the sound's shared data, so every later play of it looped
+    void test('loops on its own channel and leaves other plays of the sound alone', () => {
+      const sfx = loadedSound('misc/hum.wav', null);
+
+      Sound.StaticSound(sfx, new Vector(0, 100, 0), 1, 1);
+      Sound.StartSound(5, 1, sfx, new Vector(0, 100, 0), 1, 1);
+
+      assert.deepEqual(sources.map((source) => source.loop), [true, false]);
+      assert.equal(sfx.cache!.loopstart, null);
+    });
+  });
+
+  void describe('a dynamic channel', () => {
+    // `cache?.loopstart !== null` took a sound without data for a looping one, so its channel was never freed
+    void test('is free again at its end when its sound has no data', () => {
+      const sfx = new SFX('misc/broken.wav');
+      sfx.state = SFX.STATE.AVAILABLE;
+
+      Sound.StartSound(5, 1, sfx, new Vector(0, 100, 0), 1, 1);
+      const channels = pans.length;
+
+      Host.realtime = 10;
+      update();
+      Sound.StartSound(6, 1, loadedSound('weapons/pkup.wav', null), new Vector(0, 100, 0), 1, 1);
+
+      assert.equal(pans.length, channels, 'the second sound took the freed channel instead of a new one');
+    });
+
+    void test('keeps a looping sound past its end', () => {
+      Sound.StartSound(5, 1, loadedSound('misc/hum.wav', 0), new Vector(0, 100, 0), 1, 1);
+
+      Host.realtime = 10;
+      update();
+
+      assert.equal(sources[0].started, true);
+    });
   });
 });

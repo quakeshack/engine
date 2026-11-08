@@ -36,6 +36,12 @@ uniform float uPointShadowEnabled;
  * largest, most prominent shadow receiver in the scene.
  */
 float sampleLocalShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoordH) {
+  // a uniform, so the draw does not diverge: with r_shadows 0 the 26 reads are skipped, and the map is not read at
+  // all, it is not drawn then and holds the shadow of the last frame that drew it
+  if (uShadowEnabled < 0.5) {
+    return 1.0;
+  }
+
   vec3 shadowCoord = shadowCoordH.xyz / shadowCoordH.w * 0.5 + 0.5;
   if (shadowCoord.z < 0.0 || shadowCoord.z > 1.0) {
     return 1.0;
@@ -101,6 +107,12 @@ float sampleLocalShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoordH) {
  * contribution at once. The light itself is pointLightAttenuation().
  */
 vec3 samplePointLightContribution(samplerCubeShadow shadowMap, vec3 lightPos, float lightRadius, vec3 lightColor) {
+  // uniforms, so the draw does not diverge: without point shadows this frame, or for a slot that holds no light
+  // (radius 0, a stale position and a cube map not drawn this frame), the five cube reads would be multiplied away
+  if (uPointShadowEnabled < 0.5 || lightRadius <= 0.0) {
+    return pointLightAttenuation(lightPos, lightRadius, lightColor);
+  }
+
   float fragDist = length(vWorldPos - lightPos);
   float f = max(lightRadius, 2.0);
   float cubeShadow = samplePointShadowMap(shadowMap, vWorldPos, vNormal, lightPos, f);

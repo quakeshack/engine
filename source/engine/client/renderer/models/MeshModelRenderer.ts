@@ -30,6 +30,10 @@ eventBus.subscribe('gl.shutdown', () => {
  * Handles static mesh rendering with modern vertex attributes.
  */
 export class MeshModelRenderer extends ModelRenderer {
+  override get profileName(): string {
+    return 'mesh models';
+  }
+
   /**
    * Get the model class this renderer handles.
    * @returns MeshModel constructor.

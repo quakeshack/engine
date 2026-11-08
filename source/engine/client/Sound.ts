@@ -6,6 +6,7 @@ import Q from '../../shared/Q.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState } from './ClientState.ts';
+import FrameProfiler from './FrameProfiler.ts';
 import clientCvars from './ClientCvars.ts';
 import Host from '../common/Host.ts';
 import { com } from './PageServices.ts';
@@ -43,7 +44,7 @@ export class SFX {
     this.name = name;
   }
 
-  /** @returns {Promise<SFX>} resolves when the SFX data is loaded */
+  /** @returns resolves when the SFX data is loaded */
   get ready(): Promise<SFX> {
     if (this._readyPromise === null) {
       if (this.state === SFX.STATE.AVAILABLE) {
@@ -61,7 +62,7 @@ export class SFX {
     return this._readyPromise;
   }
 
-  /** @returns {Promise<boolean>} whether loading succeeded */
+  /** @returns whether loading succeeded */
   async load(): Promise<boolean> {
     if (this.state !== SFX.STATE.NEW) {
       return false;
@@ -93,6 +94,15 @@ class Channel {
   _gain: GainNode;
   _source: AudioBufferSourceNode | null = null;
 
+  /** The pan last written to the panner, so an unchanged one is not written again. */
+  #writtenPan = NaN;
+
+  /** The gain last written to the gain node, so an unchanged one is not written again. */
+  #writtenGain = NaN;
+
+  /** Set by {@link Channel.dispose}: the nodes are out of the graph and the channel plays nothing any more. */
+  #disposed = false;
+
   constructor(context: AudioContext, destination: AudioNode) {
     this._context = context;
     this._panner = context.createStereoPanner();
@@ -116,9 +126,14 @@ class Channel {
     this.pan = 0;
   }
 
-  /** Starts playback of the current sfx from the beginning. */
-  play(): void {
-    if (!this.sfx?.cache) {
+  /**
+   * Starts playback of the current sfx from the beginning. Does nothing on a disposed channel: a sound that finishes
+   * loading after its channel was let go of (a static sound of the map before) would otherwise start a looping
+   * source that no list holds any more, so nothing would ever stop it.
+   * @param loop Whether it loops; a sound without a loop marker loops from its start.
+   */
+  play(loop = this.sfx?.cache?.loopstart !== null): void {
+    if (this.#disposed || !this.sfx?.cache) {
       return;
     }
 
@@ -128,9 +143,9 @@ class Channel {
     const source = this._context.createBufferSource();
     source.buffer = sc.data;
 
-    if (sc.loopstart !== null) {
+    if (loop) {
       source.loop = true;
-      source.loopStart = sc.loopstart;
+      source.loopStart = sc.loopstart ?? 0;
       source.loopEnd = sc.data.duration;
     } else {
       // Auto-cleanup when a non-looping sound ends naturally
@@ -166,9 +181,34 @@ class Channel {
     source.disconnect();
   }
 
+  /**
+   * Writes the pan and the volume to the audio graph, when they changed and the context runs. A suspended context
+   * (the game is paused, or the browser has not let it start) consumes no automation events, so in Chrome every
+   * `value` write adds one that stays, and each write after it takes longer: 0.6 ms a write after a while, half a
+   * frame for a map's static sounds. Nothing is heard while it is suspended; the next update after it resumes writes
+   * what changed in the meantime.
+   */
   updateVol(): void {
-    this._panner.pan.value = Math.max(-1, Math.min(1, this.pan));
-    this._gain.gain.value = Math.max(0, this.channel_vol * Sound.volume.value);
+    if (this._context.state !== 'running') {
+      return;
+    }
+
+    const pan = Math.max(-1, Math.min(1, this.pan));
+    const gain = Math.max(0, this.channel_vol * Sound.volume.value);
+
+    FrameProfiler.begin('audio params');
+
+    if (pan !== this.#writtenPan) {
+      this._panner.pan.value = pan;
+      this.#writtenPan = pan;
+    }
+
+    if (gain !== this.#writtenGain) {
+      this._gain.gain.value = gain;
+      this.#writtenGain = gain;
+    }
+
+    FrameProfiler.end();
   }
 
   /**
@@ -213,8 +253,9 @@ class Channel {
     this.updateVol();
   }
 
-  /** Disconnects all persistent audio nodes from the graph. */
+  /** Stops the channel and takes its nodes out of the graph, for good. */
   dispose(): void {
+    this.#disposed = true;
     this.stop();
     this._panner.disconnect();
     this._gain.disconnect();
@@ -248,6 +289,9 @@ export default class Sound {
   static bgmvolume: Cvar = null!;
 
   static _eventListeners: Array<() => void> = [];
+
+  /** Counts {@link Sound.StopAllSounds}, so a sound that was asked for before it and loads after it is not started. */
+  static #generation = 0;
 
   // ─── Init / Shutdown ────────────────────────────────────────────────────────
 
@@ -343,8 +387,8 @@ export default class Sound {
   // ─── Loading ────────────────────────────────────────────────────────────────
 
   /**
-   * @param {string} name sound filename
-   * @returns {SFX|null} the SFX handle or null if sound is disabled
+   * @param name sound filename
+   * @returns the SFX handle or null if sound is disabled
    */
   static PrecacheSound(name: string): SFX | null {
     if (!Sound._started || Sound._nosound.value !== 0) {
@@ -365,8 +409,8 @@ export default class Sound {
   }
 
   /**
-   * @param {string} name sound filename
-   * @returns {Promise<SFX|null>} the SFX handle or null if sound is disabled
+   * @param name sound filename
+   * @returns the SFX handle or null if sound is disabled
    */
   static async PrecacheSoundAsync(name: string): Promise<SFX | null> {
     if (!Sound._started || Sound._nosound.value !== 0) {
@@ -390,8 +434,8 @@ export default class Sound {
 
   /**
    * Loads sound data from disk and decodes it into an AudioBuffer.
-   * @param {SFX} sfx sound effect to load
-   * @returns {Promise<boolean>} whether loading succeeded
+   * @param sfx sound effect to load
+   * @returns whether loading succeeded
    */
   static async LoadSound(sfx: SFX): Promise<boolean> {
     if (!Sound._started || Sound._nosound.value !== 0) {
@@ -475,12 +519,12 @@ export default class Sound {
   // ─── Playback ───────────────────────────────────────────────────────────────
 
   /**
-   * @param {number} entnum entity number
-   * @param {number} entchannel channel on entity (0 = any, -1 = local)
-   * @param {SFX} sfx sound to play
-   * @param {Vector} origin world position
-   * @param {number} vol master volume [0..1]
-   * @param {number} attenuation distance falloff factor
+   * @param entnum entity number
+   * @param entchannel channel on entity (0 = any, -1 = local)
+   * @param sfx sound to play
+   * @param origin world position
+   * @param vol master volume [0..1]
+   * @param attenuation distance falloff factor
    */
   static StartSound(entnum: number, entchannel: number, sfx: SFX | null, origin: Vector, vol: number, attenuation: number): void {
     if (!Sound._started || Sound._nosound.value !== 0 || !sfx) {
@@ -489,17 +533,19 @@ export default class Sound {
 
     Sound._ensureContextRunning();
 
-    // Snapshot origin so the closure is safe if the caller mutates the vector
-    const ox = origin[0];
-    const oy = origin[1];
-    const oz = origin[2];
+    // a copy, the caller may change the vector before the sound has loaded
+    const at = origin.copy();
+    const generation = Sound.#generation;
 
     const play = () => {
+      // asked for before the sounds were stopped (the map changed), loaded after
+      if (generation !== Sound.#generation) {
+        return;
+      }
+
       const ch = Sound._pickChannel(entnum, entchannel);
       ch.sfx = sfx;
-      ch.origin[0] = ox;
-      ch.origin[1] = oy;
-      ch.origin[2] = oz;
+      ch.origin.set(at);
       ch.dist_mult = attenuation * 0.001;
       ch.master_vol = vol;
       ch.entnum = entnum;
@@ -524,25 +570,19 @@ export default class Sound {
   }
 
   /**
-   * @param {SFX} sfx looping sound
-   * @param {Vector} origin world position
-   * @param {number} vol master volume [0..1]
-   * @param {number} attenuation distance falloff factor
+   * @param sfx looping sound
+   * @param origin world position
+   * @param vol master volume [0..1]
+   * @param attenuation distance falloff factor
    */
   static StaticSound(sfx: SFX | null, origin: Vector, vol: number, attenuation: number): void {
     if (!Sound._started || Sound._nosound.value !== 0 || !sfx) {
       return;
     }
 
-    const ox = origin[0];
-    const oy = origin[1];
-    const oz = origin[2];
-
     const ch = Sound._newChannel();
     ch.sfx = sfx;
-    ch.origin[0] = ox;
-    ch.origin[1] = oy;
-    ch.origin[2] = oz;
+    ch.origin.set(origin);
     ch.master_vol = vol;
     ch.dist_mult = attenuation * 0.000015625;
     Sound._staticChannels.push(ch);
@@ -552,13 +592,13 @@ export default class Sound {
         return;
       }
 
+      // looped by this channel only: the data is shared with every other play of the sound, which would loop too
       if (sfx.cache.loopstart === null) {
         Con.PrintWarning(`S.StaticSound: ${sfx.name} not looped, assuming start 0\n`);
-        sfx.cache.loopstart = 0;
       }
       ch.end = Host.realtime + sfx.cache.length;
       ch.spatialize();
-      ch.play();
+      ch.play(true);
     };
 
     if (sfx.state === SFX.STATE.AVAILABLE) {
@@ -569,8 +609,8 @@ export default class Sound {
   }
 
   /**
-   * @param {number} entnum entity number
-   * @param {number} entchannel channel on entity
+   * @param entnum entity number
+   * @param entchannel channel on entity
    */
   static StopSound(entnum: number, entchannel: number): void {
     if (!Sound._started) {
@@ -584,10 +624,13 @@ export default class Sound {
     }
   }
 
+  /** Stops every sound and lets go of the static ones, on a map change, a disconnect and `stopsound`. */
   static StopAllSounds(): void {
     if (!Sound._started) {
       return;
     }
+
+    Sound.#generation++;
 
     for (const ch of Sound._ambientChannels) {
       ch.channel_vol = 0;
@@ -607,7 +650,7 @@ export default class Sound {
 
   /**
    * Plays a local (non-spatialized) sound at the view entity.
-   * @param {SFX} sfx sound to play
+   * @param sfx sound to play
    */
   static LocalSound(sfx: SFX | null): void {
     Sound.StartSound(clientRuntimeState.viewentity, -1, sfx, Vector.origin, 1.0, 1.0);
@@ -615,7 +658,7 @@ export default class Sound {
 
   // ─── Console commands ───────────────────────────────────────────────────────
 
-  /** @param {...string} samples sound names to play */
+  /** @param samples sound names to play */
   static Play_f(...samples: string[]): void {
     if (!Sound._started) {
       return;
@@ -629,7 +672,7 @@ export default class Sound {
     }
   }
 
-  /** @param {...string} args name/volume pairs */
+  /** @param args name/volume pairs */
   static PlayVol_f(...args: string[]): void {
     if (!Sound._started) {
       return;
@@ -665,11 +708,11 @@ export default class Sound {
   // ─── Per-frame update ───────────────────────────────────────────────────────
 
   /**
-   * @param {Vector} origin listener position
-   * @param {Vector} _forward unused (kept for API compat)
-   * @param {Vector} right listener right vector
-   * @param {Vector} _up unused (kept for API compat)
-   * @param {boolean} underwater whether the listener is submerged
+   * @param origin listener position
+   * @param _forward unused (kept for API compat)
+   * @param right listener right vector
+   * @param _up unused (kept for API compat)
+   * @param underwater whether the listener is submerged
    */
   static Update(origin: Vector, _forward: Vector, right: Vector, _up: Vector, underwater: boolean): void {
     if (!Sound._started || Sound._nosound.value !== 0) {
@@ -694,14 +737,24 @@ export default class Sound {
       Cvar.Set('volume', 1);
     }
 
-    // Underwater muffling via single lowpass toggle
-    if (Sound._underwaterFilter) {
-      Sound._underwaterFilter.frequency.value = underwater ? 800 : 11025;
+    // Underwater muffling via single lowpass toggle, written only when it changes, see Channel.updateVol
+    const frequency = underwater ? 800 : 11025;
+
+    if (Sound._underwaterFilter !== null && Sound._underwaterFilter.context.state === 'running' && Sound._underwaterFilter.frequency.value !== frequency) {
+      Sound._underwaterFilter.frequency.value = frequency;
     }
 
+    FrameProfiler.begin('ambient');
     Sound._updateAmbientSounds();
+    FrameProfiler.end();
+
+    FrameProfiler.begin('dynamic');
     Sound._updateDynamicSounds();
+    FrameProfiler.end();
+
+    FrameProfiler.begin('static');
     Sound._updateStaticSounds();
+    FrameProfiler.end();
   }
 
   /**
@@ -768,13 +821,13 @@ export default class Sound {
         continue;
       }
 
-      if (Host.realtime >= ch.end) {
-        if (ch.sfx.cache?.loopstart !== null) {
-          // Looping sound continues
-        } else {
-          ch.reset();
-          continue;
-        }
+      // a looping sound plays until it is stopped or its channel is taken, anything else is over at its end, a sound
+      // without data included: it plays nothing and would hold the channel for good
+      const looping = ch.sfx.cache !== null && ch.sfx.cache.loopstart !== null;
+
+      if (Host.realtime >= ch.end && !looping) {
+        ch.reset();
+        continue;
       }
 
       ch.spatialize();
@@ -790,7 +843,7 @@ export default class Sound {
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
-  /** @returns {Channel} a new audio channel wired to the master bus */
+  /** @returns a new audio channel wired to the master bus */
   static _newChannel(): Channel {
     const context = Sound._context;
     const masterGain = Sound._masterGain;
@@ -809,9 +862,9 @@ export default class Sound {
   }
 
   /**
-   * @param {number} entnum entity number
-   * @param {number} entchannel channel on entity
-   * @returns {Channel} allocated or reused channel
+   * @param entnum entity number
+   * @param entchannel channel on entity
+   * @returns allocated or reused channel
    */
   static _pickChannel(entnum: number, entchannel: number): Channel {
     // Reuse existing channel for same entity+channel
@@ -859,8 +912,8 @@ export default class Sound {
 
   /**
    * Parses WAV chunk data for loop markers (cue and smpl chunks).
-   * @param {ArrayBuffer} data raw WAV file data
-   * @returns {{loopstartSamples: number|null, sampleRate: number|null}} parsed loop info
+   * @param data raw WAV file data
+   * @returns parsed loop info
    */
   static _parseWavLoopInfo(data: ArrayBuffer): { loopstartSamples: number | null; sampleRate: number | null } {
     const view = new DataView(data);

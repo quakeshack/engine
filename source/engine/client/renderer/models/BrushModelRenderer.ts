@@ -432,6 +432,10 @@ export class BrushModelRenderer extends ModelRenderer {
 
   // ─── ModelRenderer interface ──────────────────────────────────────
 
+  override get profileName(): string {
+    return 'brush models';
+  }
+
   /** @returns BrushModel constructor. */
   override getModelClass(): typeof BrushModel {
     return BrushModel;
