@@ -13,7 +13,6 @@ import { clientRuntimeState } from '../../ClientState.ts';
 import EntityLighting from '../lighting/EntityLighting.ts';
 import ShadowMap from '../lighting/ShadowMap.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
-import Host from '../../../common/Host.ts';
 import Camera from '../scene/Camera.ts';
 import DefaultTextures from '../resources/DefaultTextures.ts';
 import RenderStats from '../scene/RenderStats.ts';
@@ -157,7 +156,6 @@ export class AliasModelRenderer extends ModelRenderer {
 
     // Setup interpolation
     gl.uniform1f(program!.uInterpolation!, rendererCvars.interpolation.value && (e.effects & effect.EF_MUZZLEFLASH) === 0 ? Math.min(1, Math.max(0, targettime)) : 0);
-    gl.uniform1f(program!.uTime!, Host.realtime);
     gl.uniform1f(program!.uAlpha!, e.alpha);
     gl.uniform1f(program!.uBloomEmissiveScale!, getEntityBloomEmissiveScale(e.effects));
 
@@ -221,7 +219,6 @@ export class AliasModelRenderer extends ModelRenderer {
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
     gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ctx.lightSpaceMatrix);
-    gl.uniform1f(program.uCasterFade!, ctx.casterFade);
 
     const { frameA, frameB, targettime } = AliasModelRenderer._selectFrames(clmodel, entity);
 

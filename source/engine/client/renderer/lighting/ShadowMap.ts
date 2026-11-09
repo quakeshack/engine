@@ -25,6 +25,14 @@ eventBus.subscribe('gl.shutdown', () => {
   gl = null!;
 });
 
+/**
+ * Orders draw chains (`[texture, first vertex, count]`) by where they start in the vertex buffer.
+ * @returns Negative when a starts first.
+ */
+function compareChainsByFirstVertex(a: number[], b: number[]): number {
+  return a[1] - b[1];
+}
+
 /** Top-down shadow map resolution (px). */
 const TOPDOWN_SHADOW_SIZE = 2048;
 
@@ -226,6 +234,12 @@ export default class ShadowMap {
 
   /** Worldmodel the submodel leaf flags were computed for. */
   static _submodelLeafFlagsModel: BrushModel | null = null;
+
+  /** The draw chains a point light reaches, gathered by {@link ShadowMap.collectPointLightRanges}, reused. */
+  static readonly #pointLightChains: number[][] = [];
+
+  /** The vertex ranges of the world a point light's cube draws, `first, count` pairs, reused. */
+  static readonly #pointLightRanges: number[] = [];
 
   // ─── Initialization ───────────────────────────────────────────────
 
@@ -950,6 +964,98 @@ export default class ShadowMap {
   }
 
   /**
+   * The vertex ranges of the opaque world surfaces a point light can shadow with: the draw chains of the leafs its
+   * sphere reaches, found by walking the BSP tree down from the root by the node planes, like
+   * DynamicLights.MarkLights. Nothing beyond the radius is needed: a receiver is only tested against the cube within
+   * the radius, and whatever occludes it lies between it and the light. The leafs of inline submodels are left out (the
+   * entity pass draws those where the entity is), and so are the materials no shadow pass draws. The chains of a
+   * texture follow each other in the vertex buffer leaf by leaf, so the ones that touch are merged: a cube face takes
+   * a few draws instead of one per chain and leaf.
+   * @param submodelLeafFlags One flag per leaf, see {@link ShadowMap._getSubmodelLeafFlags}.
+   * @param origin Position of the light.
+   * @param radius Radius of the light, the far plane of its cube.
+   * @returns `first, count` pairs in vertex buffer order. The array is reused by every call: do not keep it.
+   */
+  static collectPointLightRanges(worldmodel: BrushModel, submodelLeafFlags: Uint8Array, origin: Vector, radius: number): readonly number[] {
+    const chains = ShadowMap.#pointLightChains;
+    const ranges = ShadowMap.#pointLightRanges;
+
+    chains.length = 0;
+    ranges.length = 0;
+
+    ShadowMap.#collectPointLightChains(worldmodel, WorldRenderState.of(worldmodel), submodelLeafFlags, origin, radius, 0);
+    chains.sort(compareChainsByFirstVertex);
+
+    for (const chain of chains) {
+      const last = ranges.length - 2;
+
+      if (last >= 0 && ranges[last] + ranges[last + 1] === chain[1]) {
+        ranges[last + 1] += chain[2];
+        continue;
+      }
+
+      ranges.push(chain[1], chain[2]);
+    }
+
+    // do not keep the chains of a map alive after it is gone
+    chains.length = 0;
+
+    return ranges;
+  }
+
+  /**
+   * Walks the subtree at reference and gathers the shadow-casting draw chains of the leafs the light's sphere reaches.
+   * @param reference A node index, or `~leaf` for a leaf.
+   */
+  static #collectPointLightChains(
+    worldmodel: BrushModel,
+    state: WorldRenderState,
+    submodelLeafFlags: Uint8Array,
+    origin: Vector,
+    radius: number,
+    reference: number,
+  ): void {
+    if (reference < 0) {
+      ShadowMap.#collectLeafChains(worldmodel, state, submodelLeafFlags, ~reference);
+      return;
+    }
+
+    const nodes = worldmodel.nodeTable;
+    const plane = worldmodel.planes[nodes.planeNums[reference]];
+    const dist = origin.dot(plane.normal) - plane.dist;
+
+    if (dist >= -radius) {
+      ShadowMap.#collectPointLightChains(worldmodel, state, submodelLeafFlags, origin, radius, nodes.children[reference * 2]);
+    }
+
+    if (dist <= radius) {
+      ShadowMap.#collectPointLightChains(worldmodel, state, submodelLeafFlags, origin, radius, nodes.children[reference * 2 + 1]);
+    }
+  }
+
+  /**
+   * Gathers the opaque draw chains of one leaf that cast point light shadows.
+   */
+  static #collectLeafChains(worldmodel: BrushModel, state: WorldRenderState, submodelLeafFlags: Uint8Array, leaf: number): void {
+    if (submodelLeafFlags[leaf]) {
+      return;
+    }
+
+    const leafChains = state.cmds[leaf];
+
+    for (let j = 0; j < state.skychains[leaf]; j++) {
+      const chain = leafChains[j];
+      const flags = (worldmodel.textures[chain[0]] as { flags: number }).flags;
+
+      if (flags & (MaterialFlags.MF_SKIP | MaterialFlags.MF_TRANSPARENT)) {
+        continue;
+      }
+
+      ShadowMap.#pointLightChains.push(chain);
+    }
+  }
+
+  /**
    * Render the point light shadow cube maps (all 6 faces) for every active slot.
    * Casters are drawn without any depth bias: the receivers bias their own
    * lookups per fragment, scaled by the texel size at their distance
@@ -982,8 +1088,9 @@ export default class ShadowMap {
   }
 
   /**
-   * Render one point-light slot's 6 cube faces (world BSP opaque geometry
-   * plus entities) into ShadowMap.pointDepthCubes[slot].
+   * Render one point-light slot's 6 cube faces (the opaque world geometry
+   * within the light's radius, see collectPointLightRanges, plus entities)
+   * into ShadowMap.pointDepthCubes[slot].
    */
   static _renderPointLightShadowSlot(
     worldmodel: BrushModel,
@@ -994,8 +1101,9 @@ export default class ShadowMap {
     const pointLightRadius = ShadowMap.pointLightRadii[slot];
     const pointCasterCutoffDistSq = pointLightRadius * pointLightRadius;
 
+    const ranges = ShadowMap.collectPointLightRanges(worldmodel, submodelLeafFlags, pointLightOrigin, pointLightRadius);
+
     GL.BindVAO(worldmodel.opaqueVAO as WebGLVertexArrayObject);
-    const renderState = WorldRenderState.of(worldmodel);
     const program = GL.UseProgram('shadow-point')!;
 
     gl.uniform3f(program.uOrigin!, 0, 0, 0);
@@ -1008,26 +1116,8 @@ export default class ShadowMap {
       ShadowMap.buildPointFaceMatrix(face, slot);
       gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ShadowMap.pointFaceMatrix);
 
-      for (let i = 0; i < worldmodel.leafTable.count; i++) {
-        if (renderState.skychains[i] === 0) {
-          continue;
-        }
-
-        // skip submodel leaves, since they are rendered separately by the entity shadow pass
-        if (submodelLeafFlags[i]) {
-          continue;
-        }
-
-        for (let j = 0; j < renderState.skychains[i]; j++) {
-          const cmds = renderState.cmds[i][j];
-
-          const flags = (worldmodel.textures[cmds[0]] as { flags: number }).flags;
-          if (flags & (MaterialFlags.MF_SKIP | MaterialFlags.MF_TRANSPARENT)) {
-            continue;
-          }
-
-          gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
-        }
+      for (let i = 0; i < ranges.length; i += 2) {
+        gl.drawArrays(gl.TRIANGLES, ranges[i], ranges[i + 1]);
       }
 
       GL.UnbindVAO();

@@ -4,18 +4,12 @@ precision highp float;
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 fragEmissive;
 
-uniform float uGamma;
-
 in vec2 vCoord;
-in vec3 vColor;
+flat in vec3 vColor;
 #include "fog-fragment.glsl"
 
 void main(void) {
-  fragColor = vec4(vColor, 1.0 - smoothstep(0.75, 1.0, length(vCoord)));
-  fragColor.rgb = pow(fragColor.rgb, vec3(uGamma));
-
   // apply fog (particles keep alpha)
-  vec3 finalRgb = mix(uFogColor, fragColor.rgb, vFog);
-  fragColor = vec4(finalRgb, fragColor.a);
+  fragColor = vec4(mix(uFogColor, vColor, vFog), 1.0 - smoothstep(0.75, 1.0, length(vCoord)));
   fragEmissive = vec4(0.0);
 }

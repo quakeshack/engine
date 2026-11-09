@@ -9,7 +9,6 @@ layout(location = 1) out vec4 fragEmissive;
 uniform float uGamma;
 uniform float uTime;
 uniform float uInterpolation;
-uniform float uLightstyleInterpolation;
 uniform float uAlpha;
 uniform float uBloomEmissiveScale;
 uniform float uBloomDlightScale;
@@ -17,8 +16,6 @@ uniform sampler2D tTexture;
 uniform sampler2D tLuminance;
 uniform sampler2DArray tLightmap;
 uniform sampler2D tDlight;
-uniform sampler2D tLightStyleA;
-uniform sampler2D tLightStyleB;
 uniform sampler2D tDepth;
 #include "depth.glsl"
 #include "refraction.glsl"
@@ -27,7 +24,7 @@ uniform float uWaterFogDensity;
 uniform float uCameraInside;
 
 in vec4 vTexCoord;
-in vec4 vLightStyle;
+#include "lightstyle-fragment.glsl"
 #include "fog-fragment.glsl"
 in vec3 vFallbackLight;
 in vec2 vDlightTexCoord;
@@ -36,37 +33,23 @@ in float vHasLightmap;
 void main(void) {
   vec2 warpPhase = vec2(vTexCoord.t, vTexCoord.s) * 3.141593 + uTime;
   vec2 warpedTexCoord = vTexCoord.st + sin(warpPhase) * 0.125;
-  vec4 texel = vec4(texture(tTexture, warpedTexCoord).rgb, 1.0);
+  // liquids are opaque per texel, their translucency is uAlpha
+  vec3 texel = texture(tTexture, warpedTexCoord).rgb;
   vec3 luminance = texture(tLuminance, warpedTexCoord).rgb;
-
-  vec4 lightstyleA = vec4(
-    texture(tLightStyleA, vec2(vLightStyle.x, 0.0)).r,
-    texture(tLightStyleA, vec2(vLightStyle.y, 0.0)).r,
-    texture(tLightStyleA, vec2(vLightStyle.z, 0.0)).r,
-    texture(tLightStyleA, vec2(vLightStyle.w, 0.0)).r
-  );
-  vec4 lightstyleB = vec4(
-    texture(tLightStyleB, vec2(vLightStyle.x, 0.0)).r,
-    texture(tLightStyleB, vec2(vLightStyle.y, 0.0)).r,
-    texture(tLightStyleB, vec2(vLightStyle.z, 0.0)).r,
-    texture(tLightStyleB, vec2(vLightStyle.w, 0.0)).r
-  );
-
-  vec4 scaledLightstyle = mix(lightstyleA, lightstyleB, uLightstyleInterpolation) * 43.828125;
 
   vec3 d = mix(
     vFallbackLight,
     vec3(
-      dot(texture(tLightmap, vec3(vTexCoord.zw, 0.0)), scaledLightstyle),
-      dot(texture(tLightmap, vec3(vTexCoord.zw, 1.0)), scaledLightstyle),
-      dot(texture(tLightmap, vec3(vTexCoord.zw, 2.0)), scaledLightstyle)
+      dot(texture(tLightmap, vec3(vTexCoord.zw, 0.0)), vLightstyleBrightness),
+      dot(texture(tLightmap, vec3(vTexCoord.zw, 1.0)), vLightstyleBrightness),
+      dot(texture(tLightmap, vec3(vTexCoord.zw, 2.0)), vLightstyleBrightness)
     ),
     step(0.5, vHasLightmap)
   );
 
   vec3 dlight = texture(tDlight, vDlightTexCoord).rgb;
 
-  vec3 emissiveColor = texel.rgb * clamp(luminance + vec3(uBloomEmissiveScale), 0.0, 1.0);
+  vec3 emissiveColor = texel * clamp(luminance + vec3(uBloomEmissiveScale), 0.0, 1.0);
 
   // Refraction shifts what is seen behind the surface along the slope of the same waves that warp its texture.
   // uRefraction is one value per draw, so every fragment takes the same side of these branches: they cost no
@@ -99,7 +82,7 @@ void main(void) {
   // Effective alpha: shallow edges keep material alpha, deeper areas go more opaque.
   float effectiveAlpha = uAlpha + depthFog * (1.0 - uAlpha);
 
-  vec3 litColor = texel.rgb * mix(vec3(1.0), d + dlight, texel.a);
+  vec3 litColor = texel * (d + dlight);
   // Darken color at depth to simulate light absorption.
   litColor = mix(litColor, litColor * 0.3, depthFog);
 
@@ -109,7 +92,7 @@ void main(void) {
   finalRgb = mix(uFogColor, finalRgb, vFog);
   fragColor = vec4(finalRgb, fragColor.a);
 
-  emissiveColor += texel.rgb * dlight * uBloomDlightScale;
+  emissiveColor += texel * dlight * uBloomDlightScale;
   vec3 bloomEmissive = pow(emissiveColor, vec3(uGamma));
   bloomEmissive = mix(uFogColor, bloomEmissive, vFog);
   fragEmissive = vec4(bloomEmissive, effectiveAlpha);
