@@ -8,7 +8,6 @@ layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 fragEmissive;
 
 uniform float uGamma;
-uniform float uTime;
 uniform vec3 uTop;
 uniform vec3 uBottom;
 uniform sampler2D tTexture;

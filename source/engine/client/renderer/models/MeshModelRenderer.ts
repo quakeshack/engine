@@ -183,7 +183,6 @@ export class MeshModelRenderer extends ModelRenderer {
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
     gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ctx.lightSpaceMatrix);
-    gl.uniform1f(program.uCasterFade!, ctx.casterFade);
 
     const indexType = clmodel.indices instanceof Uint16Array ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT;
     gl.drawElements(gl.TRIANGLES, clmodel.numTriangles * 3, indexType, 0);

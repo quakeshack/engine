@@ -16,6 +16,7 @@ import { assertNear } from '../support/assertions.ts';
 import { installEngineMocks } from '../support/withEngineMocks.ts';
 import { createFakeRenderTarget } from '../support/renderTargets.ts';
 import { createRenderedWorld } from '../support/bspTree.ts';
+import { MaterialFlags } from '../../source/engine/client/renderer/models/Materials.ts';
 
 // the passes of the frame check the real RenderTarget.bound, which the fake targets of these tests never are
 beforeEach(() => {
@@ -25,6 +26,17 @@ beforeEach(() => {
 afterEach(() => {
   mock.restoreAll();
 });
+
+/**
+ * A world for the point light passes that draws nothing: one empty leaf under a root node whose plane is far away.
+ * @returns The model.
+ */
+function createEmptyLitWorld(): BrushModel {
+  return createRenderedWorld([{}], {
+    opaqueVAO: {},
+    planes: [{ normal: new Vector(1, 0, 0), dist: 1e8 }],
+  }, [{ planeNum: 0, children: [~0, ~0] }]);
+}
 
 void describe('ShadowMap.renderPointLightShadow', () => {
   void test('limits entity casters to the active point light radius', () => {
@@ -72,7 +84,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     const restoreEngineMocks = installEngineMocks({
       CL: {
         state: {
-          worldmodel: createRenderedWorld([], { opaqueVAO: {} }),
+          worldmodel: createEmptyLitWorld(),
         },
       },
     });
@@ -175,7 +187,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     const restoreEngineMocks = installEngineMocks({
       CL: {
         state: {
-          worldmodel: createRenderedWorld([], { opaqueVAO: {} }),
+          worldmodel: createEmptyLitWorld(),
         },
       },
     });
@@ -290,7 +302,9 @@ void describe('ShadowMap.renderPointLightShadow', () => {
             faces: [{ submodel: false }, { submodel: true }],
             marksurfaces: [0, 1],
             textures: [{ flags: 0 }],
-          }),
+            // the plane x = 0 runs through the light, so it reaches both leafs
+            planes: [{ normal: new Vector(1, 0, 0), dist: 0 }],
+          }, [{ planeNum: 0, children: [~0, ~1] }]),
         },
       },
     });
@@ -340,6 +354,50 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       assert.equal(first, 0);
       assert.equal(count, 12);
     }
+  });
+});
+
+void describe('ShadowMap.collectPointLightRanges', () => {
+  // Three leafs along x, split at x = 100 and x = 300: A (x < 100), B (100 to 300), C (x > 300). The display lists put
+  // the chains texture by texture, leaf by leaf, so the chains of one texture in neighboring leafs touch.
+  const leafA = { skychain: 2, cmds: [[0, 0, 6], [1, 21, 6]] };
+  const leafB = { skychain: 2, cmds: [[0, 6, 12], [2, 27, 9]] };
+  const leafC = { skychain: 1, cmds: [[0, 18, 3]] };
+
+  /**
+   *
+   */
+  /**
+   * The world of the three leafs.
+   * @returns The model.
+   */
+  function createLineWorld(): BrushModel {
+    return createRenderedWorld([leafA, leafB, leafC], {
+      textures: [{ flags: 0 }, { flags: MaterialFlags.MF_SKIP }, { flags: 0 }],
+      planes: [{ normal: new Vector(1, 0, 0), dist: 100 }, { normal: new Vector(1, 0, 0), dist: 300 }],
+    }, [
+      { planeNum: 0, children: [1, ~0] },
+      { planeNum: 1, children: [~2, ~1] },
+    ]);
+  }
+
+  void test('draws only the leafs the light reaches, merging the chains that touch and leaving out skipped materials', () => {
+    const ranges = ShadowMap.collectPointLightRanges(createLineWorld(), new Uint8Array(3), new Vector(0, 0, 0), 150);
+
+    // A and B: texture 0 of both as one draw, texture 2 of B; C is 300 units away, texture 1 is MF_SKIP
+    assert.deepEqual([...ranges], [0, 18, 27, 9]);
+  });
+
+  void test('a light beyond the last split reaches only the leaf it is in', () => {
+    const ranges = ShadowMap.collectPointLightRanges(createLineWorld(), new Uint8Array(3), new Vector(400, 0, 0), 50);
+
+    assert.deepEqual([...ranges], [18, 3]);
+  });
+
+  void test('leaves out the leafs of inline submodels', () => {
+    const ranges = ShadowMap.collectPointLightRanges(createLineWorld(), Uint8Array.from([0, 1, 0]), new Vector(0, 0, 0), 150);
+
+    assert.deepEqual([...ranges], [0, 6]);
   });
 });
 
@@ -778,7 +836,6 @@ void describe('ShadowMap.renderTopDownShadow', () => {
       uOrigin: null,
       uAngles: null,
       uLightSpaceMatrix: null,
-      uCasterFade: null,
     };
     return { mockGl, program };
   }

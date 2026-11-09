@@ -29,24 +29,6 @@ void shadeBrushSurface(float shadow, vec3 pointDlight, out vec3 color, out vec3 
   // interpolation
   vec4 texel = mix(textureA, textureB, uInterpolation);
 
-  // Pre-calculate lightstyle constant
-  const float LIGHTSTYLE_SCALE = 43.828125;
-
-  // Optimize lightstyle sampling - use texture lookups more efficiently
-  vec4 lightstyleA = vec4(
-    texture(tLightStyleA, vec2(vLightStyle.x, 0.0)).r,
-    texture(tLightStyleA, vec2(vLightStyle.y, 0.0)).r,
-    texture(tLightStyleA, vec2(vLightStyle.z, 0.0)).r,
-    texture(tLightStyleA, vec2(vLightStyle.w, 0.0)).r
-  );
-  vec4 lightstyleB = vec4(
-    texture(tLightStyleB, vec2(vLightStyle.x, 0.0)).r,
-    texture(tLightStyleB, vec2(vLightStyle.y, 0.0)).r,
-    texture(tLightStyleB, vec2(vLightStyle.z, 0.0)).r,
-    texture(tLightStyleB, vec2(vLightStyle.w, 0.0)).r
-  );
-  vec4 lightstyle = mix(lightstyleA, lightstyleB, uLightstyleInterpolation) * LIGHTSTYLE_SCALE;
-
   // Sample lightmap layers (R, G, B each in a separate array layer). Each
   // column holds the four lightstyles of one color channel, so a row vector of
   // per-style weights times this matrix sums the styles per channel.
@@ -145,8 +127,8 @@ void shadeBrushSurface(float shadow, vec3 pointDlight, out vec3 color, out vec3 
     dlightBump = (dot(styleWeight, styleBump) + 0.0001) / (dot(styleWeight, vec4(1.0)) + 0.0001);
   }
 
-  vec3 shadedLightmap = (lightstyle * styleBump) * lightmapStyles;
-  vec3 specularLightmap = (lightstyle * styleSpecular) * lightmapStyles;
+  vec3 shadedLightmap = (vLightstyleBrightness * styleBump) * lightmapStyles;
+  vec3 specularLightmap = (vLightstyleBrightness * styleSpecular) * lightmapStyles;
 
   // Pre-calculate common factors to avoid redundant calculations
   vec3 shadeAmbient = vLightDot * uShadeLight + uAmbientLight + vDynamicLightDot * uDynamicShadeLight;
