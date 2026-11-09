@@ -21,7 +21,6 @@ in vec3 aTangent;
 in vec3 aBitangent;
 
 out vec4 vTexCoord;
-out vec4 vLightStyle;
 out float vLightDot;
 out float vDynamicLightDot;
 out vec3 vNormal;
@@ -34,9 +33,10 @@ out vec3 vViewVec;
 out vec4 vShadowCoord;
 out vec3 vWorldPos;
 #include "fog-vertex.glsl"
+#include "lightstyle-vertex.glsl"
 
 /**
- * The vertex stage of a brush surface: position, shadow coordinates, light and view vectors, fog.
+ * The vertex stage of a brush surface: position, shadow coordinates, lightstyles, light and view vectors, fog.
  */
 void emitBrushVertex() {
   // Calculate world position once and reuse
@@ -52,7 +52,7 @@ void emitBrushVertex() {
 
   // Pass through texture coordinates
   vTexCoord = aTexCoord;
-  vLightStyle = aLightStyle;
+  emitLightstyleBrightness(aLightStyle);
 
   // Calculate view-related vectors once (shared for both paths)
   vec3 worldToView = worldPos - uViewOrigin;

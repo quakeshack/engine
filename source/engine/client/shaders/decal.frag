@@ -14,15 +14,13 @@ in vec3 vColor;
 
 void main(void) {
   vec4 texColor = texture(tTexture, vTexCoord);
-  texColor.rgb *= vColor;
 
-  fragColor = texColor;
-  fragColor.rgb = pow(fragColor.rgb, vec3(uGamma));
+  if (texColor.a < 0.01) {
+    discard;
+  }
 
-  if (fragColor.a < 0.01) discard;
-
-  // apply fog
-  vec3 finalRgb = mix(uFogColor, fragColor.rgb, vFog);
-  fragColor = vec4(finalRgb, fragColor.a);
+  // apply gamma and fog
+  vec3 color = pow(texColor.rgb * vColor, vec3(uGamma));
+  fragColor = vec4(mix(uFogColor, color, vFog), texColor.a);
   fragEmissive = vec4(0.0);
 }

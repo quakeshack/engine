@@ -23,7 +23,7 @@ class ShaderPrograms {
     // rendering alias models
     await Promise.all([
       Promise.resolve(GL.CreateProgram('alias',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix', 'uShadowEnabled', 'uShadowDarkness', 'uShadowMaxDepthNDC', 'uShadowBlockerBiasNDC', 'uShadowLightDir', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uPointShadowBias', 'uPointShadowNormalBias', 'uBloomEmissiveScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix', 'uShadowEnabled', 'uShadowDarkness', 'uShadowMaxDepthNDC', 'uShadowBlockerBiasNDC', 'uShadowLightDir', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uPointShadowBias', 'uPointShadowNormalBias', 'uBloomEmissiveScale'],
         [
           ['aPositionA', gl.FLOAT, 3],
           ['aPositionB', gl.FLOAT, 3],
@@ -34,7 +34,7 @@ class ShaderPrograms {
 
       // rendering mesh models (OBJ, IQM, GLTF)
       Promise.resolve(GL.CreateProgram('mesh',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix', 'uShadowEnabled', 'uShadowDarkness', 'uShadowMaxDepthNDC', 'uShadowBlockerBiasNDC', 'uShadowLightDir', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uPointShadowBias', 'uPointShadowNormalBias', 'uBloomEmissiveScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uAlpha', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix', 'uShadowEnabled', 'uShadowDarkness', 'uShadowMaxDepthNDC', 'uShadowBlockerBiasNDC', 'uShadowLightDir', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uPointShadowBias', 'uPointShadowNormalBias', 'uBloomEmissiveScale'],
         [
           ['aPosition', gl.FLOAT, 3],
           ['aTexCoord', gl.FLOAT, 2],
@@ -79,7 +79,7 @@ class ShaderPrograms {
 
       // rendering the player model (similar to alias model but with custom colors)
       Promise.resolve(GL.CreateProgram('player',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uTop', 'uBottom', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix', 'uShadowEnabled', 'uShadowDarkness', 'uShadowMaxDepthNDC', 'uShadowBlockerBiasNDC', 'uShadowLightDir', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uPointShadowBias', 'uPointShadowNormalBias', 'uBloomEmissiveScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTop', 'uBottom', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix', 'uShadowEnabled', 'uShadowDarkness', 'uShadowMaxDepthNDC', 'uShadowBlockerBiasNDC', 'uShadowLightDir', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uPointShadowBias', 'uPointShadowNormalBias', 'uBloomEmissiveScale'],
           [
             ['aPositionA', gl.FLOAT, 3],
             ['aPositionB', gl.FLOAT, 3],
@@ -121,7 +121,7 @@ class ShaderPrograms {
 
       // depth-only pre-pass for turbulent surface boundary (underwater fog)
       Promise.resolve(GL.CreateProgram('turbulent-depth',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uTime'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective'],
         [['aPosition', gl.FLOAT, 3]],
         [])),
 
@@ -197,7 +197,7 @@ class ShaderPrograms {
 
       // shadow depth pass for the top-down directional shadow
       Promise.resolve(GL.CreateProgram('shadow-brush',
-        ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uCasterFade'],
+        ['uOrigin', 'uAngles', 'uLightSpaceMatrix'],
         [['aPosition', gl.FLOAT, 3]],
         [])),
 
@@ -209,19 +209,19 @@ class ShaderPrograms {
 
       // shadow depth pass for point light cube shadow mapping
       Promise.resolve(GL.CreateProgram('shadow-point',
-        ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uCasterFade'],
+        ['uOrigin', 'uAngles', 'uLightSpaceMatrix'],
         [['aPosition', gl.FLOAT, 3]],
         [])),
 
       // shadow depth pass for alias models (frame interpolation)
       Promise.resolve(GL.CreateProgram('shadow-alias',
-        ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uInterpolation', 'uCasterFade'],
+        ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uInterpolation'],
         [['aPositionA', gl.FLOAT, 3], ['aPositionB', gl.FLOAT, 3]],
         [])),
 
       // point shadow depth pass for alias models (frame interpolation)
       Promise.resolve(GL.CreateProgram('shadow-alias-point',
-        ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uInterpolation', 'uCasterFade'],
+        ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uInterpolation'],
         [['aPositionA', gl.FLOAT, 3], ['aPositionB', gl.FLOAT, 3]],
         [])),
 

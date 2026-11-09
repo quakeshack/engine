@@ -36,7 +36,7 @@ uniform float uPointShadowEnabled;
  * largest, most prominent shadow receiver in the scene.
  */
 float sampleLocalShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoordH) {
-  // a uniform, so the draw does not diverge: with r_shadows 0 the 26 reads are skipped, and the map is not read at
+  // a uniform, so the draw does not diverge: with r_shadows 0 the 27 reads are skipped, and the map is not read at
   // all, it is not drawn then and holds the shadow of the last frame that drew it
   if (uShadowEnabled < 0.5) {
     return 1.0;
@@ -97,35 +97,42 @@ float sampleLocalShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoordH) {
  * contribution at once. The light itself is pointLightAttenuation().
  */
 vec3 samplePointLightContribution(samplerCubeShadow shadowMap, vec3 lightPos, float lightRadius, vec3 lightColor) {
+  vec3 light = pointLightAttenuation(lightPos, lightRadius, lightColor);
+
   // uniforms, so the draw does not diverge: without point shadows this frame, or for a slot that holds no light
   // (radius 0, a stale position and a cube map not drawn this frame), the five cube reads would be multiplied away
   if (uPointShadowEnabled < 0.5 || lightRadius <= 0.0) {
-    return pointLightAttenuation(lightPos, lightRadius, lightColor);
+    return light;
   }
 
-  float fragDist = length(vWorldPos - lightPos);
-  float f = max(lightRadius, 2.0);
-  float cubeShadow = samplePointShadowMap(shadowMap, vWorldPos, vNormal, lightPos, f);
-  // Falls off linearly and reaches zero at fragDist == f (radius), so the
-  // shadow test stays fully active over that whole range: fading it out
-  // towards the edge lets the light through walls in a ring.
-  float pointShadow = mix(1.0, cubeShadow, step(fragDist, f) * step(0.5, uPointShadowEnabled));
+  // The light falls off linearly and reaches zero at the radius, so the shadow test stays fully active up to it:
+  // fading it out towards the edge lets the light through walls in a ring. Beyond it there is no light to shadow, and
+  // the five cube reads are skipped. Not a uniform, but the side only changes on a sphere around the light, so
+  // neighboring fragments take the same one, and most of a frame's fragments are outside every light.
+  float far = max(lightRadius, 2.0);
+  if (length(vWorldPos - lightPos) >= far) {
+    return light;
+  }
 
-  return pointLightAttenuation(lightPos, lightRadius, lightColor) * pointShadow;
+  return light * samplePointShadowMap(shadowMap, vWorldPos, vNormal, lightPos, far);
 }
 
 void main(void) {
-  // Top-down shadow — modulates the lightmap; fades smoothly to fully-lit at
-  // coverage edge. 5×5 Gaussian-weighted PCF for smooth shadow edges.
-  float shadow = sampleLocalShadowPCF(tShadowMap, vShadowCoord);
-
   // Mask the shadow off surfaces that face away from the top-down light
   // direction (walls, the underside of beams/ceilings) — such a surface
   // never receives direct light from straight overhead in the first place,
   // so it should never show a contact-shadow blotch either. Falls off
   // smoothly to zero at grazing angles rather than a hard cutoff.
   float shadowFacing = clamp(dot(normalize(vNormal), -uShadowLightDir), 0.0, 1.0);
-  shadow = mix(1.0, shadow, shadowFacing);
+
+  // Top-down shadow — modulates the lightmap; fades smoothly to fully-lit at
+  // coverage edge. 5×5 Gaussian-weighted PCF for smooth shadow edges. A surface
+  // the mask takes it off entirely skips the 27 reads: the normal is the same
+  // across a world face, so the whole face takes the same side of the branch.
+  float shadow = 1.0;
+  if (shadowFacing > 0.0) {
+    shadow = mix(1.0, sampleLocalShadowPCF(tShadowMap, vShadowCoord), shadowFacing);
+  }
 
   // Point light shadows — up to 3 independent shadow-casting dlights, each
   // occluded by its own cube depth map and added on top of the baked dlight

@@ -2,7 +2,6 @@
 // brush-vertex.glsl. The shadow maps are not here: only `brush` samples them.
 uniform float uGamma;
 uniform float uInterpolation;
-uniform float uLightstyleInterpolation;
 uniform float uAlpha;
 uniform float uBloomEmissiveScale;
 uniform float uBloomDlightScale;
@@ -12,8 +11,6 @@ uniform sampler2D tTextureA;
 uniform sampler2D tTextureB;
 uniform sampler2DArray tLightmap;
 uniform sampler2D tDlight;
-uniform sampler2D tLightStyleA;
-uniform sampler2D tLightStyleB;
 uniform sampler2D tLuminance;
 uniform sampler2D tNormal;
 uniform sampler2D tSpecular;
@@ -39,7 +36,7 @@ uniform vec3 uShadeLight;
 uniform vec3 uDynamicShadeLight;
 
 in vec4 vTexCoord;
-in vec4 vLightStyle;
+#include "lightstyle-fragment.glsl"
 in float vLightDot;
 in float vDynamicLightDot;
 #include "fog-fragment.glsl"

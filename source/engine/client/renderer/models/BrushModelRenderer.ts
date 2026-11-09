@@ -847,7 +847,6 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
     gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ctx.lightSpaceMatrix);
-    gl.uniform1f(program.uCasterFade!, ctx.casterFade);
 
     for (let i = 0; i < clmodel.chains.length; i++) {
       const chain = clmodel.chains[i];
@@ -1151,7 +1150,6 @@ export class BrushModelRenderer extends ModelRenderer {
     // World model is always at the origin with identity rotation.
     gl.uniform3f(program.uOrigin!, 0.0, 0.0, 0.0);
     gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
-    gl.uniform1f(program.uTime!, Host.realtime);
 
     // the batches of the visible leafs in the view, each once although several leafs refer to it
     const state = WorldRenderState.of(clmodel);

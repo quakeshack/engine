@@ -778,7 +778,6 @@ void describe('ShadowMap.renderTopDownShadow', () => {
       uOrigin: null,
       uAngles: null,
       uLightSpaceMatrix: null,
-      uCasterFade: null,
     };
     return { mockGl, program };
   }

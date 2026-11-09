@@ -58,11 +58,13 @@ float samplePointShadow(samplerCubeShadow shadowMap, vec3 lightPos, float lightR
     return 1.0;
   }
 
-  float fragDist = length(vWorldPos - lightPos);
-  float f = max(lightRadius, 2.0);
-  float cubeShadow = samplePointShadowMap(shadowMap, vWorldPos, normal, lightPos, f);
-  // The dynamic light falls off linearly and reaches zero at fragDist == f
-  // (radius), so the shadow test stays fully active over that whole range:
-  // fading it out towards the edge lets the light through walls in a ring.
-  return mix(1.0, cubeShadow, step(fragDist, f) * step(0.5, uPointShadowEnabled));
+  // The dynamic light falls off linearly and reaches zero at the radius, so the shadow test stays fully active up to
+  // it: fading it out towards the edge lets the light through walls in a ring. Beyond it nothing is shadowed, and the
+  // five cube reads are skipped; the side only changes on a sphere around the light, see brush.frag.
+  float far = max(lightRadius, 2.0);
+  if (length(vWorldPos - lightPos) > far) {
+    return 1.0;
+  }
+
+  return samplePointShadowMap(shadowMap, vWorldPos, normal, lightPos, far);
 }
