@@ -105,16 +105,18 @@ export function createSingleLeafWorld(contents: number = content.CONTENT_EMPTY):
  * @param leafs The leafs, with the draw chains `[texture, first vertex, vertex count]` the display lists made for them;
  * a leaf given a `visframe` is also listed in `visibleLeafs`.
  * @param members Other members of the model, e.g. faces, marksurfaces and textures; tests give just the parts the code under test reads, so they are not checked against the model's own types.
+ * @param nodes The nodes of the tree over the leafs, for the code that walks it; their planes come with `members`.
  * @returns The model; its render state is made, with the chains set.
  */
 export function createRenderedWorld(
   leafs: readonly (LeafDescription & { readonly skychain?: number; readonly waterchain?: number; readonly cmds?: number[][]; readonly visframe?: number })[],
   members: object = {},
+  nodes: readonly NodeDescription[] = [],
 ): BrushModel {
   const model = new BrushModel('test-world');
 
   Object.assign(model, members);
-  setBspTree(model, [], leafs);
+  setBspTree(model, nodes, leafs);
 
   const state = WorldRenderState.of(model);
 
