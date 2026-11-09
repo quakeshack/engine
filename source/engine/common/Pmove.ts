@@ -1799,8 +1799,40 @@ export class PmovePlayer { // pmove_t (player state only)
 
   readonly #snapCandidate = new Vector();
   readonly #snapProbeTarget = new Vector();
+  readonly #snapProbeStepTarget = new Vector();
   readonly #snapProbeDir = new Vector();
   readonly #snapBestCandidate = new Vector();
+
+  /**
+   * Scores a snap candidate by how far a short move along the probe direction gets from it, as a trace fraction. The
+   * move may step up like `_stepSlideMove` does: a probe that only measured at the candidate's height preferred the cell
+   * farthest from a step riser, which undid slow movement towards the step every frame and kept the player sliding
+   * along it instead of stepping up.
+   * @param candidate - snapped position to score
+   * @param probeDir - probe offset, the wish direction scaled to the probe length
+   * @returns the better trace fraction of the move at the candidate's height and the move a step higher
+   */
+  _snapProbeScore(candidate: Vector, probeDir: Vector): number {
+    const probeTarget = this.#snapProbeTarget.set(candidate).add(probeDir);
+    const levelFraction = this._pmove.clipPlayerMove(candidate, probeTarget).fraction;
+
+    if (levelFraction >= 1.0) {
+      return levelFraction;
+    }
+
+    const stepTarget = this.#snapProbeStepTarget.set(candidate);
+    stepTarget[2] += STEPSIZE;
+
+    const upTrace = this._pmove.clipPlayerMove(candidate, stepTarget);
+
+    if (upTrace.startsolid) {
+      return levelFraction;
+    }
+
+    probeTarget.set(upTrace.endpos).add(probeDir);
+
+    return Math.max(levelFraction, this._pmove.clipPlayerMove(upTrace.endpos, probeTarget).fraction);
+  }
 
 /**
  * Quantize position to 1/8 unit precision for network transmission
@@ -1873,12 +1905,7 @@ export class PmovePlayer { // pmove_t (player state only)
             continue;
           }
 
-          let score = 0;
-          if (shouldProbeForward) {
-            const probeTarget = this.#snapProbeTarget.set(candidate).add(probeDir);
-            const probeTrace = this._pmove.clipPlayerMove(candidate, probeTarget);
-            score = probeTrace.fraction;
-          }
+          const score = shouldProbeForward ? this._snapProbeScore(candidate, probeDir) : 0;
 
           if (!found || score > bestScore) {
             found = true;

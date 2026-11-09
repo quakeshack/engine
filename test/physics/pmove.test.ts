@@ -17,6 +17,7 @@ import {
   createPmoveTrace,
 } from '../support/fixtures.ts';
 import { assertNear } from '../support/assertions.ts';
+import { createDeterminismWorld, createMoveVars, toUserCmd } from '../support/pmoveDeterminism.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { installEngineMocks } from '../support/withEngineMocks.ts';
 
@@ -795,6 +796,42 @@ void describe('PmovePlayer', () => {
       assert.deepEqual([...player.origin], [12, 0, 4]);
       assert.deepEqual([...player.velocity], [24, 0, 3]);
       assert.deepEqual(player.touchindices, [3, 4]);
+    });
+  });
+
+  void describe('stepping onto a step approached at a shallow angle', () => {
+    // Regression: _snapPosition used to score every valid 1/8 candidate by a forward probe, so it always chose the one
+    // farthest from the riser the player was turning into. At high frame rates the slow movement towards the step was
+    // undone every frame and the player slid along the riser: with 4 ms frames at 10 degrees for 65 units, at 5 degrees
+    // along the whole step.
+    void test('steps up within a short run along the riser at 240 frames per second', () => {
+      const pmove = new Pmove();
+
+      pmove.movevars = createMoveVars();
+      pmove.setWorldmodel(createDeterminismWorld());
+
+      const player = pmove.newPlayerMove();
+
+      // The first step of the determinism world has its riser at x = 200 (the player's face at x = 184) and its top at
+      // z = 8; the player stands 1/8 away from it and already runs along it, turning 10 degrees into it.
+      player.origin.setTo(183.875, -60, 24);
+      player.velocity.setTo(0, 320, 0);
+      player.pmFlags = PMF.ON_GROUND;
+      player.onground = 0;
+
+      let steppedAtY: number | null = null;
+
+      for (let frame = 0; frame < 100 && steppedAtY === null; frame++) {
+        player.cmd = toUserCmd({ msec: 4, forwardmove: 400, sidemove: 0, upmove: 0, pitch: 0, yaw: 80 });
+        player.move();
+
+        if (player.origin[2] > 24 + 4) {
+          steppedAtY = player.origin[1];
+        }
+      }
+
+      assert.notEqual(steppedAtY, null, 'never stepped up');
+      assert.ok(steppedAtY! - -60 < 40, `slid ${(steppedAtY! - -60).toFixed(1)} units along the riser before stepping up`);
     });
   });
 
