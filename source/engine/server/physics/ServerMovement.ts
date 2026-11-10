@@ -179,6 +179,20 @@ export class ServerMovement {
     return this.movestep(ent, new Vector(Math.cos(radians) * dist, Math.sin(radians) * dist, 0.0), true);
   }
 
+  /**
+   * Takes one chase step of `dist` units toward the entity's goal, QuakeC's `movetogoal`. Without a `target` it is
+   * QuakeC's chase: keep the current heading three times out of four, else (or when blocked) pick one of the eight
+   * chase directions toward the goal entity. With a `target` point, such as a navigation waypoint, it heads straight
+   * for the point and picks a chase direction only when that step is blocked. Keeping a stale heading toward a
+   * waypoint makes the entity overshoot it and turn back and forth at corners
+   * (`scripts/simulate-monster-chase.mts` measures it).
+   * Does nothing while the entity is neither on the ground, flying nor swimming, or once it is close enough to its
+   * goal while it has an enemy.
+   * @param ent The entity that moves; its `goalentity` must be set.
+   * @param dist How far to move.
+   * @param target Where to head instead of the goal entity, or `null` for the goal entity.
+   * @returns True when the entity moved or turned toward a new direction.
+   */
   moveToGoal(ent: ServerEdict, dist: number, target: Vector | null = null): boolean {
     const entity = ent.entity!;
 
@@ -191,19 +205,23 @@ export class ServerMovement {
 
     console.assert(goalEdict !== null, 'must have goal for moveToGoal');
 
-    const goalTarget = target ?? goalEdict!.entity!.origin;
-
     if (enemyEdict !== null && !enemyEdict.isWorld() && this.closeEnough(ent, goalEdict!, dist)) {
       return false;
     }
 
-    // TODO: consider reintroducing direct movestep steering toward goal to reduce chase ping-pong.
-    if (Math.random() >= 0.75 || !this.stepDirection(ent, entity.ideal_yaw || 0, dist)) {
-      this.newChaseDir(ent, goalTarget, dist);
-      return true;
+    if (target !== null) {
+      if (this.stepDirection(ent, target.copy().subtract(entity.origin).toYaw(), dist)) {
+        return true;
+      }
+
+      return this.newChaseDir(ent, target, dist);
     }
 
-    return false;
+    if (Math.random() >= 0.75 || !this.stepDirection(ent, entity.ideal_yaw || 0, dist)) {
+      return this.newChaseDir(ent, goalEdict!.entity!.origin, dist);
+    }
+
+    return true;
   }
 
   changeYaw(edict: ServerEdict): number {
@@ -258,7 +276,16 @@ export class ServerMovement {
     return false;
   }
 
-  newChaseDir(actor: ServerEdict, endpos: Vector, dist: number): void {
+  /**
+   * Picks a new chase direction toward a point and steps along it, QuakeC's `SV_NewChaseDir`: the diagonal toward the
+   * point, then each axis, the old direction, every other direction, and turning around only as the last resort. Marks
+   * the entity as partly on the ground when nothing works and its bottom isn't fully supported.
+   * @param actor The entity that moves.
+   * @param endpos The point to chase.
+   * @param dist How far to move.
+   * @returns True when one of the directions worked.
+   */
+  newChaseDir(actor: ServerEdict, endpos: Vector, dist: number): boolean {
     const entity = actor.entity!;
     const olddir = Vector.anglemod((((entity.ideal_yaw || 0) / 45.0) >> 0) * 45.0);
     const turnaround = Vector.anglemod(olddir - 180.0);
@@ -288,7 +315,7 @@ export class ServerMovement {
         tdir = dy === 90.0 ? 135.0 : 215.0;
       }
       if (tdir !== turnaround && this.stepDirection(actor, tdir, dist)) {
-        return;
+        return true;
       }
     }
     if (Math.random() >= 0.25 || Math.abs(deltay) > Math.abs(deltax)) {
@@ -297,34 +324,35 @@ export class ServerMovement {
       dy = tdir;
     }
     if (dx !== -1 && dx !== turnaround && this.stepDirection(actor, dx, dist)) {
-      return;
+      return true;
     }
     if (dy !== -1 && dy !== turnaround && this.stepDirection(actor, dy, dist)) {
-      return;
+      return true;
     }
     if (olddir !== -1 && this.stepDirection(actor, olddir, dist)) {
-      return;
+      return true;
     }
     if (Math.random() >= 0.5) {
       for (tdir = 0.0; tdir <= 315.0; tdir += 45.0) {
         if (tdir !== turnaround && this.stepDirection(actor, tdir, dist)) {
-          return;
+          return true;
         }
       }
     } else {
       for (tdir = 315.0; tdir >= 0.0; tdir -= 45.0) {
         if (tdir !== turnaround && this.stepDirection(actor, tdir, dist)) {
-          return;
+          return true;
         }
       }
     }
     if (turnaround !== -1 && this.stepDirection(actor, turnaround, dist)) {
-      return;
+      return true;
     }
     entity.ideal_yaw = olddir;
     if (!this.checkBottom(actor)) {
       entity.flags |= Defs.flags.FL_PARTIALGROUND;
     }
+    return false;
   }
 
   closeEnough(ent: ServerEdict, goal: { readonly entity: BaseEntity | null }, dist: number): boolean {

@@ -791,8 +791,9 @@ export class ServerEdict {
   }
 
   /**
-   * Move this entity toward its goal.
-   * @returns True when the move succeeded.
+   * Takes one chase step toward this entity's goal entity, or straight toward `target` (such as a navigation
+   * waypoint) when given. See `ServerMovement.moveToGoal`.
+   * @returns True when the entity moved or turned toward a new direction.
    */
   moveToGoal(dist: number, target: Vector | null = null): boolean {
     return this[SERVER].movement.moveToGoal(this, dist, target);

@@ -245,7 +245,7 @@ void describe('ServerMovement', () => {
       const originalNewChaseDir = movement.newChaseDir.bind(movement);
       movement.newChaseDir = (...args) => {
         callOrder.push('newChaseDir');
-        originalNewChaseDir(...args);
+        return originalNewChaseDir(...args);
       };
 
       const originalRandom = Math.random;
@@ -267,7 +267,7 @@ void describe('ServerMovement', () => {
             },
           },
         }), () => {
-          assert.equal(movement.moveToGoal(actor, 12), false);
+          assert.equal(movement.moveToGoal(actor, 12), true);
         });
       } finally {
         Math.random = originalRandom;
@@ -285,40 +285,81 @@ void describe('ServerMovement', () => {
       assert.equal(linkCalls[0].touchTriggers, true);
     });
 
-    void test('falls back to newChaseDir when stepDirection fails', () => {
+    void test('heads straight for a target point instead of keeping its old heading', () => {
+      // a waypoint behind a corner: the old heading (90) points past it, the waypoint is at 45; keeping the old heading
+      // three times out of four made monsters overshoot waypoints and turn back and forth at corners
       const movement = new ServerMovement(mockedSV());
       const actor = createMockEdict(createMockEntity({ flagsValue: flags.FL_ONGROUND }));
-      const goal = createMockEdict(createMockEntity({ origin: new Vector(100, 50, 0) }));
-      const explicitTarget = new Vector(12, 34, 56);
-      const originalRandom = Math.random;
-      const calls: Array<{ kind: string; ent: ServerEdict; yaw?: number; target?: Vector; dist: number }> = [];
+      const steps: number[] = [];
 
-      actor.entity.goalentity = { edict: goal } as unknown as BaseEntity;
+      actor.entity.goalentity = { edict: createMockEdict(createMockEntity({ origin: new Vector(0, 500, 0) })) } as unknown as BaseEntity;
       actor.entity.enemy = null;
       actor.entity.ideal_yaw = 90;
 
-      movement.stepDirection = (ent, yaw, dist) => {
-        calls.push({ kind: 'step', ent, yaw, dist });
-        return false;
+      movement.stepDirection = (_ent, yaw) => {
+        steps.push(yaw);
+        return true;
       };
-      movement.newChaseDir = (ent, target, dist) => {
-        calls.push({ kind: 'chase', ent, target: target.copy(), dist });
+      movement.newChaseDir = () => {
+        throw new Error('newChaseDir should not run when the step toward the target works');
       };
 
-      Math.random = () => 0.0;
+      const originalRandom = Math.random;
+      Math.random = () => 0.99; // the roll that sends a targetless chase to newChaseDir
       try {
-        assert.equal(movement.moveToGoal(actor, 24, explicitTarget), true);
+        assert.equal(movement.moveToGoal(actor, 16, new Vector(100, 100, 0)), true);
       } finally {
         Math.random = originalRandom;
       }
 
-      assert.equal(calls.length, 2);
-      assert.equal(calls[0].kind, 'step');
-      assert.equal(calls[0].yaw, 90);
-      assert.equal(calls[0].dist, 24);
-      assert.equal(calls[1].kind, 'chase');
-      assert.deepEqual([...calls[1].target!], [...explicitTarget]);
-      assert.equal(calls[1].dist, 24);
+      assert.deepEqual(steps, [45]);
+    });
+
+    void test('picks a chase direction toward the target point when the straight step is blocked', () => {
+      const movement = new ServerMovement(mockedSV());
+      const actor = createMockEdict(createMockEntity({ flagsValue: flags.FL_ONGROUND }));
+      const target = new Vector(0, -64, 0);
+      const chased: Vector[] = [];
+
+      actor.entity.goalentity = { edict: createMockEdict(createMockEntity({ origin: new Vector(500, 0, 0) })) } as unknown as BaseEntity;
+      actor.entity.enemy = null;
+
+      movement.stepDirection = () => false;
+      movement.newChaseDir = (_ent, endpos) => {
+        chased.push(endpos.copy());
+        return false;
+      };
+
+      assert.equal(movement.moveToGoal(actor, 24, target), false);
+      assert.deepEqual(chased.map((point) => [...point]), [[0, -64, 0]]);
+    });
+
+    void test('without a target keeps QuakeC\'s roll: one time in four it picks a chase direction toward the goal entity', () => {
+      const movement = new ServerMovement(mockedSV());
+      const actor = createMockEdict(createMockEntity({ flagsValue: flags.FL_ONGROUND }));
+      const chased: Vector[] = [];
+
+      actor.entity.goalentity = { edict: createMockEdict(createMockEntity({ origin: new Vector(100, 50, 0) })) } as unknown as BaseEntity;
+      actor.entity.enemy = null;
+      actor.entity.ideal_yaw = 90;
+
+      movement.stepDirection = () => {
+        throw new Error('a roll of 0.75 or more skips the step along the current heading');
+      };
+      movement.newChaseDir = (_ent, endpos) => {
+        chased.push(endpos.copy());
+        return true;
+      };
+
+      const originalRandom = Math.random;
+      Math.random = () => 0.75;
+      try {
+        assert.equal(movement.moveToGoal(actor, 24), true);
+      } finally {
+        Math.random = originalRandom;
+      }
+
+      assert.deepEqual(chased.map((point) => [...point]), [[100, 50, 0]]);
     });
 
     void test('falls through to newChaseDir and then succeeds via stepDirection plus movestep', () => {
@@ -414,12 +455,14 @@ void describe('ServerMovement', () => {
         randomCall += 1;
         return 0.0;
       };
+      let moved = true;
       try {
-        movement.newChaseDir(actor, new Vector(100, 100, 0), 12);
+        moved = movement.newChaseDir(actor, new Vector(100, 100, 0), 12);
       } finally {
         Math.random = originalRandom;
       }
 
+      assert.equal(moved, false);
       assert.equal(randomCall, 2);
       assert.equal(actor.entity.ideal_yaw, 90);
       assert.equal((actor.entity.flags & flags.FL_PARTIALGROUND) !== 0, true);
