@@ -130,7 +130,7 @@ export interface EngineEventMap {
 
   // Navigation
   'nav.load': [mapname: string, checksum: number | null];
-  'nav.path.request': [id: string, start: EventPosition, goal: EventPosition];
+  'nav.path.request': [id: string, start: EventPosition, goal: EventPosition, hull: number];
   'nav.debug.emit-dot.temporarily': [position: EventPosition, color: number, ttl: number];
   'nav.debug.emit-dot.permanently': [position: EventPosition, color: number];
   'nav.path.response': [id: string, path: EventPath];

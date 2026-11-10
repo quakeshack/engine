@@ -19,6 +19,7 @@ import { HostError } from '../common/Errors.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { SpriteModel } from '../common/model/SpriteModel.ts';
 import { type BaseEntity, ServerEdict } from './Edict.ts';
+import { Navigation, type NavigationBox } from './Navigation.ts';
 
 type ServerEntityFilter = ((entity: ServerEdict) => boolean) | null;
 
@@ -653,18 +654,23 @@ export class ServerEngineAPI {
   /**
    * Return a series of waypoints from start to end.
    * @deprecated use NavigateAsync instead
+   * @param box The walking monster's box, see {@link ServerEngineAPI#NavigateAsync}.
    * @returns The waypoints from start to end, or `null` when no path could be found.
    */
-  Navigate(start: Vector, end: Vector): Vector[] | null {
-    return this.#sv.server.navigation?.findPath(start, end) ?? null;
+  Navigate(start: Vector, end: Vector, box: NavigationBox | null = null): Vector[] | null {
+    return this.#sv.server.navigation?.findPath(start, end, Navigation.hullFor(box)) ?? null;
   }
 
   /**
    * Return a series of waypoints from start to end asynchronously.
+   * Without a box the path may drop off ledges, as a player can. With a walking monster's `mins` and `maxs` it only
+   * takes links a monster of that size walks: no drops, no gaps the monster's box won't stand over, no passages too
+   * narrow for it (two sizes: Quake's hull 1, 32 wide, and hull 2, 64 wide, for anything bigger).
+   * @param box The walking monster's box, or `null` for a player.
    * @returns The waypoints from start to end, or `null` when no path could be found.
    */
-  NavigateAsync(start: Vector, end: Vector): Promise<Vector[] | null> {
-    return this.#sv.server.navigation?.findPathAsync(start, end) ?? Promise.resolve(null);
+  NavigateAsync(start: Vector, end: Vector, box: NavigationBox | null = null): Promise<Vector[] | null> {
+    return this.#sv.server.navigation?.findPathAsync(start, end, Navigation.hullFor(box)) ?? Promise.resolve(null);
   }
 
   GetPHS(origin: Vector): Visibility {

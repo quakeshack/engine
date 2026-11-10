@@ -1,7 +1,7 @@
 import WorkerFramework from '../common/WorkerFramework.ts';
 import { eventBus } from '../common/EventBus.ts';
 
-import { Navigation, NavMeshOutOfDateException } from './Navigation.ts';
+import { Navigation, NavigationHull, NavMeshOutOfDateException } from './Navigation.ts';
 import type { EventPosition } from '../../shared/EngineEvents.ts';
 import Vector from '../../shared/Vector.ts';
 
@@ -25,10 +25,11 @@ eventBus.subscribe('nav.load', async (mapname: string, checksum: number | null) 
   }
 });
 
-eventBus.subscribe('nav.path.request', (id: string, start: EventPosition, end: EventPosition) => {
+eventBus.subscribe('nav.path.request', (id: string, start: EventPosition, end: EventPosition, hull: NavigationHull) => {
   const path = navigation.findPath(
     new Vector(start[0], start[1], start[2]),
     new Vector(end[0], end[1], end[2]),
+    hull,
   );
 
   WorkerFramework.Publish('nav.path.response', id, path);

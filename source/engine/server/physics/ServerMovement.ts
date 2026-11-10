@@ -5,9 +5,34 @@ import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import { STEPSIZE } from '../../common/Pmove.ts';
 import type Server from '../Server.ts';
+import { GroundSupport, type GroundProbe } from './GroundSupport.ts';
+import type { CollisionTrace } from './ServerCollisionSupport.ts';
 
 interface EdictReferenceLike {
   readonly edict?: ReadonlyServerEdict | null;
+}
+
+/**
+ * The live world under a monster for {@link GroundSupport}: line traces ignore monsters and skip the monster
+ * itself and what it owns, as QuakeC's `checkBottom` does.
+ */
+class MonsterGroundProbe implements GroundProbe {
+  /** The monster whose ground is probed, set for the duration of one check. */
+  monster: ServerEdict | null = null;
+
+  readonly #sv: Server;
+
+  constructor(sv: Server) {
+    this.#sv = sv;
+  }
+
+  traceLine(start: Vector, end: Vector): CollisionTrace {
+    return this.#sv.collision.move(start, Vector.origin, Vector.origin, end, Defs.moveTypes.MOVE_NOMONSTERS, this.monster);
+  }
+
+  pointContents(point: Vector): Defs.content {
+    return this.#sv.collision.pointContents(point);
+  }
 }
 
 /**
@@ -16,62 +41,31 @@ interface EdictReferenceLike {
 export class ServerMovement {
   private readonly sv: Server;
 
+  /** Probes the ground under a monster for {@link ServerMovement#checkBottom}, kept to spare an allocation per step. */
+  readonly #groundProbe: MonsterGroundProbe;
+
   /**
    * @param sv The server whose entities are moved.
    */
   constructor(sv: Server) {
     this.sv = sv;
+    this.#groundProbe = new MonsterGroundProbe(sv);
   }
 
   /**
-   * Checks if an entity has solid ground beneath all four bottom corners.
-   * If all corners are solid, returns true immediately. Otherwise performs
-   * a more detailed trace check to validate the ground surface.
+   * QuakeC's `checkBottom`: whether the entity has ground beneath its middle and all four bottom corners
+   * ({@link GroundSupport.check}), probing the live world without monsters.
    * @param ent Entity to check.
    * @returns True if entity has solid ground beneath it.
    */
   checkBottom(ent: ServerEdict): boolean {
     const entity = ent.entity!;
-    const mins = entity.origin.copy().add(entity.mins);
-    const maxs = entity.origin.copy().add(entity.maxs);
 
-    // Quick check: if all four corners are solid, we're definitely on ground
-    const allCornersSolid =
-      this.sv.collision.pointContents(new Vector(mins[0], mins[1], mins[2] - 1.0)) === Defs.content.CONTENT_SOLID &&
-      this.sv.collision.pointContents(new Vector(mins[0], maxs[1], mins[2] - 1.0)) === Defs.content.CONTENT_SOLID &&
-      this.sv.collision.pointContents(new Vector(maxs[0], mins[1], mins[2] - 1.0)) === Defs.content.CONTENT_SOLID &&
-      this.sv.collision.pointContents(new Vector(maxs[0], maxs[1], mins[2] - 1.0)) === Defs.content.CONTENT_SOLID;
+    this.#groundProbe.monster = ent;
+    const supported = GroundSupport.check(this.#groundProbe, entity.origin, entity.mins, entity.maxs);
+    this.#groundProbe.monster = null;
 
-    if (allCornersSolid) {
-      return true;
-    }
-
-    // Not all corners solid - do detailed trace check
-    const start = entity.origin.copy().add(new Vector(0.0, 0.0, entity.mins[2] + 1.0));
-    const stop = start.copy().add(new Vector(0.0, 0.0, -2.0 * STEPSIZE));
-
-    let trace = this.sv.collision.move(start, Vector.origin, Vector.origin, stop, Defs.moveTypes.MOVE_NOMONSTERS, ent);
-    if (trace.fraction === 1.0) {
-      return false;
-    }
-
-    let bottom = trace.endpos[2];
-    const mid = bottom;
-    for (let x = 0; x <= 1; x++) {
-      for (let y = 0; y <= 1; y++) {
-        start[0] = stop[0] = x !== 0 ? maxs[0] : mins[0];
-        start[1] = stop[1] = y !== 0 ? maxs[1] : mins[1];
-        trace = this.sv.collision.move(start, Vector.origin, Vector.origin, stop, Defs.moveTypes.MOVE_NOMONSTERS, ent);
-        if (trace.fraction !== 1.0 && trace.endpos[2] > bottom) {
-          bottom = trace.endpos[2];
-        }
-        if (trace.fraction === 1.0 || (mid - trace.endpos[2]) > STEPSIZE) {
-          return false;
-        }
-      }
-    }
-
-    return true;
+    return supported;
   }
 
   movestep(ent: ServerEdict, move: Vector, relink: boolean): boolean {

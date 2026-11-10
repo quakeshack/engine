@@ -12,7 +12,9 @@
  *
  * POLICIES=phase2 runs only the steering before Phase 1, Phase 1's moveToGoal and Phase 2's ChaseNavigator.
  *
- * Environment switches: WALKABLE_ONLY=1 keeps paths without a drop or climb taller than a step between waypoints,
+ * Environment switches: HULL_PATHS=1 asks every path for the monster's hull (plan Phase 4), as ChaseNavigator does, instead
+ * of the player's path with drops, and counts the trials without one; WALKABLE_ONLY=1 keeps paths without a drop or climb
+ * taller than a step between waypoints,
  * HULL_FIT=1 keeps paths each hull can sweep through, DROP_LINKS=exclude removes ledge links from the graph first,
  * SHOW_FAILURES=<policy name> lists where that policy failed on level segments.
  */
@@ -26,7 +28,7 @@ import { BSP29Loader } from '../source/engine/common/model/loaders/BSP29Loader.t
 import type { BrushModel } from '../source/engine/common/model/BSP.ts';
 import { ServerCollision, type CollisionHost } from '../source/engine/server/physics/ServerCollision.ts';
 import { ServerMovement } from '../source/engine/server/physics/ServerMovement.ts';
-import { Navigation } from '../source/engine/server/Navigation.ts';
+import { Navigation, type NavigationBox, NavigationHull } from '../source/engine/server/Navigation.ts';
 import type { ServerEdict } from '../source/engine/server/Edict.ts';
 import type Server from '../source/engine/server/Server.ts';
 import type { CollisionModelSource } from '../source/engine/server/physics/ServerCollisionSupport.ts';
@@ -229,7 +231,7 @@ const AIM_REPLAN: Policy = {
       memory.best = distance;
       memory.idle = 0;
     } else if (++memory.idle >= 10) {
-      const fresh = trial.world.navigation.findPath(trial.entity.origin, path[path.length - 1]);
+      const fresh = trial.world.navigation.findPath(trial.entity.origin, path[path.length - 1], Navigation.hullFor(trial.entity));
       if (fresh !== null && fresh.length >= 2) {
         path.splice(0, path.length, ...fresh);
         trial.index = 1;
@@ -376,7 +378,7 @@ async function walk(world: World, policy: Policy, sharedPath: Vector[], hull: [V
   // ChaseNavigator reads the game's time, its engine's NavigateAsync, and whether the monster is still alive
   Object.assign(entity, {
     game: clock,
-    engine: { NavigateAsync: (start: Vector, goal: Vector) => Promise.resolve(world.navigation.findPath(start, goal)) },
+    engine: { NavigateAsync: (start: Vector, goal: Vector, box: NavigationBox | null = null) => Promise.resolve(world.navigation.findPath(start, goal, Navigation.hullFor(box))) },
     edict,
     health: 100,
   });
@@ -540,8 +542,17 @@ const MONSTERS: { name: string; hull: [Vector, Vector]; speeds: number[] }[] = [
 console.log(`${mapname}: ${world.navigation.graph.nodes.length} nodes, ${paths.length} paths`);
 
 for (const monster of MONSTERS) {
+  const hull = Navigation.hullFor({ mins: monster.hull[0], maxs: monster.hull[1] });
+  // HULL_PATHS=1 asks for the same start and goal again, for this hull; a trial without such a path counts as a failure
+  const hullPaths = process.env.HULL_PATHS === '1'
+    ? paths.map((path) => world.navigation.findPath(path[0], path[path.length - 1], hull))
+    : paths;
+  const withoutPath = hullPaths.filter((path) => path === null).length;
+  if (process.env.HULL_PATHS === '1') {
+    console.log(`\n${monster.name}: ${withoutPath} of ${paths.length} trials have no path for the ${NavigationHull[hull]} hull`);
+  }
   // trials whose start already is in solid for this hull say nothing about steering
-  const usable = paths.filter((path) => {
+  const usable = hullPaths.filter((path): path is Vector[] => path !== null).filter((path) => {
     const probe = createMockEntity({ origin: path[0].copy(), mins: monster.hull[0], maxs: monster.hull[1] });
     const edict = createMockEdict(probe) as unknown as ServerEdict;
     return !world.collision.move(probe.origin, probe.mins, probe.maxs, probe.origin, moveTypes.MOVE_NORMAL, edict).startsolid;

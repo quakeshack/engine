@@ -5,13 +5,15 @@ import { readFileSync } from 'node:fs';
 import Vector from '../../source/shared/Vector.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
-import { Navigation, NavMeshOutOfDateException } from '../../source/engine/server/Navigation.ts';
+import { Navigation, NavigationHull, NavMeshOutOfDateException } from '../../source/engine/server/Navigation.ts';
 import { mockedNavigationServices } from '../support/fixtures.ts';
 import { createCvarStub } from '../support/cvarStub.ts';
 import { withEngineMocks } from '../support/withEngineMocks.ts';
 
 const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);
 const NAV_MONSTER_MAXS = new Vector(16.0, 16.0, 40.0);
+const NAV_LARGE_MONSTER_MINS = new Vector(-32.0, -32.0, -24.0);
+const NAV_LARGE_MONSTER_MAXS = new Vector(32.0, 32.0, 64.0);
 
 /**
  * @returns The minimal world model a navigation build reads: faces, edges and vertexes of one floor triangle.
@@ -64,6 +66,7 @@ function isSupportedFloorPoint(point: Vector): boolean {
 }
 
 /**
+ * Asserts a box trace uses the walker's box or the large-monster box.
  * @param mins trace mins
  * @param maxs trace maxs
  */
@@ -71,6 +74,12 @@ function assertExpectedTraceShape(mins: Vector, maxs: Vector) {
   const isPointTrace = mins.isOrigin() && maxs.isOrigin();
 
   if (isPointTrace) {
+    return;
+  }
+
+  if (mins[0] === NAV_LARGE_MONSTER_MINS[0]) {
+    assert.deepEqual([...mins], [...NAV_LARGE_MONSTER_MINS]);
+    assert.deepEqual([...maxs], [...NAV_LARGE_MONSTER_MAXS]);
     return;
   }
 
@@ -247,13 +256,24 @@ function readNavSurfaceCounts(data: Uint8Array): {nodeCount: number, surfaceCoun
       }
     }
 
+    // large-hull origin, when the node has one
+    if (readUint8()) {
+      readFloat32();
+      readFloat32();
+      readFloat32();
+    }
+
     const neighborCount = readUint32();
     for (let neighborIndex = 0; neighborIndex < neighborCount; neighborIndex++) {
       readInt32();
       readFloat32();
       readFloat32();
+      readUint8();
     }
   }
+
+  // the reader must end where the file does, or it read another layout
+  assert.equal(offset, data.byteLength);
 
   return { nodeCount, surfaceCounts };
 }
@@ -1283,6 +1303,344 @@ void describe('Navigation (two-level floor — drop-link regression)', () => {
       'if null, linkRadius is too small for the ~76-unit inter-floor gap',
     );
     assert.ok(path.length >= 2, 'path should have at least the start and goal positions');
+  });
+
+  void test('a walking monster gets no path down the drop, which it would not step off', async () => {
+    const navigation = await buildTwoLevelNavigation();
+
+    const path = navigation.findPath(new Vector(100, 100, 24), new Vector(100, 300, -48), NavigationHull.SMALL);
+
+    assert.equal(path, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Worlds of solid boxes
+//
+// Box traces against axis-aligned solid boxes are exact (the box swept against each solid grown by the box's size),
+// so these worlds have walls, gaps and corridors that the navigation builder sees as it sees a map's.
+// ---------------------------------------------------------------------------
+
+/** A solid axis-aligned box: mins and maxs. */
+type Solid = readonly [readonly [number, number, number], readonly [number, number, number]];
+
+/** A floor rectangle at z = 0 the builder samples for waypoints: x0, y0, x1, y1. */
+type FloorRectangle = readonly [number, number, number, number];
+
+/** The trace members the navigation builder reads. */
+interface BoxWorldTrace {
+  endpos: Vector;
+  fraction: number;
+  startsolid: boolean;
+  allsolid: boolean;
+  plane: { normal: Vector; dist: number };
+  ent: null;
+}
+
+/** Quake keeps a trace this far off the surface it hit. */
+const DIST_EPSILON = 0.03125;
+
+/**
+ * Whether a box at `point` overlaps a solid grown by the box's size, touching excluded.
+ * @returns True when inside.
+ */
+function insideGrownSolid(point: Vector, solid: Solid, mins: Vector, maxs: Vector): boolean {
+  for (let axis = 0; axis < 3; axis++) {
+    if (point[axis] <= solid[0][axis] - maxs[axis] || point[axis] >= solid[1][axis] - mins[axis]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Sweeps a box from `start` to `end` through solid boxes.
+ * @returns The trace.
+ */
+function traceBoxWorld(solids: readonly Solid[], start: Vector, mins: Vector, maxs: Vector, end: Vector): BoxWorldTrace {
+  const startsolid = solids.some((solid) => insideGrownSolid(start, solid, mins, maxs));
+
+  if (startsolid) {
+    const allsolid = solids.some((solid) => insideGrownSolid(end, solid, mins, maxs));
+    return { endpos: start.copy(), fraction: 0.0, startsolid: true, allsolid, plane: { normal: new Vector(), dist: 0 }, ent: null };
+  }
+
+  const delta = end.copy().subtract(start);
+  let fraction = 1.0;
+  let normal = new Vector();
+
+  for (const solid of solids) {
+    let enter = -Infinity;
+    let exit = Infinity;
+    let enterAxis = -1;
+
+    for (let axis = 0; axis < 3; axis++) {
+      const low = solid[0][axis] - maxs[axis];
+      const high = solid[1][axis] - mins[axis];
+
+      if (delta[axis] === 0.0) {
+        if (start[axis] <= low || start[axis] >= high) {
+          exit = -Infinity;
+        }
+        continue;
+      }
+
+      const first = (low - start[axis]) / delta[axis];
+      const second = (high - start[axis]) / delta[axis];
+
+      if (Math.min(first, second) > enter) {
+        enter = Math.min(first, second);
+        enterAxis = axis;
+      }
+
+      exit = Math.min(exit, Math.max(first, second));
+    }
+
+    if (enterAxis !== -1 && enter < exit && enter >= 0.0 && enter < fraction) {
+      fraction = enter;
+      normal = new Vector();
+      normal[enterAxis] = delta[enterAxis] > 0.0 ? -1.0 : 1.0;
+    }
+  }
+
+  const endpos = start.copy().add(delta.copy().multiply(fraction));
+
+  if (fraction < 1.0) {
+    endpos.add(normal.copy().multiply(DIST_EPSILON));
+  }
+
+  return { endpos, fraction, startsolid: false, allsolid: false, plane: { normal, dist: 0 }, ent: null };
+}
+
+/**
+ * @returns The world model of floor rectangles at z = 0, which the build samples for waypoints.
+ */
+function createFloorWorldModel(floors: readonly FloorRectangle[]): BrushModel {
+  const vertexes: Vector[] = [];
+  const edges: number[][] = [[0, 0]];
+  const surfedges: number[] = [];
+  const faces = floors.map(([x0, y0, x1, y1]) => {
+    const first = vertexes.length;
+    vertexes.push(new Vector(x0, y0, 0), new Vector(x1, y0, 0), new Vector(x1, y1, 0), new Vector(x0, y1, 0));
+    const firstedge = surfedges.length;
+
+    for (let corner = 0; corner < 4; corner++) {
+      surfedges.push(edges.length);
+      edges.push([first + corner, first + (corner + 1) % 4]);
+    }
+
+    return {
+      numedges: 4,
+      normal: new Vector(0, 0, 1),
+      plane: { normal: new Vector(0, 0, 1) },
+      planeBack: false,
+      turbulent: false,
+      sky: false,
+      submodel: false,
+      firstedge,
+    };
+  });
+
+  // A real BrushModel comes from a BSP file; the build reads just the members below.
+  return { checksum: 4242, planes: [{ normal: new Vector(0, 0, 1) }], faces, surfedges, edges, vertexes } as unknown as BrushModel;
+}
+
+/** The members of an entity the navigation builder reads: teleporters, their destinations and doors. */
+interface BoxWorldEntity {
+  readonly classname: string;
+  readonly centerPoint: Vector;
+  readonly mins: Vector;
+  readonly maxs: Vector;
+  readonly target?: string;
+  readonly targetname?: string;
+  readonly spawnflags?: number;
+}
+
+/**
+ * Builds the navigation graph of a world of solid boxes.
+ * @param entities What `FindAllByFieldAndValue` finds while the graph is built.
+ * @returns The navigation with its graph.
+ */
+async function buildBoxWorldNavigation(solids: readonly Solid[], floors: readonly FloorRectangle[], entities: readonly BoxWorldEntity[] = []): Promise<Navigation> {
+  const worldmodel = createFloorWorldModel(floors);
+  const navigation = new Navigation(worldmodel, mockedNavigationServices());
+
+  Navigation.nav_build_process = null;
+  Navigation.nav_debug_graph = createCvarStub(0);
+  Navigation.nav_debug_waypoints = createCvarStub(0);
+  Navigation.nav_debug_path = createCvarStub(0);
+
+  const trace = (start: Vector, mins: Vector, maxs: Vector, end: Vector): BoxWorldTrace => traceBoxWorld(solids, start, mins, maxs, end);
+  const contents = (point: Vector): number => (solids.some((solid) => insideGrownSolid(point, solid, Vector.origin, Vector.origin)) ? -2 : 0);
+
+  await withNavigationRegistry({
+    COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
+    Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
+    SV: {
+      collision: { traceStaticWorld: trace, move: trace, pointContents: contents, staticWorldContents: contents },
+      server: { mapname: 'box-world-test', worldmodel, num_edicts: 0, edicts: [] },
+      engineAPI: {
+        FindAllByFieldAndValue: (field: keyof BoxWorldEntity, value: string) => entities
+          .filter((entity) => entity[field] === value)
+          .map((entity) => ({ entity })),
+      },
+    },
+  }, () => {
+    navigation.build();
+  });
+
+  return navigation;
+}
+
+/** Walls 256 high around x 0…576, y 0…320, a floor slab below. */
+const ENCLOSED_FLOOR: readonly Solid[] = [
+  [[-64, -64, -64], [640, 384, 0]],
+  [[-64, -64, 0], [0, 384, 256]],
+  [[576, -64, 0], [640, 384, 256]],
+  [[-64, -64, 0], [640, 0, 256]],
+  [[-64, 320, 0], [640, 384, 256]],
+];
+
+void describe('Navigation.findPath (monster hulls)', () => {
+  // Two rooms (x 0…192 and 384…576) joined by a corridor 48 wide (y 24…72) and, farther away, one 72 wide
+  // (y 192…264). The walker (32 wide) fits through both, Quake's hull 2 (64 wide) only through the wide one, and only
+  // near its middle, where few of the walker's nodes are.
+  const CORRIDOR_WORLD: readonly Solid[] = [
+    ...ENCLOSED_FLOOR,
+    [[192, -64, 0], [384, 24, 256]],
+    [[192, 72, 0], [384, 192, 256]],
+    [[192, 264, 0], [384, 320, 256]],
+  ];
+  const CORRIDOR_FLOORS: readonly FloorRectangle[] = [[0, 0, 192, 320], [384, 0, 576, 320], [192, 24, 384, 72], [192, 192, 384, 264]];
+  const LARGE_BOX = { mins: new Vector(-32, -32, -24), maxs: new Vector(32, 32, 64) };
+  const SMALL_BOX = { mins: new Vector(-16, -16, -24), maxs: new Vector(16, 16, 40) };
+
+  /**
+   * Whether a path goes through the narrow corridor: a point between the rooms, south of the wall between them.
+   * @returns True when it does.
+   */
+  function throughNarrowCorridor(path: Vector[]): boolean {
+    return path.some((point) => point[0] > 192 && point[0] < 384 && point[1] < 192);
+  }
+
+  let navigation: Navigation;
+
+  before(async () => {
+    navigation = await buildBoxWorldNavigation(CORRIDOR_WORLD, CORRIDOR_FLOORS);
+  });
+
+  void test('a small monster takes the narrow corridor, the short way', () => {
+    const path = navigation.findPath(new Vector(96, 48, 24), new Vector(480, 48, 24), Navigation.hullFor(SMALL_BOX));
+
+    assert.ok(path !== null);
+    assert.ok(throughNarrowCorridor(path));
+  });
+
+  void test('a large monster goes around through the wide corridor', () => {
+    const path = navigation.findPath(new Vector(96, 64, 24), new Vector(480, 64, 24), Navigation.hullFor(LARGE_BOX));
+
+    assert.ok(path !== null);
+    assert.ok(!throughNarrowCorridor(path));
+    assert.ok(path.some((point) => point[0] > 192 && point[0] < 384 && point[1] > 192));
+  });
+
+  void test('a large monster\'s waypoints leave its box room to stand', () => {
+    const path = navigation.findPath(new Vector(96, 64, 24), new Vector(480, 64, 24), Navigation.hullFor(LARGE_BOX))!;
+
+    // every node beside a wall is 16 units from it, where the 64-wide box doesn't fit
+    for (const point of path.slice(1, -1)) {
+      assert.equal(traceBoxWorld(CORRIDOR_WORLD, point, LARGE_BOX.mins, LARGE_BOX.maxs, point).startsolid, false, `${point}`);
+    }
+  });
+
+  void test('without a box the path is the player\'s, through the narrow corridor', () => {
+    const path = navigation.findPath(new Vector(96, 48, 24), new Vector(480, 48, 24), Navigation.hullFor(null));
+
+    assert.ok(path !== null);
+    assert.ok(throughNarrowCorridor(path));
+  });
+
+  void test('a gap in the floor too wide for a monster\'s box to stand over stops monsters, not players', async () => {
+    // e1m1 has one, 24 wide: the walker's box spans it, QuakeC's checkBottom refuses a step with a corner over it
+    const gapWorld: readonly Solid[] = [
+      [[-64, -64, -64], [200, 192, 0]],
+      [[224, -64, -64], [488, 192, 0]],
+    ];
+    const gapNavigation = await buildBoxWorldNavigation(gapWorld, [[0, 0, 200, 128], [224, 0, 424, 128]]);
+    const start = new Vector(100, 64, 24);
+    const goal = new Vector(324, 64, 24);
+
+    assert.ok(gapNavigation.findPath(start, goal, Navigation.hullFor(null)) !== null);
+    assert.equal(gapNavigation.findPath(start, goal, Navigation.hullFor(SMALL_BOX)), null);
+  });
+});
+
+void describe('Navigation.findPath (teleporters)', () => {
+  // Two closed rooms, x 0…192 and 384…576, a teleporter in the first one leads into the second.
+  const TWO_ROOMS: readonly Solid[] = [...ENCLOSED_FLOOR, [[192, -64, 0], [384, 384, 256]]];
+  const TWO_ROOM_FLOORS: readonly FloorRectangle[] = [[0, 0, 192, 320], [384, 0, 576, 320]];
+  const SMALL_BOX = { mins: new Vector(-16, -16, -24), maxs: new Vector(16, 16, 40) };
+  const START = new Vector(96, 64, 24);
+  const GOAL = new Vector(480, 64, 24);
+
+  /**
+   * Builds the two rooms with a teleporter between them.
+   * @returns The navigation with its graph.
+   */
+  function buildWithTeleporter(spawnflags: number, targetname?: string): Promise<Navigation> {
+    return buildBoxWorldNavigation(TWO_ROOMS, TWO_ROOM_FLOORS, [
+      {
+        classname: 'trigger_teleport',
+        centerPoint: new Vector(96, 240, 56),
+        mins: new Vector(-32, -32, -56),
+        maxs: new Vector(32, 32, 56),
+        target: 'there',
+        targetname,
+        spawnflags,
+      },
+      {
+        classname: 'info_teleport_destination',
+        centerPoint: new Vector(480, 240, 24),
+        mins: new Vector(),
+        maxs: new Vector(),
+        targetname: 'there',
+      },
+    ]);
+  }
+
+  void test('a monster walks through a teleporter that takes monsters', async () => {
+    const navigation = await buildWithTeleporter(0);
+
+    assert.ok(navigation.findPath(START, GOAL, Navigation.hullFor(SMALL_BOX)) !== null);
+  });
+
+  void test('a monster gets no path through a player-only teleporter, a player does', async () => {
+    // e1m2 has two: monsters walked into them and stood there, the trigger ignoring them
+    const navigation = await buildWithTeleporter(1);
+
+    assert.ok(navigation.findPath(START, GOAL, Navigation.hullFor(null)) !== null);
+    assert.equal(navigation.findPath(START, GOAL, Navigation.hullFor(SMALL_BOX)), null);
+  });
+
+  void test('a monster gets no path through a teleporter that only works once it was fired', async () => {
+    const navigation = await buildWithTeleporter(0, 'switched-on-later');
+
+    assert.equal(navigation.findPath(START, GOAL, Navigation.hullFor(SMALL_BOX)), null);
+  });
+});
+
+void describe('Navigation.hullFor', () => {
+  void test('picks the smallest hull whose box encloses the monster', () => {
+    assert.equal(Navigation.hullFor(null), NavigationHull.PLAYER);
+    // a zombie or knight, Quake's hull 1
+    assert.equal(Navigation.hullFor({ mins: new Vector(-16, -16, -24), maxs: new Vector(16, 16, 40) }), NavigationHull.SMALL);
+    // a fish-sized box still walks the walker's links
+    assert.equal(Navigation.hullFor({ mins: new Vector(-8, -8, 0), maxs: new Vector(8, 8, 16) }), NavigationHull.SMALL);
+    // a shambler, wider than the walker
+    assert.equal(Navigation.hullFor({ mins: new Vector(-32, -32, -24), maxs: new Vector(32, 32, 64) }), NavigationHull.LARGE);
+    // as wide as the walker but taller
+    assert.equal(Navigation.hullFor({ mins: new Vector(-16, -16, -24), maxs: new Vector(16, 16, 64) }), NavigationHull.LARGE);
   });
 });
 

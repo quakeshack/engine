@@ -15,12 +15,13 @@ import WorkerManager from '../common/WorkerManager.ts';
 import { eventBus } from '../common/EventBus.ts';
 import type { BaseEntity, ServerEdict } from './Edict.ts';
 import type { CollisionTrace } from './physics/ServerCollisionSupport.ts';
+import { GroundSupport, type GroundProbe } from './physics/GroundSupport.ts';
 import type Server from './Server.ts';
 import type { ConsoleOutput } from '../common/Services.ts';
 
 type VectorTuple = [number, number, number];
 type PlanePoint = [number, number];
-type NeighborLink = [id: number, cost: number, temporaryCostAdjustment: number];
+type NeighborLink = [id: number, cost: number, temporaryCostAdjustment: number, flags: number];
 type SerializedWaypoint = [origin: VectorTuple, availableHeight: number, nearLedge: boolean, isClipping: boolean, isFloating: boolean];
 type SerializedWalkableSurface = [stability: number, normal: VectorTuple, faceIndex: number, waypoints: SerializedWaypoint[]];
 type SerializedNode = [
@@ -49,6 +50,43 @@ interface NavigationGeometry {
 interface TraversalResult {
   readonly ok: boolean;
   readonly reason: string;
+  /** Somewhere along the way the floor drops by more than a step: a player falls, a monster won't step off. */
+  readonly drop: boolean;
+  /** Ground under the whole box ({@link GroundSupport}) at every step up to a drop; false when not checked. */
+  readonly supported: boolean;
+}
+
+/** How much of a walking monster's rules a traversal checks besides the walker's. */
+const enum GroundRule {
+  /** Only the walker's: a player's way, drops allowed. */
+  IGNORE = 0,
+  /** Also checks the ground under the whole box at every step, for {@link TraversalResult.supported}. */
+  CHECK = 1,
+  /** Fails at the first drop or unsupported step: only whether a monster walks it matters. */
+  REQUIRE = 2,
+}
+
+/** A box relative to its origin. */
+export interface NavigationBox {
+  readonly mins: Vector;
+  readonly maxs: Vector;
+}
+
+/** Which links a path may use, and which node origins it passes through. */
+export enum NavigationHull {
+  /** Every link, drops included: someone who falls off a ledge, such as a player. */
+  PLAYER = 0,
+  /** Links a monster of the walker's size (Quake's hull 1, 32 wide) walks, no drops. */
+  SMALL = 1,
+  /** Links a monster of Quake's hull 2 (64 wide) walks, through the nodes' large-hull origins. */
+  LARGE = 2,
+}
+
+/** Bits of a link's flags. */
+const enum LinkFlag {
+  WALKABLE_SMALL = 1,
+  WALKABLE_LARGE = 2,
+  DROP = 4,
 }
 
 interface WaypointGroupItem {
@@ -72,7 +110,11 @@ interface ServerEntity extends BaseEntity {
   readonly centerPoint: Vector;
   target?: string | null;
   targetname?: string | null;
+  spawnflags?: number;
 }
+
+/** Quake's `trigger_teleport` spawnflag that leaves everyone but players where they are. */
+const TELEPORT_PLAYER_ONLY = 1;
 
 /**
  * Converts a vector to a serializable tuple.
@@ -174,8 +216,12 @@ class Node {
   isClipping = false;
   isFloating = false;
   surfaces: Set<WalkableSurface> = new Set();
-  /** list of [id, cost, temporary cost adjustment]. */
+  /** list of [id, cost, temporary cost adjustment, link flags]. */
   neighbors: NeighborLink[] = [];
+  /** Where a 64-wide monster stands at this node, up to 16 units from `origin`, or `null` when it doesn't fit. */
+  largeOrigin: Vector | null = null;
+  /** The flags of every link to and from this node, ORed, to pick start and goal nodes a hull can use. */
+  linkFlags = 0;
 
   /**
    * Creates a graph node representing one merged walkable region.
@@ -347,9 +393,13 @@ export class NavMeshOutOfDateException extends CorruptedResourceError { }
  * generator produces a different graph for the same map (link rules, costs, clearances): a mesh of
  * another version counts as out of date and is rebuilt, the ones that ship with a game included.
  */
-const NAV_FILE_VERSION = 3;
+const NAV_FILE_VERSION = 4;
 const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);
 const NAV_MONSTER_MAXS = new Vector(16.0, 16.0, 40.0);
+/** Quake's hull 2: Shambler, Ogre, Fiend, Vore, Dog. */
+const NAV_LARGE_MONSTER_BOX: NavigationBox = { mins: new Vector(-32.0, -32.0, -24.0), maxs: new Vector(32.0, 32.0, 64.0) };
+/** How far a node's large-hull origin may be from the node, 16 for a node beside one wall. */
+const NAV_LARGE_ORIGIN_NUDGES = [8.0, 16.0];
 const NAV_LINK_STEP_DISTANCE = 8.0;
 const NAV_DEFAULT_LINK_RADIUS = 96.0;
 const NAV_TRANSITION_LINK_RADIUS = 128.0;
@@ -382,6 +432,13 @@ export class Navigation {
   readonly maxSlope = MIN_STEP_NORMAL;
   readonly walkerMins: Vector = NAV_MONSTER_MINS.copy();
   readonly walkerMaxs: Vector = NAV_MONSTER_MAXS.copy();
+  /** The walker as a box: the graph is sampled with it, and it is the small hull. */
+  readonly #walkerBox: NavigationBox = { mins: this.walkerMins, maxs: this.walkerMaxs };
+  /** The static world under a box, for {@link GroundSupport} while building. */
+  readonly #groundProbe: GroundProbe = {
+    traceLine: (start: Vector, end: Vector): CollisionTrace => this.sv.collision.traceStaticWorld(start, Vector.origin, Vector.origin, end),
+    pointContents: (point: Vector): Def.content => this.sv.collision.pointContents(point),
+  };
   /** units of headroom required above waypoint */
   requiredHeight = NAV_MONSTER_MAXS[2] - NAV_MONSTER_MINS[2];
   requiredRadius = Math.max(
@@ -697,6 +754,10 @@ export class Navigation {
         }
       }
 
+      if (readUint8()) {
+        node.largeOrigin = new Vector(readFloat32(), readFloat32(), readFloat32());
+      }
+
       // neighbors
       const nbCount = readUint32();
       const nbs: NeighborLink[] = [];
@@ -704,13 +765,15 @@ export class Navigation {
         const nid = readInt32();
         const cost = readFloat32();
         const adj = readFloat32();
-        nbs.push([nid, cost, adj]);
+        const linkFlags = readUint8();
+        nbs.push([nid, cost, adj, linkFlags]);
       }
       node.neighbors = nbs;
 
       this.graph.nodes.push(node);
     }
 
+    this.#gatherLinkFlags();
     this.#buildOctree();
     this.#scheduleDebugRefresh();
   }
@@ -777,12 +840,18 @@ export class Navigation {
       // waypoints are build-only debug data and are intentionally not serialized
       pushUint32(0);
 
+      pushUint8(n.largeOrigin !== null ? 1 : 0);
+      if (n.largeOrigin !== null) {
+        pushFloat32(n.largeOrigin[0]); pushFloat32(n.largeOrigin[1]); pushFloat32(n.largeOrigin[2]);
+      }
+
       // neighbors
       pushUint32(n.neighbors.length);
       for (const nb of n.neighbors) {
         pushInt32(nb[0]);
         pushFloat32(nb[1]);
         pushFloat32(nb[2]);
+        pushUint8(nb[3]);
       }
     }
 
@@ -802,11 +871,11 @@ export class Navigation {
    * Returns whether the player-sized walker fits at the given stand origin.
    * @returns True when the walker box does not start in solid.
    */
-  #isValidStandOrigin(position: Vector): boolean {
+  #isValidStandOrigin(position: Vector, box: NavigationBox = this.#walkerBox): boolean {
     const trace = this.sv.collision.traceStaticWorld(
       position.copy(),
-      this.walkerMins,
-      this.walkerMaxs,
+      box.mins,
+      box.maxs,
       position.copy(),
     );
 
@@ -827,53 +896,11 @@ export class Navigation {
   }
 
   /**
-   * Returns whether the walker has enough floor support at the stand origin.
-   * @returns True when the walker can stand on the sampled floor.
+   * Returns whether a box standing at the origin has the floor support a walking monster needs.
+   * @returns True when the box can stand on the sampled floor.
    */
-  #hasGroundSupport(position: Vector): boolean {
-    const mins = position.copy().add(this.walkerMins);
-    const maxs = position.copy().add(this.walkerMaxs);
-
-    const allCornersSolid =
-      this.sv.collision.pointContents(new Vector(mins[0], mins[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID
-      && this.sv.collision.pointContents(new Vector(mins[0], maxs[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID
-      && this.sv.collision.pointContents(new Vector(maxs[0], mins[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID
-      && this.sv.collision.pointContents(new Vector(maxs[0], maxs[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID;
-
-    if (allCornersSolid) {
-      return true;
-    }
-
-    const start = position.copy().add(new Vector(0.0, 0.0, this.walkerMins[2] + 1.0));
-    const stop = start.copy().add(new Vector(0.0, 0.0, -2.0 * STEPSIZE));
-
-    let trace = this.sv.collision.traceStaticWorld(start, Vector.origin, Vector.origin, stop);
-
-    if (trace.fraction === 1.0) {
-      return false;
-    }
-
-    let bottom = trace.endpos[2];
-    const mid = bottom;
-
-    for (let x = 0; x <= 1; x++) {
-      for (let y = 0; y <= 1; y++) {
-        start[0] = stop[0] = x !== 0 ? maxs[0] : mins[0];
-        start[1] = stop[1] = y !== 0 ? maxs[1] : mins[1];
-
-        trace = this.sv.collision.traceStaticWorld(start, Vector.origin, Vector.origin, stop);
-
-        if (trace.fraction !== 1.0 && trace.endpos[2] > bottom) {
-          bottom = trace.endpos[2];
-        }
-
-        if (trace.fraction === 1.0 || (mid - trace.endpos[2]) > STEPSIZE) {
-          return false;
-        }
-      }
-    }
-
-    return true;
+  #hasGroundSupport(position: Vector, box: NavigationBox = this.#walkerBox): boolean {
+    return GroundSupport.check(this.#groundProbe, position, box.mins, box.maxs);
   }
 
   /**
@@ -938,23 +965,29 @@ export class Navigation {
   }
 
   /**
-   * Evaluates whether a walker can traverse between two stand origins.
-   * @returns The traversal decision and failure reason.
+   * Walks from one stand origin to another in 8-unit steps the way a monster's `movestep` does: each step finds the
+   * floor below a step up, and climbing more than a step fails. Dropping off a ledge is allowed (a player falls), but
+   * marks the traversal as a drop, which a monster won't walk. A monster also needs ground under its whole box at
+   * every step ({@link GroundSupport}), or it refuses to step there.
+   * @param box The box that walks.
+   * @param groundRule Whether to check the ground a monster needs at every step, and whether to fail without it.
+   * @returns The traversal decision, its failure reason, and what a monster would make of it.
    */
-  #evaluateTraversalBetween(startOrigin: Vector, endOrigin: Vector): TraversalResult {
-    if (!this.#isValidStandOrigin(startOrigin)) {
-      return { ok: false, reason: 'start-fit' };
+  #evaluateTraversalBetween(startOrigin: Vector, endOrigin: Vector, box: NavigationBox = this.#walkerBox, groundRule = GroundRule.IGNORE): TraversalResult {
+    if (!this.#isValidStandOrigin(startOrigin, box)) {
+      return Navigation.#blocked('start-fit');
     }
 
-    if (!this.#isValidStandOrigin(endOrigin)) {
-      return { ok: false, reason: 'end-fit' };
+    if (!this.#isValidStandOrigin(endOrigin, box)) {
+      return Navigation.#blocked('end-fit');
     }
 
-    if (!this.#hasGroundSupport(startOrigin) || !this.#hasGroundSupport(endOrigin)) {
-      return {
-        ok: false,
-        reason: !this.#hasGroundSupport(startOrigin) ? 'start-support' : 'end-support',
-      };
+    if (!this.#hasGroundSupport(startOrigin, box)) {
+      return Navigation.#blocked('start-support');
+    }
+
+    if (!this.#hasGroundSupport(endOrigin, box)) {
+      return Navigation.#blocked('end-support');
     }
 
     const delta = endOrigin.copy().subtract(startOrigin);
@@ -964,13 +997,21 @@ export class Navigation {
 
     if (totalDistance === 0.0) {
       const zDiff = endOrigin[2] - startOrigin[2];
-      // Dropping down is always traversable; climbing is limited to one step height.
-      return { ok: zDiff <= STEPSIZE, reason: 'same-spot' };
+      const drop = zDiff < -STEPSIZE;
+
+      if (drop && groundRule === GroundRule.REQUIRE) {
+        return Navigation.#blocked('drop');
+      }
+
+      // Dropping down is always traversable; climbing is limited to one step height. Both ends have ground.
+      return { ok: zDiff <= STEPSIZE, reason: 'same-spot', drop, supported: groundRule !== GroundRule.IGNORE };
     }
 
     const stepDistance = Math.min(NAV_LINK_STEP_DISTANCE, totalDistance);
     const direction = delta.copy().multiply(1.0 / totalDistance);
     let previousOrigin = startOrigin;
+    let drop = false;
+    let supported = groundRule !== GroundRule.IGNORE;
 
     for (let travelled = stepDistance; travelled < totalDistance; travelled += stepDistance) {
       const sampleXY = startOrigin.copy().add(direction.copy().multiply(travelled));
@@ -980,21 +1021,31 @@ export class Navigation {
       // relying on linearly interpolated z which can pass through solid geometry or miss drops.
       const searchStart = new Vector(sampleXY[0], sampleXY[1], previousOrigin[2] + STEPSIZE);
       const searchEnd = new Vector(sampleXY[0], sampleXY[1], previousOrigin[2] - NAV_TRAVERSAL_DROP_LIMIT);
-      const groundTrace = this.sv.collision.traceStaticWorld(searchStart, this.walkerMins, this.walkerMaxs, searchEnd);
+      const groundTrace = this.sv.collision.traceStaticWorld(searchStart, box.mins, box.maxs, searchEnd);
 
       if (groundTrace.fraction === 1.0) {
-        return { ok: false, reason: 'step-no-floor' };
+        return Navigation.#blocked('step-no-floor');
       }
 
       const sampleOrigin = new Vector(sampleXY[0], sampleXY[1], groundTrace.endpos[2]);
 
       // Block upward steps that exceed what the AI can physically climb; downward drops are allowed.
       if (sampleOrigin[2] > previousOrigin[2] + STEPSIZE) {
-        return { ok: false, reason: 'height-mismatch' };
+        return Navigation.#blocked('height-mismatch');
       }
 
-      if (!this.#isValidStandOrigin(sampleOrigin)) {
-        return { ok: false, reason: 'step-fit' };
+      if (!this.#isValidStandOrigin(sampleOrigin, box)) {
+        return Navigation.#blocked('step-fit');
+      }
+
+      if (sampleOrigin[2] < previousOrigin[2] - STEPSIZE) {
+        drop = true;
+      } else if (supported && !drop && !this.#hasGroundSupport(sampleOrigin, box)) {
+        supported = false;
+      }
+
+      if (groundRule === GroundRule.REQUIRE && (drop || !supported)) {
+        return Navigation.#blocked(drop ? 'drop' : 'step-support');
       }
 
       previousOrigin = sampleOrigin;
@@ -1003,10 +1054,61 @@ export class Navigation {
     // Final step: end must not be above what the AI can climb from the last sample.
     // Downward drops to the goal are allowed (AI can fall/step off ledges).
     if (endOrigin[2] > previousOrigin[2] + STEPSIZE) {
-      return { ok: false, reason: 'height-mismatch' };
+      return Navigation.#blocked('height-mismatch');
     }
 
-    return { ok: true, reason: 'ok' };
+    drop ||= endOrigin[2] < previousOrigin[2] - STEPSIZE;
+
+    if (groundRule === GroundRule.REQUIRE && drop) {
+      return Navigation.#blocked('drop');
+    }
+
+    return { ok: true, reason: 'ok', drop, supported };
+  }
+
+  /**
+   * A traversal nobody walks.
+   * @returns The failed traversal.
+   */
+  static #blocked(reason: string): TraversalResult {
+    return { ok: false, reason, drop: false, supported: false };
+  }
+
+  /**
+   * Finds where a 64-wide monster stands at a node: the node's origin when the box fits there, else the nearest spot
+   * up to 16 units away on the plane, on the floor within a step and with ground under the whole box. A node beside a
+   * wall is only 16 units from it, which the walker needs, half of what the large box does.
+   * @returns The large-hull origin, or `null` when the large box doesn't stand anywhere near the node.
+   */
+  #findLargeOrigin(origin: Vector): Vector | null {
+    const candidates = [origin];
+
+    for (const distance of NAV_LARGE_ORIGIN_NUDGES) {
+      for (let direction = 0; direction < 8; direction++) {
+        const radians = direction * Math.PI / 4.0;
+        candidates.push(new Vector(
+          origin[0] + Math.round(Math.cos(radians) * distance),
+          origin[1] + Math.round(Math.sin(radians) * distance),
+          origin[2],
+        ));
+      }
+    }
+
+    for (const candidate of candidates) {
+      const top = new Vector(candidate[0], candidate[1], candidate[2] + STEPSIZE);
+      const bottom = new Vector(candidate[0], candidate[1], candidate[2] - STEPSIZE);
+      const trace = this.sv.collision.traceStaticWorld(top, NAV_LARGE_MONSTER_BOX.mins, NAV_LARGE_MONSTER_BOX.maxs, bottom);
+
+      if (trace.startsolid || trace.allsolid || trace.fraction === 1.0) {
+        continue;
+      }
+
+      if (this.#hasGroundSupport(trace.endpos, NAV_LARGE_MONSTER_BOX)) {
+        return trace.endpos.copy();
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -1393,6 +1495,10 @@ export class Navigation {
       nodes.push(node);
     }
 
+    for (const node of nodes) {
+      node.largeOrigin = this.#findLargeOrigin(node.origin);
+    }
+
     // 3) build spatial index before linking to accelerate neighbor search
     this.#buildOctree();
 
@@ -1433,8 +1539,10 @@ export class Navigation {
 
         linkStats.considered++;
 
-        const aToB = this.#evaluateTraversalBetween(a.origin, b.origin);
-        const bToA = this.#evaluateTraversalBetween(b.origin, a.origin);
+        const aToB = this.#evaluateTraversalBetween(a.origin, b.origin, this.#walkerBox, GroundRule.CHECK);
+        // The ground under the line is the same both ways: when a→b checked all of it, b→a doesn't again.
+        const lineChecked = aToB.ok && !aToB.drop;
+        const bToA = this.#evaluateTraversalBetween(b.origin, a.origin, this.#walkerBox, lineChecked ? GroundRule.IGNORE : GroundRule.CHECK);
 
         if (!aToB.ok && !bToA.ok) {
           const reasons = [aToB.reason, bToA.reason];
@@ -1458,49 +1566,17 @@ export class Navigation {
           continue;
         }
 
+        const smallAToB = lineChecked && aToB.supported;
+        const smallBToA = bToA.ok && !bToA.drop && (lineChecked ? aToB.supported : bToA.supported);
+        const large = (smallAToB || smallBToA) && dist <= NAV_DEFAULT_LINK_RADIUS && this.#largeWalks(smallAToB ? a : b, smallAToB ? b : a);
+
         if (aToB.ok) {
-          let cost = dist + Math.max(0.0, b.origin[2] - a.origin[2]);
-
-          if (dist > NAV_DEFAULT_LINK_RADIUS) {
-            cost += (dist - NAV_DEFAULT_LINK_RADIUS) * NAV_LONG_LINK_COST_SCALE;
-
-            if (this.#isLongLinkWallBlocked(a.origin, b.origin)) {
-              cost += NAV_BLOCKED_LONG_LINK_COST;
-            }
-          }
-
-          if (a.nearLedge) {
-            cost += 96;
-          }
-
-          if (b.nearLedge) {
-            cost += 96;
-          }
-
-          a.neighbors.push([b.id, cost, 0]);
+          a.neighbors.push([b.id, this.#linkCost(a, b, dist), 0, Navigation.#linkFlags(aToB.drop, smallAToB, large)]);
           linkStats.linked++;
         }
 
         if (bToA.ok) {
-          let cost = dist + Math.max(0.0, a.origin[2] - b.origin[2]);
-
-          if (dist > NAV_DEFAULT_LINK_RADIUS) {
-            cost += (dist - NAV_DEFAULT_LINK_RADIUS) * NAV_LONG_LINK_COST_SCALE;
-
-            if (this.#isLongLinkWallBlocked(b.origin, a.origin)) {
-              cost += NAV_BLOCKED_LONG_LINK_COST;
-            }
-          }
-
-          if (b.nearLedge) {
-            cost += 96;
-          }
-
-          if (a.nearLedge) {
-            cost += 96;
-          }
-
-          b.neighbors.push([a.id, cost, 0]);
+          b.neighbors.push([a.id, this.#linkCost(b, a, dist), 0, Navigation.#linkFlags(bToA.drop, smallBToA, large)]);
           linkStats.linked++;
         }
       }
@@ -1516,6 +1592,84 @@ export class Navigation {
       + `stepFit=${linkStats.stepFit} stepSupport=${linkStats.stepSupport} `
       + `heightMismatch=${linkStats.heightMismatch}\n`,
     );
+  }
+
+  /**
+   * What a link from `from` to `to` costs: its length, plus climbing, plus a penalty for a long link (more for one a
+   * wall seems to block) and for every end near a ledge.
+   * @returns The link cost.
+   */
+  #linkCost(from: Node, to: Node, distance: number): number {
+    let cost = distance + Math.max(0.0, to.origin[2] - from.origin[2]);
+
+    if (distance > NAV_DEFAULT_LINK_RADIUS) {
+      cost += (distance - NAV_DEFAULT_LINK_RADIUS) * NAV_LONG_LINK_COST_SCALE;
+
+      if (this.#isLongLinkWallBlocked(from.origin, to.origin)) {
+        cost += NAV_BLOCKED_LONG_LINK_COST;
+      }
+    }
+
+    if (from.nearLedge) {
+      cost += 96;
+    }
+
+    if (to.nearLedge) {
+      cost += 96;
+    }
+
+    return cost;
+  }
+
+  /**
+   * Whether a 64-wide monster walks between two nodes' large-hull origins. Only one way: on a link without a drop
+   * the walk back is the same steps, up and down swapped. Links longer than 96 units aren't walked for it, which
+   * spares half the build time; long links cost extra and the graph has shorter ones around them.
+   * @returns True when the large monster walks it.
+   */
+  #largeWalks(from: Node, to: Node): boolean {
+    if (from.largeOrigin === null || to.largeOrigin === null) {
+      return false;
+    }
+
+    return this.#evaluateTraversalBetween(from.largeOrigin, to.largeOrigin, NAV_LARGE_MONSTER_BOX, GroundRule.REQUIRE).ok;
+  }
+
+  /**
+   * The flags of a link the walker traverses.
+   * @param drop The floor drops by more than a step somewhere along it.
+   * @param small A monster of the walker's size walks it.
+   * @param large A 64-wide monster walks it too.
+   * @returns The link flags.
+   */
+  static #linkFlags(drop: boolean, small: boolean, large: boolean): number {
+    if (drop) {
+      return LinkFlag.DROP;
+    }
+
+    if (!small) {
+      return 0;
+    }
+
+    return large ? LinkFlag.WALKABLE_SMALL | LinkFlag.WALKABLE_LARGE : LinkFlag.WALKABLE_SMALL;
+  }
+
+  /**
+   * Gathers into every node the flags of the links to and from it.
+   */
+  #gatherLinkFlags(): void {
+    const nodes = this.graph.nodes;
+
+    for (const node of nodes) {
+      node.linkFlags = 0;
+    }
+
+    for (const node of nodes) {
+      for (const link of node.neighbors) {
+        node.linkFlags |= link[3];
+        nodes[link[0]].linkFlags |= link[3];
+      }
+    }
   }
 
   /**
@@ -1610,25 +1764,43 @@ export class Navigation {
       }
 
       const cost = 0; // no cost for teleporters, since traveling is instant
+      // A player-only teleporter ignores monsters, and one with a targetname only teleports once it was fired, which
+      // a monster can't know: monster paths into either end in front of a trigger that does nothing.
+      const monstersUse = ((source.spawnflags ?? 0) & TELEPORT_PLAYER_ONLY) === 0 && !source.targetname;
 
       // insert a new node here to smooth out the path to the teleporter trigger
       const sourceNode = new Node(this.graph.nodes.length, sp);
       sourceNode.availableHeight = source.maxs[2] - source.mins[2];
+      sourceNode.largeOrigin = sp;
       this.graph.nodes.push(sourceNode);
       this.con.DPrint(`Navigation: adding teleporter source node ${sourceNode.id}\n`);
 
       // link the new node to its neighbors
       for (const sourceNodeNeighbor of this.#findNearestNodes(sp, 64)) {
         this.con.DPrint(`Navigation: linking teleporter nodes ${sourceNodeNeighbor.id} --> ${sourceNode.id}\n`);
-        sourceNodeNeighbor.neighbors.push([sourceNode.id, cost, 0]); // one-way link
+        sourceNodeNeighbor.neighbors.push([sourceNode.id, cost, 0, Navigation.#teleporterLinkFlags(sourceNodeNeighbor, monstersUse)]); // one-way link
         // this.graph.edges.push([ sourceNodeNeighbor.id, sourceNode.id, cost ]);
       }
 
       // link the new node to the destination node
       this.con.DPrint(`Navigation: linking teleporter nodes ${sourceNode.id} --> ${destNode.id}\n`);
-      sourceNode.neighbors.push([destNode.id, cost, 0]); // one-way link
+      sourceNode.neighbors.push([destNode.id, cost, 0, Navigation.#teleporterLinkFlags(destNode, monstersUse)]); // one-way link
       // this.graph.edges.push([ sourceNode.id, destNode.id, cost ]);
     }
+  }
+
+  /**
+   * Players use every teleporter. Monsters use one that teleports them, with the hulls the node at the other end of
+   * the link has room for.
+   * @param monstersUse Whether the teleporter takes monsters.
+   * @returns The flags of a link between a teleporter and `node`.
+   */
+  static #teleporterLinkFlags(node: Node, monstersUse: boolean): number {
+    if (!monstersUse) {
+      return 0;
+    }
+
+    return node.largeOrigin !== null ? LinkFlag.WALKABLE_SMALL | LinkFlag.WALKABLE_LARGE : LinkFlag.WALKABLE_SMALL;
   }
 
   #buildDoorLinks(): void {
@@ -1732,6 +1904,49 @@ export class Navigation {
   }
 
   /**
+   * The link flag a hull's path needs on every link, 0 for the player, who takes them all.
+   * @returns The required link flag.
+   */
+  static #requiredLinkFlag(hull: NavigationHull): number {
+    switch (hull) {
+      case NavigationHull.SMALL:
+        return LinkFlag.WALKABLE_SMALL;
+      case NavigationHull.LARGE:
+        return LinkFlag.WALKABLE_LARGE;
+      default:
+        return 0;
+    }
+  }
+
+  /**
+   * Finds the graph node nearest to a position that has a link with the required flag, within 512 units.
+   * @returns The nearest such node, or null.
+   */
+  #findNearestNodeWith(position: Vector, requiredFlag: number): Node | null {
+    if (requiredFlag === 0) {
+      return this.#findNearestNode(position, 512);
+    }
+
+    let best: Node | null = null;
+    let bestDistance = Infinity;
+
+    for (const node of this.#findNearestNodes(position, 512)) {
+      if ((node.linkFlags & requiredFlag) === 0) {
+        continue;
+      }
+
+      const distance = position.distanceTo(node.origin);
+
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = node;
+      }
+    }
+
+    return best;
+  }
+
+  /**
    * Find all graph nodes within maxDist of a world position.
    * Uses the octree when available, falls back to linear scan.
    * @yields Nodes within the requested radius.
@@ -1753,12 +1968,29 @@ export class Navigation {
   }
 
   /**
+   * The smallest hull whose box encloses `box`; without a box, {@link NavigationHull.PLAYER}.
+   * @returns The hull to search paths for.
+   */
+  static hullFor(box: NavigationBox | null): NavigationHull {
+    if (box === null) {
+      return NavigationHull.PLAYER;
+    }
+
+    const fitsWalker = box.mins[0] >= NAV_MONSTER_MINS[0] && box.mins[1] >= NAV_MONSTER_MINS[1]
+      && box.maxs[0] <= NAV_MONSTER_MAXS[0] && box.maxs[1] <= NAV_MONSTER_MAXS[1]
+      && box.maxs[2] - box.mins[2] <= NAV_MONSTER_MAXS[2] - NAV_MONSTER_MINS[2];
+
+    return fitsWalker ? NavigationHull.SMALL : NavigationHull.LARGE;
+  }
+
+  /**
    * Find path between two world positions using A* over the navgraph.
    * Returns an array of Vector positions (node origins) or null if no path.
    * Using this async version will offload the pathfinding to another worker thread and it will not recover during save/load games!
+   * @param hull Which links the path may use, see {@link Navigation#findPath}.
    * @returns A promised path containing the start and goal positions, or null.
    */
-  findPathAsync(startPos: Vector, goalPos: Vector): Promise<Vector[] | null> {
+  findPathAsync(startPos: Vector, goalPos: Vector, hull = NavigationHull.PLAYER): Promise<Vector[] | null> {
     if (!Navigation.nav_enabled!.value) {
       return Promise.resolve(null);
     }
@@ -1768,22 +2000,26 @@ export class Navigation {
 
       this.#requests[id] = resolve;
 
-      eventBus.publish('nav.path.request', id, startPos, goalPos);
+      eventBus.publish('nav.path.request', id, startPos, goalPos, hull);
     });
   }
 
   /**
    * Find path between two world positions using A* over the navgraph.
    * Returns an array of Vector positions (node origins) or null if no path.
+   * A monster hull only takes links a monster of its size walks (no drops) and nodes that have such links; the large
+   * hull's path passes through the nodes' large-hull origins.
+   * @param hull Which links the path may use; {@link NavigationHull.PLAYER} takes every link.
    * @returns A path containing the start and goal positions, or null.
    */
-  findPath(startPos: Vector, goalPos: Vector): Vector[] | null {
+  findPath(startPos: Vector, goalPos: Vector, hull = NavigationHull.PLAYER): Vector[] | null {
     if (!this.graph || !this.graph.nodes || this.graph.nodes.length === 0) {
       return null;
     }
 
-    const startNode = this.#findNearestNode(startPos, 512);
-    const goalNode = this.#findNearestNode(goalPos, 512);
+    const requiredFlag = Navigation.#requiredLinkFlag(hull);
+    const startNode = this.#findNearestNodeWith(startPos, requiredFlag);
+    const goalNode = this.#findNearestNodeWith(goalPos, requiredFlag);
 
     if (!startNode || !goalNode) {
       this.con.DPrint('Navigation: no start or goal node found\n');
@@ -1811,7 +2047,8 @@ export class Navigation {
         let cur = currentId;
 
         while (cur !== -1) {
-          path.push(this.graph.nodes[cur].origin.copy());
+          const node = this.graph.nodes[cur];
+          path.push((hull === NavigationHull.LARGE ? node.largeOrigin ?? node.origin : node.origin).copy());
           cur = cameFrom[cur];
         }
 
@@ -1824,6 +2061,10 @@ export class Navigation {
       const currentG = gScore[currentId];
 
       for (const nb of this.graph.nodes[currentId].neighbors) {
+        if (requiredFlag !== 0 && (nb[3] & requiredFlag) === 0) {
+          continue;
+        }
+
         const nbId = nb[0];
         const tentativeG = currentG + nb[1] + nb[2];
 
@@ -1961,6 +2202,7 @@ export class Navigation {
     this.#extractWalkableSurfaces();
     this.#buildNavigationGraph();
     this.#buildSpecialConnections();
+    this.#gatherLinkFlags();
     this.#buildOctree();
 
     this.con.DPrint(`Navigation: node graph built with ${this.graph.nodes.length} nodes.\n`);

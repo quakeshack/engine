@@ -2,8 +2,8 @@
 
 ## Status
 
-🚧 Phases 1 and 2 done (2026-11-10); Phase 4 recommended next (see What shipped in Phase 2). All decisions made with the developer on 2026-11-10. Corner sticking
-was measured before any code changed (see "Measured" below).
+🚧 Phases 1, 2 and 4 done (2026-11-10); Phase 3 and Phase 5 (doors, added 2026-11-10) open. Decisions 1–7 made with the developer on
+2026-11-10; Phase 5 has open questions. Corner sticking was measured before any code changed (see "Measured" below).
 
 ## Context
 
@@ -170,7 +170,8 @@ all (6000 sampled links per map, walked in 8-unit `movestep`s):
 
 - Flying and swimming monsters (the graph is for walkers).
 - Monsters stepping off ledges, and the `NavigateAsync` option a mod would use for it (decision 7).
-- Movers, doors and switches as path conditions (`plans/nav-dynamic-mover-awareness.md`).
+- Movers and switches as path conditions, monsters riding lifts or pressing buttons (`plans/nav-dynamic-mover-awareness.md`).
+  Doors that cut monster links while closed are Phase 5, the first slice of that plan.
 - Group tactics: flanking, spreading out, several monsters coordinating a route.
 - Changing how monsters *notice* the player (`findTarget`, sight entity). That is QC and stays QC.
 - Path smoothing (no skipping waypoints, no string pulling, no splines): measured, it adds nothing to arrivals.
@@ -269,6 +270,45 @@ when a monster of that hull can walk it with the movement rules monsters use.
   build time on e1m1 before and after; if it more than doubles, links longer than 64 units are walked
   only when their straight sweep isn't clear.
 
+### E. Doors cut links while closed (Phase 5)
+
+Every doorway is linked as if its door were open: the builder traces the static world only, and a door is a brush
+entity. In id1 a plain door spawns a trigger field that opens it for any living actor, monsters included
+(`TriggerFieldEntity.touch`, as in QuakeC), so monsters walk through those, after a short wait. Doors without a
+trigger field (`Doors.ts`: shootable doors, doors with a `targetname`, key doors) open only when shot, fired, or
+touched by a player with the key; the door's own `touch` is player-only. A monster routed through one of those while
+it is closed walks into it, gets stuck, replans, and gets the same path again. For a player (`hellwave`'s hints) a
+shootable or plain door is passable, a key door only with the key, a fired door only once fired.
+
+This is the gating part (phase 3) of `plans/nav-dynamic-mover-awareness.md`, cut down to doors that stay where they
+are: no rest-state sampling, no activation edges, no monsters pressing buttons or riding lifts.
+
+- **Build: which links a door cuts.** For each door, the builder sweeps the hull boxes along every link near the
+  door's closed position against the door's own brush model (`ServerCollision` traces a single entity's model), and
+  records the links it blocks. The worker can't trace, so the records go into the `.nav` file, keyed by the door's
+  model name (`*12`, stable for one map build): format v5.
+- **Which entities are doors** is game knowledge. The mover plan replaces `#buildDoorLinks`'s `func_door` match with
+  structural detection (`MOVETYPE_PUSH` and `SOLID_BSP`) plus a game-side marker; Phase 5 needs at least the
+  structural part, so it takes that cleanup on.
+- **Runtime: the game reports, the engine relays.** The game tells the engine whether a door blocks monsters and
+  whether it blocks players (`ServerEngineAPI`, open question 1). The server thread publishes the change to the worker
+  (a new event, `docs/events.md`), which sets or clears a blocked bit on that door's links; the flags byte from
+  Phase 4 has bits free (`BLOCKED_MONSTERS`, `BLOCKED_PLAYERS`), and A* already checks the flags of every link.
+- **On `nav.load`** (map start, a loaded game) the server thread sends every door's current state, so the worker
+  never searches with stale doors.
+- **`ChaseNavigator`** replans when a door on its current path closes, instead of waiting for its stuck timer.
+
+Open questions for the developer:
+
+1. **How the game reports door state**: a call per change (`SetNavigationBlocked(edict, monsters, players)`), or a
+   marker interface the engine polls on `relinkEdict` (the mover plan's `NavGate.isNavTraversable()`)?
+   Recommendation: the call, from the door's own state changes (closed, opening, open, locked); the engine stays
+   game-agnostic and needs no polling.
+2. **Partly open doors** (opening or closing): blocked or not? Recommendation: blocked until fully open, as a
+   monster that arrives early waits at the door anyway. Plain doors a monster opens itself are never blocked for it.
+3. **Rotating doors and secret doors** (`func_door_rotating`, `func_door_secret` in mods): swept the same way at
+   their closed position? Recommendation: yes, anything the game reports as a door.
+
 ## Phasing
 
 Each phase ships on its own and leaves tests and lint green.
@@ -284,6 +324,9 @@ Each phase ships on its own and leaves tests and lint green.
    link walking with shared movement rules, format v4, the API option, regenerated meshes, and
    `ChaseNavigator` passing its size. After Phase 2 this phase fixes
    the most stranded monsters (the tables above), so it may be worth doing before Phase 3.
+5. **Phase 5, doors cut links while closed (E).** Added with the developer on 2026-11-10 after Phase 4. Measure first
+   (links per door on e1m1–e1m7, build time), then link-to-door records in the `.nav` file, the state event to the
+   worker, the game reporting door state, and `ChaseNavigator` replanning when a door on its path closes.
 
 ## Documentation
 
@@ -387,3 +430,52 @@ None. Decisions 1–7 are recorded under Context.
 - Docs: id1 `README.md` (feature bullet, helper table, file tree), JSDoc on `ChaseNavigator`, `GameAI`.
 - Not verified in a running game: the playtests in "Testing" are the developer's.
 
+### What actually shipped in Phase 4
+
+- Measured first, on e1m1 (4,460 nodes, 179,507 links): the 64-wide box starts in solid at 47.8% of node origins, so
+  nodes needed large-hull origins (design D's open measurement). Walking every link with `movestep` for one hull costs
+  about as much as the whole build (71–114 s against 80 s).
+- `GroundSupport.check` (`source/engine/server/physics/GroundSupport.ts`, new) is QuakeC's `checkBottom` against a
+  `GroundProbe`; `ServerMovement.checkBottom` probes the live world through it, the builder the static world
+  (`Navigation.#hasGroundSupport` was a copy). The builder's existing 8-unit walk (`#evaluateTraversalBetween`) is
+  `movestep`'s step already, so the small hull didn't need a second walk: the walk now also checks `GroundSupport`
+  at every step and notes drops taller than a step.
+- Every node gets a `largeOrigin`: its origin, or the nearest spot up to 16 units away on the plane where the 64-wide
+  box stands with ground under it; 3,863 of 4,460 on e1m1.
+- Links carry flags: `DROP`, `WALKABLE_SMALL`, `WALKABLE_LARGE`. `NAV_FILE_VERSION` 4 adds the flags byte per link and
+  the large-hull origin per node. The 11 meshes in git were regenerated (`nav_build_process 1`); the 28 other local
+  meshes rebuild on first load.
+- `findPath`/`findPathAsync` take a `NavigationHull` (`PLAYER`, `SMALL`, `LARGE`); `nav.path.request` got it as a fourth
+  argument. `NavigateAsync(start, end, box?)` and `Navigate` take an optional `{ mins, maxs }` (`Navigation.hullFor`
+  picks the smallest enclosing hull); without one it is the player's path, so `hellwave`'s hints didn't change.
+  `ChaseNavigator` passes its monster's box. Start and goal nodes for a monster hull are the nearest ones with a link
+  of that hull.
+- Deviations from the design:
+  - **Build time**: walking everything as designed took 275 s on e1m1 (3.4×). Three cuts brought it to 117 s
+    (1.47× of 80 s, under the 2× limit): the ground along a link is checked once per node pair (the walk back reuses
+    it when the first walk had no drop), the large hull is walked once per pair (without a drop, the way back is
+    the same steps), and only on links up to 96 units (longer links cost extra and run beside shorter ones; that
+    halved the large walks). On the dedicated server the 11 maps built in 49–193 s.
+  - **Teleporters**: monster paths skip player-only teleporters (spawnflag 1) and teleporters with a `targetname`
+    (they work only once fired). The developer found monsters walking into e1m2's player-only teleporters around
+    (−390, 258, 320); the graph had linked every `trigger_teleport` for everyone since before this plan.
+- Results (`HULL_PATHS=1 POLICIES=phase2`, 300 random node pairs; each monster asks for its own hull):
+
+| map | small: no path | small arrive (ChaseNavigator) | large: no path | large arrive (ChaseNavigator) |
+|---|---|---|---|---|
+| e1m1 | 183 of 300 | 98.3% (was 38.3% over all player paths) | 213 of 300 | 88.7% (was 27.8%) |
+| e1m3 | 56 of 300 | 89.3% (was 66–68%) | 159 of 300 | 95.3% |
+
+  "No path" is honest: on e1m1 the node groups that split for monsters are joined only by drop links, all one way
+  (the ledges around (320–640, 1920–3008) and the drops to z −384), and Quake monsters never step off a ledge. Those
+  pairs used to get a path and strand the monster at the edge. Even players' paths don't connect whole maps (e1m1's
+  largest strongly connected part is 62% of the nodes), since lifts and doors aren't in the graph.
+- Tests (`test/physics/navigation.test.ts`): a world of solid boxes traced exactly; a 48-wide corridor the small hull
+  takes and the large hull goes around, large-hull waypoints where the box stands, a 24-wide gap players cross and
+  monsters don't, a drop monsters don't take, teleporters (normal, player-only, fired), `hullFor`. The `.nav` reader
+  in the tests reads v4 and checks it ends at the end of the file. `chase-navigator.test.ts`: the request carries the
+  monster's box.
+- Docs: `docs/navigation.md` (new: graph, flags, hulls, paths, worker, `.nav` files and regeneration, cvars), the
+  `nav.path.request` row in `docs/events.md`, `docs/README.md`, id1 `README.md`.
+- Not verified in a running game beyond the developer's e1m2 report. `data/id1/Makefile` still calls
+  `../../dedicated.mjs`, which no longer exists (the bundle is `dist/dedicated/dedicated.mjs`); it is gitignored.

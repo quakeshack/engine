@@ -2,7 +2,10 @@
 
 ## Status
 
-🧭 Planning — not started. Written after an assessment of the existing `Navigation.ts`/`AI.ts`/
+🧭 Planning — not started. Doors that cut links while closed (part of phase 3 "Gating", and the structural detection
+of phase 1) are scheduled as Phase 5 of `plans/monster-chase-navigation.md` (2026-11-10); since then links carry a flags
+byte with free bits (`.nav` v4), and players do consult the graph (`hellwave`'s hints), unlike "Player pathing is
+untouched" below assumes. Written after an assessment of the existing `Navigation.ts`/`AI.ts`/
 `Subs.ts` architecture (requested to determine feasibility of monster-aware moving platforms),
 extended into a design after follow-up discussion about switch-gated doors and platform waiting.
 

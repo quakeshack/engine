@@ -117,7 +117,7 @@ Those events are only fired by the server-side navigation subsystem (`Navigation
 | Event | Arguments | Description |
 | - | - | - |
 | nav.load | 1. map name, 2. worldmodel checksum | Navigation finished initializing for the current map. |
-| nav.path.request | 1. request id, 2. start position (Vector), 3. goal position (Vector) | A pathfinding request was dispatched to the navigation worker; the worker resolves the matching promise via `id`. |
+| nav.path.request | 1. request id, 2. start position (Vector), 3. goal position (Vector), 4. hull (`NavigationHull`: 0 player, 1 small monster, 2 large monster) | A pathfinding request was dispatched to the navigation worker; the worker resolves the matching promise via `id`. The hull decides which links the path may use (`docs/navigation.md`). |
 | nav.debug.emit-dot.temporarily | 1. position (Vector), 2. color, 3. ttl (seconds) | Navigation debug visualization requested a debug dot that should be cleared after `ttl` seconds. |
 | nav.debug.emit-dot.permanently | 1. position (Vector), 2. color | Same as `nav.debug.emit-dot.temporarily`, but the dot should persist indefinitely. |
 | nav.path.response | 1. request id, 2. path (array of points, or `null` when there is none) | The navigation worker answered a `nav.path.request`. |
