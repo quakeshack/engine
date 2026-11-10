@@ -22,6 +22,9 @@ export function createInertEdict(): ServerEdict {
     equals(other: unknown) {
       return this === other;
     },
+    isFree() {
+      return false;
+    },
     freeEdict() {},
     setOrigin() {},
     setModel() {},

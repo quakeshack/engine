@@ -2,7 +2,7 @@
 
 ## Status
 
-🚧 Phase 1 done (2026-11-10), Phase 2 next. All decisions made with the developer on 2026-11-10. Corner sticking
+🚧 Phases 1 and 2 done (2026-11-10); Phase 4 recommended next (see What shipped in Phase 2). All decisions made with the developer on 2026-11-10. Corner sticking
 was measured before any code changed (see "Measured" below).
 
 ## Context
@@ -135,7 +135,8 @@ all (6000 sampled links per map, walked in 8-unit `movestep`s):
 1. **Destination: own memory plus the hive mind.** Each monster remembers where it last saw *its own*
    enemy and paths there. The shared point is written for player targets only. It seeds a monster
    that never saw its enemy itself (woken by another monster, `hunt()`, `use()`).
-2. **A visible enemy is charged directly, with the path as fallback.** Like QC, a monster charges
+2. **A visible enemy is charged directly, with the path as fallback.** Narrowed in Phase 2 by measurement: only
+   within 256 units (see What shipped in Phase 2). Like QC, a monster charges
    straight at an enemy it can see. It uses the path when the enemy is on another level (height
    difference) or when charging made no progress for about a second.
 3. **Steering is fixed in the engine.** `moveToGoal` with a target point first steps straight toward
@@ -343,4 +344,46 @@ None. Decisions 1–7 are recorded under Context.
   matches the measured "aim" policy frame for frame on e1m1–e1m3, so the "Measured" tables are Phase 1's numbers.
 - In the game, id1 still counts a waypoint as reached within 45 units on the XY plane until Phase 2. Measured with
   the shipped steering, that costs little: e1m1 small monsters 98.9% instead of 100%, ogres 68% instead of 72%.
+
+### What actually shipped in Phase 2
+
+- `ChaseNavigator` (`source/game/id1/helper/ChaseNavigator.ts`, new), a serialized component of `QuakeEntityAI`:
+  `remember(origin)`, `reset()`, `steer(enemy, visible)`, as designed in B: one counted request at a time, tagged,
+  answers dropped when stale, after an enemy change or a death; at most one request a second plus up to 0.3 s of
+  stagger; replans when the enemy changed, the remembered position moved more than 64 units from where the path
+  leads, the path ran out short of it, or the monster is stuck; a waypoint is reached within 24 units on the plane
+  and 48 vertically; a stuck waypoint is skipped when the new path starts with it again; no path → ask again in 3 s.
+  `thinkNavigation`, `_oldKnownOrigin`, `_path` and `EnemyMetadata`'s path fields are gone (the dead freed-enemy
+  check stays as `_dropFreedEnemy`); the commented-out `EvaluateTraversalBetween` call is gone too.
+- Deviations from the design, each measured with `scripts/simulate-monster-chase.mts`, which got a policy that drives
+  the real `ChaseNavigator` (async frames, requests answered by `findPath`, an enemy that counts as visible when a
+  line from the monster's eyes reaches it):
+  - **Charging aims at the enemy's position** (`moveToGoal` with the enemy as target) instead of QuakeC's chase:
+    with QuakeC's chase, 8% of e1m1 knights stalled for 2 s or more while charging (they got loose later); aimed,
+    none did.
+  - **Charging only within 256 units** (`CHARGE_DISTANCE`), which narrows decision 2. Charging at any distance
+    stranded up to 7% more knights than following the path (e1m5 95.6%, e1m6 96.8%, e1m7 92.4% against 100%, 100%
+    and 99.4%): a straight line
+    that looks clear over a long distance runs into ledges and gaps, and after the 3 s on the path the monster
+    charged into them again. Measured on e1m3/e1m5/e1m6/e1m7: never charging 98.4/100/100/99.4%, charging within
+    256 units 98.4/100/100/98.8%, within 256 plus only on the same step height and staying on the path until it ends
+    no better. Closer than 96 units `steer` leaves the chase to QuakeC's `movetogoal`, which stops when close enough.
+  - **Stuck means no headway**: how far the monster moved toward its target since it last made 8 units of it, not
+    whether the distance shrank, so an enemy running away doesn't count against the monster. A gap of more than
+    0.5 s between run frames (an attack, a pain animation) restarts the timer.
+  - **The hive-mind point is written only when a monster sees a player**: on run frames with the player in view,
+    and when `findTarget` spots the player itself. `foundTarget` no longer writes it (that is how infighting
+    redirected every chaser), and `use()` doesn't either.
+  - **Memory is seeded in `foundTarget`** with the target's position (seen, hurt by it, sent after it by `hunt()`
+    or `use()`); only a monster woken by another one, that can't see the player, takes the hive-mind point.
+- Results on drop-free paths that fit the hull, knights (before Phase 1 → Phase 1 → Phase 2): e1m1 95.3 → 100 →
+  100%, e1m2 97.1 → 100 → 100%, e1m3 93.5 → 97.6 → 98.4%, e1m4 98.0 → 100 → 100%, e1m5 95.6 → 100 → 100%,
+  e1m6 100 → 100 → 100%, e1m7 98.8 → 99.4 → 98.8%. Over all random paths drops still cap e1m1 at 37% and e1m3 at
+  68%, which is why Phase 4 (walkable links, no drops) should come before Phase 3.
+- Tests: `source/game/id1/test/helper/chase-navigator.test.ts` (new: charging close and far, a floor up, waypoints
+  reached and not, stale answers, the request throttle, stuck replans and skipping, headway against a fleeing enemy,
+  pauses, flyers, the saved fields and a save/load round trip), `ai.test.ts` (infighting leaves the hive-mind point
+  alone; a monster woken by another heads where the player was last seen). `createInertEdict` answers `isFree()`.
+- Docs: id1 `README.md` (feature bullet, helper table, file tree), JSDoc on `ChaseNavigator`, `GameAI`.
+- Not verified in a running game: the playtests in "Testing" are the developer's.
 

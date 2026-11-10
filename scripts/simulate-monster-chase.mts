@@ -10,6 +10,8 @@
  * (`movestep`, `stepDirection`, `newChaseDir`) against world collision only: no other entities, no doors. Every steering
  * policy walks the same trials with the same random sequence, so the numbers compare policies, not luck.
  *
+ * POLICIES=phase2 runs only the steering before Phase 1, Phase 1's moveToGoal and Phase 2's ChaseNavigator.
+ *
  * Environment switches: WALKABLE_ONLY=1 keeps paths without a drop or climb taller than a step between waypoints,
  * HULL_FIT=1 keeps paths each hull can sweep through, DROP_LINKS=exclude removes ledge links from the graph first,
  * SHOW_FAILURES=<policy name> lists where that policy failed on level segments.
@@ -31,6 +33,10 @@ import type { CollisionModelSource } from '../source/engine/server/physics/Serve
 import { createMockEdict, createMockEntity, type MockEntity } from '../test/support/fixtures.ts';
 import { createModelLoadContext, createSilentConsole } from '../test/support/modelContext.ts';
 import { createCvarStub } from '../test/support/cvarStub.ts';
+import '../source/game/id1/GameAPI.ts';
+import { ChaseNavigator } from '../source/game/id1/helper/ChaseNavigator.ts';
+import type BaseEntity from '../source/game/id1/entity/BaseEntity.ts';
+import type BaseMonster from '../source/game/id1/entity/monster/BaseMonster.ts';
 import { EntityHulls } from '../source/engine/common/collision/EntityHulls.ts';
 
 const DATA = new URL('../data/id1/', import.meta.url);
@@ -126,12 +132,14 @@ interface Trial {
   index: number;
   /** Policy-owned memory between frames. */
   readonly memory: Record<string, number>;
+  /** Game time, turned 0.1 s a frame. */
+  readonly clock: { time: number };
 }
 
 /** A steering policy: one AI frame of a monster that follows `trial.path`. */
 interface Policy {
   readonly name: string;
-  frame(trial: Trial, dist: number): void;
+  frame(trial: Trial, dist: number): void | Promise<void>;
 }
 
 /**
@@ -229,7 +237,7 @@ const AIM_REPLAN: Policy = {
       memory.best = Infinity;
       memory.idle = 0;
     }
-    AIM.frame(trial, dist);
+    return AIM.frame(trial, dist);
   },
 };
 
@@ -282,9 +290,47 @@ const AIM_DROP: Policy = {
   },
 };
 
+/**
+ * The game's own `ChaseNavigator` (Phase 2) chasing an enemy that stands at the end of the path: it asks for its own
+ * paths, charges the enemy when a line from the monster's eyes reaches it on its level, and replans when stuck.
+ */
+const CHASE_NAVIGATOR: Policy = {
+  name: 'ChaseNavigator (Phase 2)',
+  async frame(trial, dist) {
+    const goal = trial.path[trial.path.length - 1];
+    const enemy = { origin: goal } as unknown as BaseEntity;
+    let navigator = navigators.get(trial);
+    if (navigator === undefined) {
+      navigator = new ChaseNavigator(trial.entity as unknown as BaseMonster);
+      navigator.reset();
+      navigator.remember(goal);
+      navigators.set(trial, navigator);
+    }
+
+    const eye = trial.entity.origin.copy();
+    eye[2] += 25;
+    const target = goal.copy();
+    target[2] += 22;
+    const visible = trial.world.collision.move(eye, Vector.origin, Vector.origin, target, moveTypes.MOVE_NOMONSTERS, trial.edict).fraction === 1.0;
+    if (visible) {
+      navigator.remember(goal);
+    }
+
+    const waypoint = navigator.steer(enemy, visible);
+    trial.world.movement.moveToGoal(trial.edict, dist, waypoint);
+    // let a path request's answer arrive before the next frame, as the worker's answer would within a frame or two
+    await Promise.resolve();
+    await Promise.resolve();
+  },
+};
+
+const navigators = new WeakMap<Trial, ChaseNavigator>();
+
+const STUCK_FRAMES = Number(process.env.STUCK_FRAMES ?? '20');
+
 // Also tried on e1m1–e1m7 (2026-11-10): skipping waypoints already passed, and sliding along the wall that blocks a step.
 // Neither changed arrivals measurably over AIM, see plans/monster-chase-navigation.md.
-const POLICIES: Policy[] = [BEFORE, AIM, MOVE_TO_GOAL, AIM_REPLAN, AIM_DROP];
+const POLICIES: Policy[] = process.env.POLICIES === 'phase2' ? [BEFORE, MOVE_TO_GOAL, CHASE_NAVIGATOR] : [BEFORE, AIM, MOVE_TO_GOAL, AIM_REPLAN, AIM_DROP, CHASE_NAVIGATOR];
 
 /**
  * A small seeded random generator (mulberry32), so every policy sees the same sequence.
@@ -315,7 +361,7 @@ interface Outcome {
  * Walks one monster along one path with one policy.
  * @returns How it ended.
  */
-function walk(world: World, policy: Policy, sharedPath: Vector[], hull: [Vector, Vector], speeds: number[], seed: number): Outcome {
+async function walk(world: World, policy: Policy, sharedPath: Vector[], hull: [Vector, Vector], speeds: number[], seed: number): Promise<Outcome> {
   Math.random = seededRandom(seed);
   const path = sharedPath.map((point) => point.copy());
   const entity = createMockEntity({ origin: path[0].copy(), mins: hull[0], maxs: hull[1], flagsValue: flags.FL_ONGROUND }) as Walker;
@@ -326,7 +372,15 @@ function walk(world: World, policy: Policy, sharedPath: Vector[], hull: [Vector,
   entity.ideal_yaw = yawTo(path[0], path[path.length - 1]);
   entity.angles = new Vector(0, entity.ideal_yaw, 0);
   const edict = createMockEdict(entity) as unknown as ServerEdict;
-  const trial: Trial = { world, edict, entity, path, index: 1, memory: {} };
+  const clock = { time: 10.0 };
+  // ChaseNavigator reads the game's time, its engine's NavigateAsync, and whether the monster is still alive
+  Object.assign(entity, {
+    game: clock,
+    engine: { NavigateAsync: (start: Vector, goal: Vector) => Promise.resolve(world.navigation.findPath(start, goal)) },
+    edict,
+    health: 100,
+  });
+  const trial: Trial = { world, edict, entity, path, index: 1, memory: {}, clock };
 
   let pathLength = 0;
   for (let i = 1; i < path.length; i++) {
@@ -344,15 +398,16 @@ function walk(world: World, policy: Policy, sharedPath: Vector[], hull: [Vector,
     }
 
     const before = entity.origin.copy();
-    policy.frame(trial, speeds[frame % speeds.length]);
+    await policy.frame(trial, speeds[frame % speeds.length]);
+    trial.clock.time += 0.1;
     trial.index = Math.min(trial.index, path.length - 1);
     if (before.distanceTo(entity.origin) < 0.5) {
       frozenFrames++;
     }
 
     history.push(entity.origin.copy());
-    // two seconds of AI frames without getting 16 units anywhere is stuck
-    if (history.length > 20 && history[history.length - 21].distanceTo(entity.origin) < 16) {
+    // STUCK_FRAMES AI frames (20, two seconds) without getting 16 units anywhere is stuck
+    if (history.length > STUCK_FRAMES && history[history.length - STUCK_FRAMES - 1].distanceTo(entity.origin) < 16) {
       return { result: 'stuck', frames: frame, frozenFrames, where: entity.origin.copy(), waypoint: path[trial.index], previousWaypoint: path[trial.index - 1] ?? null };
     }
   }
@@ -504,8 +559,8 @@ for (const monster of MONSTERS) {
     let frames = 0;
     let frozen = 0;
     const failures: Outcome[] = [];
-    usable.forEach((path, i) => {
-      const outcome = walk(world, policy, path, monster.hull, monster.speeds, 1000 + i);
+    for (const [i, path] of usable.entries()) {
+      const outcome = await walk(world, policy, path, monster.hull, monster.speeds, 1000 + i);
       counts[outcome.result]++;
       frames += outcome.frames;
       frozen += outcome.frozenFrames;
@@ -513,7 +568,7 @@ for (const monster of MONSTERS) {
         failures.push(outcome);
         kinds[segmentKind(outcome)]++;
       }
-    });
+    }
     Math.random = originalRandom;
     const percent = (value: number): string => `${(100 * value / usable.length).toFixed(1)}%`.padStart(6);
     console.log(`  ${policy.name.padEnd(36)} arrived ${percent(counts.arrived)}  stuck ${percent(counts.stuck)}  timeout ${percent(counts.timeout)}  frames ${String(frames).padStart(7)}  frozen ${(100 * frozen / Math.max(frames, 1)).toFixed(1)}%  failed on drop ${percent(kinds.drop)} climb ${percent(kinds.climb)} flat ${percent(kinds.flat)}`);
