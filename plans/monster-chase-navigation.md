@@ -2,7 +2,7 @@
 
 ## Status
 
-🚧 Phases 1, 2, 4 and 5 done (2026-11-10); Phase 3 open. Decisions 1–10 made
+🚧 Phases 1, 2, 4 and 5 done (2026-11-10), smoke-tested by the developer in a running game (2026-11-11); Phase 3 open. Decisions 1–10 made
 with the developer on 2026-11-10. Corner sticking was measured before any code changed (see "Measured" below).
 
 ## Context
@@ -427,7 +427,7 @@ None. Decisions 1–7 are recorded under Context, 8–10 under design E.
   pauses, flyers, the saved fields and a save/load round trip), `ai.test.ts` (infighting leaves the hive-mind point
   alone; a monster woken by another heads where the player was last seen). `createInertEdict` answers `isFree()`.
 - Docs: id1 `README.md` (feature bullet, helper table, file tree), JSDoc on `ChaseNavigator`, `GameAI`.
-- Not verified in a running game: the playtests in "Testing" are the developer's.
+- Smoke-tested by the developer in a running game on 2026-11-11, together with Phases 4 and 5: looks good.
 
 ### What actually shipped in Phase 4
 
@@ -476,7 +476,8 @@ None. Decisions 1–7 are recorded under Context, 8–10 under design E.
   monster's box.
 - Docs: `docs/navigation.md` (new: graph, flags, hulls, paths, worker, `.nav` files and regeneration, cvars), the
   `nav.path.request` row in `docs/events.md`, `docs/README.md`, id1 `README.md`.
-- Not verified in a running game beyond the developer's e1m2 report. `data/id1/Makefile` still calls
+- The developer's e1m2 report (monsters walking into player-only teleporters) led to the teleporter fix; smoke-tested
+  in a running game on 2026-11-11, with Phase 5. `data/id1/Makefile` still calls
   `../../dedicated.mjs`, which no longer exists (the bundle is `dist/dedicated/dedicated.mjs`); it is gitignored.
 
 ### What actually shipped in Phase 5
@@ -512,4 +513,11 @@ None. Decisions 1–7 are recorded under Context, 8–10 under design E.
   shootable, `START_OPEN`, restored and secret doors report the right blocks; a closing door bumps the change time),
   `chase-navigator.test.ts` (a door change replans). Each was checked to fail with its fix reverted.
 - Docs: `docs/navigation.md` (movers, `SetNavigationBlocked`, v5), `docs/events.md`, id1 `README.md`.
-- Not verified in a running game.
+- Smoke-tested by the developer in a running game on 2026-11-11: looks good.
+
+### Next
+
+- Phase 3 (reachable start and goal nodes, design C), engine-only.
+- The 28 meshes not in git (e2–e4, dm3, the Hellwave maps) are older formats and rebuild on first load.
+- Plats and trains are recorded in the meshes but nothing reports them: the next slice of
+  `plans/nav-dynamic-mover-awareness.md`.
