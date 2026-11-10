@@ -121,6 +121,7 @@ Those events are only fired by the server-side navigation subsystem (`Navigation
 | nav.debug.emit-dot.temporarily | 1. position (Vector), 2. color, 3. ttl (seconds) | Navigation debug visualization requested a debug dot that should be cleared after `ttl` seconds. |
 | nav.debug.emit-dot.permanently | 1. position (Vector), 2. color | Same as `nav.debug.emit-dot.temporarily`, but the dot should persist indefinitely. |
 | nav.path.response | 1. request id, 2. path (array of points, or `null` when there is none) | The navigation worker answered a `nav.path.request`. |
+| nav.mover.blocked | 1. model name (`*12`), 2. blocks walking monsters, 3. blocks players | A game reported whom a mover (a door) blocks while it stands where the map draws it (`ServerEngineAPI.SetNavigationBlocked`). The server thread passes it to the navigation worker, which leaves the mover's links out of matching paths; it sends every state again after each `nav.load`. |
 | nav.build | | The navigation worker found the stored mesh out of date (another file version, map build or walker size). The server thread rebuilds it once per map (`Navigation.rebuildOutdated`), keeps it as a generated file and publishes `nav.load` again. |
 
 ### Workers

@@ -903,7 +903,6 @@ void describe('ServerPhysics', () => {
           num_edicts: 3,
           edicts: [worldEdict, pusherEdict, riderEdict],
           worldmodel: worldModel,
-          navigation: { relinkEdict() {} },
           gameCapabilities: [gameCapabilities.CAP_ENTITY_BBOX_ADJUSTMENTS_DURING_LINK],
           gameAPI: { time: 0 },
         },

@@ -34,3 +34,7 @@ eventBus.subscribe('nav.path.request', (id: string, start: EventPosition, end: E
 
   WorkerFramework.Publish('nav.path.response', id, path);
 });
+
+eventBus.subscribe('nav.mover.blocked', (model: string, monsters: boolean, players: boolean) => {
+  navigation.applyMoverBlocked(model, monsters, players);
+});

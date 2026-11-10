@@ -3,6 +3,7 @@ import { describe, test, before, mock } from 'node:test';
 import { readFileSync } from 'node:fs';
 
 import Vector from '../../source/shared/Vector.ts';
+import { moveType, solid } from '../../source/shared/Defs.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { Navigation, NavigationHull, NavMeshOutOfDateException } from '../../source/engine/server/Navigation.ts';
@@ -217,11 +218,6 @@ function readNavSurfaceCounts(data: Uint8Array): {nodeCount: number, surfaceCoun
   readFloat32();
   readFloat32();
 
-  const relinkCount = readUint32();
-  for (let i = 0; i < relinkCount; i++) {
-    readUint32();
-  }
-
   const nodeCount = readUint32();
   const surfaceCounts = [];
 
@@ -269,6 +265,17 @@ function readNavSurfaceCounts(data: Uint8Array): {nodeCount: number, surfaceCoun
       readFloat32();
       readFloat32();
       readUint8();
+    }
+  }
+
+  // the links each mover cuts: model name, then node id and link index per link
+  const moverCount = readUint32();
+  for (let moverIndex = 0; moverIndex < moverCount; moverIndex++) {
+    readBytes(readUint16());
+    const linkCount = readUint32();
+    for (let linkIndex = 0; linkIndex < linkCount; linkIndex++) {
+      readUint32();
+      readUint16();
     }
   }
 
@@ -1446,7 +1453,7 @@ function createFloorWorldModel(floors: readonly FloorRectangle[]): BrushModel {
   return { checksum: 4242, planes: [{ normal: new Vector(0, 0, 1) }], faces, surfedges, edges, vertexes } as unknown as BrushModel;
 }
 
-/** The members of an entity the navigation builder reads: teleporters, their destinations and doors. */
+/** The members of an entity the navigation builder reads: teleporters, their destinations and movers. */
 interface BoxWorldEntity {
   readonly classname: string;
   readonly centerPoint: Vector;
@@ -1455,14 +1462,28 @@ interface BoxWorldEntity {
   readonly target?: string;
   readonly targetname?: string;
   readonly spawnflags?: number;
+  readonly movetype?: number;
+  readonly solid?: number;
+  readonly model?: string;
+  readonly modelindex?: number;
+}
+
+/** What else a box world has besides its solids and floors. */
+interface BoxWorldOptions {
+  /** What `FindAllByFieldAndValue` finds while the graph is built. */
+  readonly entities?: readonly BoxWorldEntity[];
+  /** The solids of each mover's model by model index, where the map draws it. */
+  readonly moverSolids?: Readonly<Record<number, readonly Solid[]>>;
+  /** Receives the saved `.nav` file. */
+  readonly savedFiles?: Uint8Array[];
 }
 
 /**
  * Builds the navigation graph of a world of solid boxes.
- * @param entities What `FindAllByFieldAndValue` finds while the graph is built.
  * @returns The navigation with its graph.
  */
-async function buildBoxWorldNavigation(solids: readonly Solid[], floors: readonly FloorRectangle[], entities: readonly BoxWorldEntity[] = []): Promise<Navigation> {
+async function buildBoxWorldNavigation(solids: readonly Solid[], floors: readonly FloorRectangle[], options: BoxWorldOptions = {}): Promise<Navigation> {
+  const { entities = [], moverSolids = {}, savedFiles = [] } = options;
   const worldmodel = createFloorWorldModel(floors);
   const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
@@ -1475,10 +1496,21 @@ async function buildBoxWorldNavigation(solids: readonly Solid[], floors: readonl
   const contents = (point: Vector): number => (solids.some((solid) => insideGrownSolid(point, solid, Vector.origin, Vector.origin)) ? -2 : 0);
 
   await withNavigationRegistry({
-    COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
+    COM: {
+      WriteGeneratedFile(_filename: string, bytes: Uint8Array) {
+        savedFiles.push(bytes);
+        return Promise.resolve(true);
+      },
+    },
     Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
     SV: {
-      collision: { traceStaticWorld: trace, move: trace, pointContents: contents, staticWorldContents: contents },
+      collision: {
+        traceStaticWorld: trace,
+        move: trace,
+        pointContents: contents,
+        staticWorldContents: contents,
+        traceModelAtRest: (modelIndex: number, start: Vector, mins: Vector, maxs: Vector, end: Vector): BoxWorldTrace => traceBoxWorld(moverSolids[modelIndex] ?? [], start, mins, maxs, end),
+      },
       server: { mapname: 'box-world-test', worldmodel, num_edicts: 0, edicts: [] },
       engineAPI: {
         FindAllByFieldAndValue: (field: keyof BoxWorldEntity, value: string) => entities
@@ -1589,7 +1621,7 @@ void describe('Navigation.findPath (teleporters)', () => {
    * @returns The navigation with its graph.
    */
   function buildWithTeleporter(spawnflags: number, targetname?: string): Promise<Navigation> {
-    return buildBoxWorldNavigation(TWO_ROOMS, TWO_ROOM_FLOORS, [
+    return buildBoxWorldNavigation(TWO_ROOMS, TWO_ROOM_FLOORS, { entities: [
       {
         classname: 'trigger_teleport',
         centerPoint: new Vector(96, 240, 56),
@@ -1606,7 +1638,7 @@ void describe('Navigation.findPath (teleporters)', () => {
         maxs: new Vector(),
         targetname: 'there',
       },
-    ]);
+    ] });
   }
 
   void test('a monster walks through a teleporter that takes monsters', async () => {
@@ -1628,6 +1660,168 @@ void describe('Navigation.findPath (teleporters)', () => {
 
     assert.equal(navigation.findPath(START, GOAL, Navigation.hullFor(SMALL_BOX)), null);
   });
+});
+
+void describe('Navigation movers (doors)', () => {
+  // The corridor world again, with a door across the narrow corridor (x 280…296) where the map draws it. The builder
+  // sees the door through traceModelAtRest only: the static world has no movers in it.
+  const DOOR_WORLD: readonly Solid[] = [
+    ...ENCLOSED_FLOOR,
+    [[192, -64, 0], [384, 24, 256]],
+    [[192, 72, 0], [384, 192, 256]],
+    [[192, 264, 0], [384, 320, 256]],
+  ];
+  const DOOR_FLOORS: readonly FloorRectangle[] = [[0, 0, 192, 320], [384, 0, 576, 320], [192, 24, 384, 72], [192, 192, 384, 264]];
+  const SMALL_BOX = { mins: new Vector(-16, -16, -24), maxs: new Vector(16, 16, 40) };
+  const START = new Vector(96, 48, 24);
+  const GOAL = new Vector(480, 48, 24);
+
+  /**
+   * A door entity across the narrow corridor; the second leaf of a double door is the same slab under another model.
+   * @returns The mover.
+   */
+  function door(modelIndex: number): BoxWorldEntity {
+    return {
+      classname: 'func_door',
+      centerPoint: new Vector(288, 48, 64),
+      mins: new Vector(280, 24, 0),
+      maxs: new Vector(296, 72, 128),
+      movetype: moveType.MOVETYPE_PUSH,
+      solid: solid.SOLID_BSP,
+      model: `*${modelIndex - 1}`,
+      modelindex: modelIndex,
+    };
+  }
+
+  const DOOR_SOLID: Solid = [[280, 24, 0], [296, 72, 128]];
+
+  /**
+   * Whether a path goes through the narrow corridor, south of the wall between the rooms.
+   * @returns True when it does.
+   */
+  function throughNarrowCorridor(path: Vector[] | null): boolean {
+    return path !== null && path.some((point) => point[0] > 192 && point[0] < 384 && point[1] < 192);
+  }
+
+  let navigation: Navigation;
+  const savedFiles: Uint8Array[] = [];
+
+  before(async () => {
+    navigation = await buildBoxWorldNavigation(DOOR_WORLD, DOOR_FLOORS, {
+      entities: [door(2), door(3)],
+      moverSolids: { 2: [DOOR_SOLID], 3: [DOOR_SOLID] },
+      savedFiles,
+    });
+  });
+
+  void test('a door nobody reported blocks nobody', () => {
+    assert.ok(throughNarrowCorridor(navigation.findPath(START, GOAL, Navigation.hullFor(SMALL_BOX))));
+    assert.ok(throughNarrowCorridor(navigation.findPath(START, GOAL, Navigation.hullFor(null))));
+  });
+
+  void test('a door blocking monsters sends them around, and players still through', () => {
+    navigation.applyMoverBlocked('*1', true, false);
+    navigation.applyMoverBlocked('*2', true, false);
+
+    try {
+      const monsterPath = navigation.findPath(START, GOAL, Navigation.hullFor(SMALL_BOX));
+      assert.ok(monsterPath !== null);
+      assert.ok(!throughNarrowCorridor(monsterPath));
+      assert.ok(throughNarrowCorridor(navigation.findPath(START, GOAL, Navigation.hullFor(null))));
+    } finally {
+      navigation.applyMoverBlocked('*1', false, false);
+      navigation.applyMoverBlocked('*2', false, false);
+    }
+  });
+
+  void test('an open door lets monsters through again', () => {
+    navigation.applyMoverBlocked('*1', true, true);
+    navigation.applyMoverBlocked('*2', true, true);
+    navigation.applyMoverBlocked('*1', false, false);
+    navigation.applyMoverBlocked('*2', false, false);
+
+    assert.ok(throughNarrowCorridor(navigation.findPath(START, GOAL, Navigation.hullFor(SMALL_BOX))));
+  });
+
+  void test('one leaf of a double door opening does not open the way', () => {
+    navigation.applyMoverBlocked('*1', true, true);
+    navigation.applyMoverBlocked('*2', true, true);
+    navigation.applyMoverBlocked('*1', false, false);
+
+    try {
+      assert.ok(!throughNarrowCorridor(navigation.findPath(START, GOAL, Navigation.hullFor(SMALL_BOX))));
+    } finally {
+      navigation.applyMoverBlocked('*2', false, false);
+    }
+  });
+
+  void test('the worker, loading the saved graph, blocks the same links', async () => {
+    const bytes = savedFiles[0];
+    const loaded = new Navigation(null, { ...mockedNavigationServices(), sv: null });
+
+    await withNavigationRegistry({
+      COM: { LoadFile: () => Promise.resolve(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)) },
+      Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
+      SV: {},
+    }, async () => {
+      // a state that arrives before the graph does is kept and applied on load
+      loaded.applyMoverBlocked('*1', true, false);
+      await loaded.load('box-world-test', 4242);
+    });
+
+    assert.ok(!throughNarrowCorridor(loaded.findPath(START, GOAL, Navigation.hullFor(SMALL_BOX))));
+
+    loaded.applyMoverBlocked('*1', false, false);
+    assert.ok(throughNarrowCorridor(loaded.findPath(START, GOAL, Navigation.hullFor(SMALL_BOX))));
+  });
+
+  void test('a rebuilt graph is followed by every door state the game reported', async () => {
+    const events: string[] = [];
+    const unsubscribeLoad = eventBus.subscribe('nav.load', () => { events.push('load'); });
+    const unsubscribeMover = eventBus.subscribe('nav.mover.blocked', (model, monsters, players) => { events.push(`${model} ${monsters} ${players}`); });
+
+    try {
+      const rebuilt = new Navigation(createFloorWorldModel(DOOR_FLOORS), mockedNavigationServices());
+      // reported while the map spawned, before the worker exists: kept, not published yet
+      rebuilt.setMoverBlocked('*1', true, false);
+      assert.deepEqual(events, []);
+
+      await buildRebuilt(rebuilt);
+    } finally {
+      unsubscribeLoad();
+      unsubscribeMover();
+    }
+
+    assert.deepEqual(events, ['load', '*1 true false']);
+  });
+
+  /**
+   * Builds and saves a navigation of the door world, publishing what a rebuild publishes.
+   */
+  async function buildRebuilt(rebuilt: Navigation): Promise<void> {
+    const trace = (start: Vector, mins: Vector, maxs: Vector, end: Vector): BoxWorldTrace => traceBoxWorld(DOOR_WORLD, start, mins, maxs, end);
+    const contents = (point: Vector): number => (DOOR_WORLD.some((box) => insideGrownSolid(point, box, Vector.origin, Vector.origin)) ? -2 : 0);
+
+    await withNavigationRegistry({
+      COM: { WriteGeneratedFile() { return Promise.resolve(true); } },
+      Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
+      SV: {
+        collision: {
+          traceStaticWorld: trace,
+          move: trace,
+          pointContents: contents,
+          staticWorldContents: contents,
+          traceModelAtRest: (_modelIndex: number, start: Vector, mins: Vector, maxs: Vector, end: Vector): BoxWorldTrace => traceBoxWorld([DOOR_SOLID], start, mins, maxs, end),
+        },
+        server: { mapname: 'box-world-test', worldmodel: rebuilt.worldmodel, num_edicts: 0, edicts: [] },
+        engineAPI: { FindAllByFieldAndValue: () => [door(2)].map((entity) => ({ entity })) },
+      },
+    }, async () => {
+      rebuilt.build();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
 });
 
 void describe('Navigation.hullFor', () => {

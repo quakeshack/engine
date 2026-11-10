@@ -134,6 +134,7 @@ export interface EngineEventMap {
   'nav.debug.emit-dot.temporarily': [position: EventPosition, color: number, ttl: number];
   'nav.debug.emit-dot.permanently': [position: EventPosition, color: number];
   'nav.path.response': [id: string, path: EventPath];
+  'nav.mover.blocked': [model: string, monsters: boolean, players: boolean];
   'nav.build': [];
 
   // Workers
@@ -251,6 +252,7 @@ export const engineEventTable = Object.freeze({
   'nav.debug.emit-dot.temporarily': CROSSES_WORKER,
   'nav.debug.emit-dot.permanently': CROSSES_WORKER,
   'nav.path.response': PAGE_ONLY,
+  'nav.mover.blocked': PAGE_ONLY,
   'nav.build': PAGE_ONLY,
 
   'worker.framework.init': PAGE_ONLY,

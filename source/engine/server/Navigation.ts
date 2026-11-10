@@ -13,7 +13,7 @@ import type { Face } from '../common/model/BaseModel.ts';
 import type PlatformWorker from '../common/PlatformWorker.ts';
 import WorkerManager from '../common/WorkerManager.ts';
 import { eventBus } from '../common/EventBus.ts';
-import type { BaseEntity, ServerEdict } from './Edict.ts';
+import type { BaseEntity } from './Edict.ts';
 import type { CollisionTrace } from './physics/ServerCollisionSupport.ts';
 import { GroundSupport, type GroundProbe } from './physics/GroundSupport.ts';
 import type Server from './Server.ts';
@@ -36,7 +36,6 @@ type SerializedNode = [
 ];
 type PathRequestResolver = (path: Vector[] | null) => void;
 type EventUnsubscribe = (() => void) | null;
-type TimeoutHandle = ReturnType<typeof setTimeout>;
 
 interface NavigationGraph {
   readonly nodes: Node[];
@@ -87,6 +86,16 @@ const enum LinkFlag {
   WALKABLE_SMALL = 1,
   WALKABLE_LARGE = 2,
   DROP = 4,
+  /** A mover that monsters can't pass stands across the link (set at runtime, never saved). */
+  BLOCKED_MONSTERS = 8,
+  /** A mover that players can't pass stands across the link (set at runtime, never saved). */
+  BLOCKED_PLAYERS = 16,
+}
+
+/** Whom a mover blocks while it stands where the map draws it, as the game reported it. */
+interface MoverBlock {
+  readonly monsters: boolean;
+  readonly players: boolean;
 }
 
 interface WaypointGroupItem {
@@ -108,6 +117,8 @@ interface DebugPoint {
 
 interface ServerEntity extends BaseEntity {
   readonly centerPoint: Vector;
+  readonly model: string | null;
+  readonly modelindex: number;
   target?: string | null;
   targetname?: string | null;
   spawnflags?: number;
@@ -393,7 +404,7 @@ export class NavMeshOutOfDateException extends CorruptedResourceError { }
  * generator produces a different graph for the same map (link rules, costs, clearances): a mesh of
  * another version counts as out of date and is rebuilt, the ones that ship with a game included.
  */
-const NAV_FILE_VERSION = 4;
+const NAV_FILE_VERSION = 5;
 const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);
 const NAV_MONSTER_MAXS = new Vector(16.0, 16.0, 40.0);
 /** Quake's hull 2: Shambler, Ogre, Fiend, Vore, Dog. */
@@ -470,9 +481,17 @@ export class Navigation {
   graph: NavigationGraph;
   geometry: NavigationGeometry;
 
-  relinkEdictCooldown: Record<number, TimeoutHandle> = {};
-  relinkEdictLinks: Record<number, Node> = {};
-  relinkSkiplist: Set<number> = new Set();
+  /**
+   * The links each mover (by model name, `*12`) cuts while it stands where the map draws it: node id and the link's
+   * index in that node's neighbors, flattened.
+   */
+  readonly #moverLinks = new Map<string, number[]>();
+
+  /** Whom each mover blocks, as the game last reported it; movers never reported block nobody. */
+  readonly #moverBlocks = new Map<string, MoverBlock>();
+
+  /** The movers that cut a link, by link key ({@link Navigation.#linkKey}), for links cut by more than nothing. */
+  readonly #linkMovers = new Map<number, string[]>();
 
   readonly con: ConsoleOutput;
   readonly files: NavigationServices['files'];
@@ -541,6 +560,7 @@ export class Navigation {
     this.#worker = WorkerManager.SpawnWorker('server/NavigationWorker.ts', [
       'nav.load',
       'nav.path.request',
+      'nav.mover.blocked',
     ]);
   }
 
@@ -613,13 +633,10 @@ export class Navigation {
     this.#subscribePathResponse();
     this.#subscribeDebugCvars();
     eventBus.publish('nav.load', this.sv.server.mapname!, this.sv.server.worldmodel!.checksum);
+    this.#publishMoverBlocks();
   }
 
   shutdown(): void {
-    for (const timeout of Object.values(this.relinkEdictCooldown)) {
-      clearTimeout(timeout);
-    }
-
     this.#shutdownWorker();
 
     if (this.#pathResponseEventListener) {
@@ -647,7 +664,7 @@ export class Navigation {
 
     this.graph.nodes.length = 0;
     this.graph.octree = null;
-    this.relinkSkiplist.clear();
+    this.#moverLinks.clear();
 
     // Try to load binary file first (ArrayBuffer). Fallback to text JSON for older files.
     const buf = await this.files.LoadFile(filename);
@@ -666,6 +683,11 @@ export class Navigation {
     };
 
     const readUint8 = (): number => dv.getUint8(off++);
+    const readUint16 = (): number => {
+      const value = dv.getUint16(off, true);
+      off += 2;
+      return value;
+    };
     const readUint32 = (): number => {
       const value = dv.getUint32(off, true);
       off += 4;
@@ -695,8 +717,7 @@ export class Navigation {
     }
 
     // worldmodel name (uint16 length + utf8 bytes)
-    const nameLen = dv.getUint16(off, true); off += 2;
-    const nameBytes = readBytes(nameLen);
+    const nameBytes = readBytes(readUint16());
     const worldName = new TextDecoder().decode(nameBytes);
 
     const checksum = readUint32();
@@ -719,11 +740,6 @@ export class Navigation {
       throw new NavMeshOutOfDateException(filename, 'configuration changed');
     }
 
-    // relink skiplist
-    const relinkCount = readUint32();
-    for (let i = 0; i < relinkCount; i++) {
-      this.relinkSkiplist.add(readUint32());
-    }
 
     // nodes
     const nodeCount = readUint32();
@@ -773,7 +789,19 @@ export class Navigation {
       this.graph.nodes.push(node);
     }
 
+    const moverCount = readUint32();
+    for (let mi = 0; mi < moverCount; mi++) {
+      const model = new TextDecoder().decode(readBytes(readUint16()));
+      const linkCount = readUint32();
+      const links: number[] = [];
+      for (let li = 0; li < linkCount; li++) {
+        links.push(readUint32(), readUint16());
+      }
+      this.#moverLinks.set(model, links);
+    }
+
     this.#gatherLinkFlags();
+    this.#indexMoverLinks();
     this.#buildOctree();
     this.#scheduleDebugRefresh();
   }
@@ -821,11 +849,6 @@ export class Navigation {
     pushFloat32(this.requiredHeight);
     pushFloat32(this.requiredRadius);
 
-    // relink skiplist
-    pushUint32(this.relinkSkiplist.size);
-    for (const v of this.relinkSkiplist) {
-      pushUint32(v);
-    }
 
     // nodes
     pushUint32(this.graph.nodes.length);
@@ -851,7 +874,20 @@ export class Navigation {
         pushInt32(nb[0]);
         pushFloat32(nb[1]);
         pushFloat32(nb[2]);
-        pushUint8(nb[3]);
+        pushUint8(nb[3] & ~(LinkFlag.BLOCKED_MONSTERS | LinkFlag.BLOCKED_PLAYERS));
+      }
+    }
+
+    // links each mover cuts where the map draws it
+    pushUint32(this.#moverLinks.size);
+    for (const [model, links] of this.#moverLinks) {
+      const modelBytes = new TextEncoder().encode(model);
+      pushUint16(modelBytes.length);
+      pushBytes(modelBytes);
+      pushUint32(links.length / 2);
+      for (let i = 0; i < links.length; i += 2) {
+        pushUint32(links[i]);
+        pushUint16(links[i + 1]);
       }
     }
 
@@ -861,6 +897,7 @@ export class Navigation {
 
     // Keep the worker in sync after every successful rebuild, including listen-server sessions.
     eventBus.publish('nav.load', this.sv.server.mapname!, this.worldmodel!.checksum);
+    this.#publishMoverBlocks();
   }
 
   #newWalkerStandOffset(): Vector {
@@ -1672,63 +1709,9 @@ export class Navigation {
     }
   }
 
-  /**
-   * updates navigation links based on entity position
-   */
-  relinkEdict(edict: ServerEdict): void {
-    const entity = edict.entity as ServerEntity | null;
-
-    if (!entity) {
-      return;
-    }
-
-    // only care about world and large static brushes for now
-    if (entity.solid !== Def.solid.SOLID_BSP) {
-      return;
-    }
-
-    // this edict got flagged as not interesting earlier
-    if (this.relinkSkiplist.has(edict.num)) {
-      return;
-    }
-
-    if (this.relinkEdictCooldown[edict.num]) {
-      clearTimeout(this.relinkEdictCooldown[edict.num]);
-    }
-
-    this.relinkEdictCooldown[edict.num] = setTimeout(() => {
-      delete this.relinkEdictCooldown[edict.num];
-      this.#relinkEdict(edict);
-    }, 1000);
-  }
-
-  /**
-   * updates navigation links based on entity position
-   */
-  #relinkEdict(edict: ServerEdict): void {
-    if (edict.isFree()) {
-      return;
-    }
-
-    // TODO: adjust the nav graph accordingly
-  }
-
-  #relinkAll(): void {
-    for (let i = 0; i < this.sv.server.num_edicts; i++) {
-      const edict = this.sv.server.edicts[i];
-
-      if (edict.isFree()) {
-        continue;
-      }
-
-      this.#relinkEdict(edict);
-    }
-  }
-
   #buildSpecialConnections(): void {
     this.#buildTeleporterLinks();
-    this.#buildDoorLinks();
-    this.#relinkAll();
+    this.#recordMoverLinks();
   }
 
   #buildTeleporterLinks(): void {
@@ -1803,21 +1786,164 @@ export class Navigation {
     return node.largeOrigin !== null ? LinkFlag.WALKABLE_SMALL | LinkFlag.WALKABLE_LARGE : LinkFlag.WALKABLE_SMALL;
   }
 
-  #buildDoorLinks(): void {
-    // looking for simple doors
-    for (const doorEdict of this.sv.engineAPI.FindAllByFieldAndValue('classname', 'func_door')) {
-      const door = doorEdict.entity as ServerEntity | null;
+  /**
+   * Records which links every mover (a `MOVETYPE_PUSH`, `SOLID_BSP` brush entity: doors, plats, trains) cuts while it
+   * stands where the map draws it, which is where a mapper draws a door closed. Whether that blocks anyone is the
+   * game's to say at runtime ({@link Navigation#setMoverBlocked}); a mover it never reports blocks nobody.
+   *
+   * A link counts as cut when the walker's box, lifted by a step, or the large box between the large-hull origins
+   * runs into the mover's model. The lift keeps a door-floor the walker steps onto from cutting the links over it.
+   */
+  #recordMoverLinks(): void {
+    this.#moverLinks.clear();
 
-      if (!door) {
+    for (const moverEdict of this.sv.engineAPI.FindAllByFieldAndValue('movetype', Def.moveType.MOVETYPE_PUSH)) {
+      const mover = moverEdict.entity as ServerEntity | null;
+
+      if (mover === null || mover.solid !== Def.solid.SOLID_BSP || !mover.model?.startsWith('*')) {
         continue;
       }
 
-      if (door.targetname) { // remote controlled door, skip for now
-        continue;
-      }
+      const links = this.#linksCutBy(mover);
 
-      this.relinkSkiplist.add(doorEdict.num);
+      if (links.length > 0) {
+        this.#moverLinks.set(mover.model, links);
+      }
     }
+  }
+
+  /**
+   * Finds the links a mover's model cuts at the position the map draws it in.
+   * @returns Node id and link index of every cut link, flattened.
+   */
+  #linksCutBy(mover: ServerEntity): number[] {
+    const nodes = this.graph.nodes;
+    const center = mover.mins.copy().add(mover.maxs).multiply(0.5);
+    // a cut link starts within its length (128 at most) plus the large box of the model
+    const reach = mover.maxs.copy().subtract(mover.mins).len() / 2.0 + NAV_TRANSITION_LINK_RADIUS + NAV_LARGE_MONSTER_BOX.maxs[0];
+    const lift = new Vector(0.0, 0.0, STEPSIZE);
+    const links: number[] = [];
+
+    for (const node of this.#findNearestNodes(center, reach)) {
+      for (let index = 0; index < node.neighbors.length; index++) {
+        const other = nodes[node.neighbors[index][0]];
+
+        if (this.#moverCuts(mover.modelindex, node.origin.copy().add(lift), other.origin.copy().add(lift), this.#walkerBox)
+          || (node.largeOrigin !== null && other.largeOrigin !== null
+            && this.#moverCuts(mover.modelindex, node.largeOrigin.copy().add(lift), other.largeOrigin.copy().add(lift), NAV_LARGE_MONSTER_BOX))) {
+          links.push(node.id, index);
+        }
+      }
+    }
+
+    return links;
+  }
+
+  /**
+   * Whether a box moving from `start` to `end` runs into a mover's model where the map draws it.
+   * @returns True when it does.
+   */
+  #moverCuts(modelIndex: number, start: Vector, end: Vector, box: NavigationBox): boolean {
+    const trace = this.sv.collision.traceModelAtRest(modelIndex, start, box.mins, box.maxs, end);
+
+    return trace.startsolid || trace.allsolid || trace.fraction < 1.0;
+  }
+
+  /**
+   * Sets whom a mover blocks while it stands where the map draws it, or while it moves. Kept on the server thread and
+   * passed to the worker, also after every time it loads the graph.
+   * @param model The mover's model name, `*12`.
+   */
+  setMoverBlocked(model: string, monsters: boolean, players: boolean): void {
+    this.#moverBlocks.set(model, { monsters, players });
+
+    if (this.#worker !== null) {
+      eventBus.publish('nav.mover.blocked', model, monsters, players);
+    }
+  }
+
+  /**
+   * Applies whom a mover blocks to the links it cuts; the worker's side of {@link Navigation#setMoverBlocked}.
+   * @param model The mover's model name, `*12`.
+   */
+  applyMoverBlocked(model: string, monsters: boolean, players: boolean): void {
+    this.#moverBlocks.set(model, { monsters, players });
+    this.#updateBlockedLinks(model);
+  }
+
+  #publishMoverBlocks(): void {
+    for (const [model, block] of this.#moverBlocks) {
+      eventBus.publish('nav.mover.blocked', model, block.monsters, block.players);
+    }
+  }
+
+  /**
+   * Indexes which movers cut each link, and applies the movers' blocks known so far.
+   */
+  #indexMoverLinks(): void {
+    this.#linkMovers.clear();
+
+    for (const [model, links] of this.#moverLinks) {
+      for (let i = 0; i < links.length; i += 2) {
+        const key = Navigation.#linkKey(links[i], links[i + 1]);
+        const movers = this.#linkMovers.get(key);
+
+        if (movers === undefined) {
+          this.#linkMovers.set(key, [model]);
+        } else {
+          movers.push(model);
+        }
+      }
+    }
+
+    for (const model of this.#moverLinks.keys()) {
+      this.#updateBlockedLinks(model);
+    }
+  }
+
+  /**
+   * Sets the blocked flags of a mover's links from every mover that cuts them: double doors are two movers on the
+   * same links, and one of them opening doesn't open the way.
+   */
+  #updateBlockedLinks(model: string): void {
+    const links = this.#moverLinks.get(model);
+
+    if (links === undefined) {
+      return;
+    }
+
+    for (let i = 0; i < links.length; i += 2) {
+      const link = this.graph.nodes[links[i]]?.neighbors[links[i + 1]];
+      console.assert(link !== undefined, 'mover link must exist in the graph');
+
+      if (link === undefined) {
+        continue;
+      }
+
+      let flags = link[3] & ~(LinkFlag.BLOCKED_MONSTERS | LinkFlag.BLOCKED_PLAYERS);
+
+      for (const mover of this.#linkMovers.get(Navigation.#linkKey(links[i], links[i + 1])) ?? []) {
+        const block = this.#moverBlocks.get(mover);
+
+        if (block?.monsters) {
+          flags |= LinkFlag.BLOCKED_MONSTERS;
+        }
+
+        if (block?.players) {
+          flags |= LinkFlag.BLOCKED_PLAYERS;
+        }
+      }
+
+      link[3] = flags;
+    }
+  }
+
+  /**
+   * A number for a link: its node id and its index among that node's neighbors.
+   * @returns The link key.
+   */
+  static #linkKey(nodeId: number, linkIndex: number): number {
+    return nodeId * 65536 + linkIndex;
   }
 
   #buildOctree(): void {
@@ -2018,6 +2144,7 @@ export class Navigation {
     }
 
     const requiredFlag = Navigation.#requiredLinkFlag(hull);
+    const blockedFlag = hull === NavigationHull.PLAYER ? LinkFlag.BLOCKED_PLAYERS : LinkFlag.BLOCKED_MONSTERS;
     const startNode = this.#findNearestNodeWith(startPos, requiredFlag);
     const goalNode = this.#findNearestNodeWith(goalPos, requiredFlag);
 
@@ -2061,7 +2188,7 @@ export class Navigation {
       const currentG = gScore[currentId];
 
       for (const nb of this.graph.nodes[currentId].neighbors) {
-        if (requiredFlag !== 0 && (nb[3] & requiredFlag) === 0) {
+        if ((requiredFlag !== 0 && (nb[3] & requiredFlag) === 0) || (nb[3] & blockedFlag) !== 0) {
           continue;
         }
 
@@ -2192,8 +2319,6 @@ export class Navigation {
     this.graph.octree = null;
     this.graph.nodes.length = 0;
     this.geometry.walkableSurfaces.length = 0;
-    this.relinkSkiplist.clear();
-    this.relinkEdictLinks = {};
 
     this.con.PrintWarning('Navigation: node graph out of date, rebuilding...\n');
 
@@ -2203,6 +2328,7 @@ export class Navigation {
     this.#buildNavigationGraph();
     this.#buildSpecialConnections();
     this.#gatherLinkFlags();
+    this.#indexMoverLinks();
     this.#buildOctree();
 
     this.con.DPrint(`Navigation: node graph built with ${this.graph.nodes.length} nodes.\n`);

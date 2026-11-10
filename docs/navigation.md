@@ -26,6 +26,7 @@ worker that searches it, and the `.nav` files it is cached in. The game-facing c
 | Flag | Meaning |
 |---|---|
 | `DROP` | Somewhere along it the floor drops by more than a step. Players take it, monsters don't step off ledges. |
+| `BLOCKED_MONSTERS`, `BLOCKED_PLAYERS` | A mover the game reported stands across it (set in the worker at runtime, never saved). |
 | `WALKABLE_SMALL` | A monster of the walker's size walks it: no drop, and ground under its whole box at every step. |
 | `WALKABLE_LARGE` | A 64-wide monster also walks it, between the two nodes' large-hull origins. Only links up to 96 units are checked for it, which halves the build time; longer links cost extra anyway, and shorter ones run beside them. |
 
@@ -42,7 +43,11 @@ destination, free of cost. Players take every teleporter. Monster paths take one
 when it is player-only (Quake's `trigger_teleport` spawnflag 1), and not when it has a `targetname`, since then it only
 works once it was fired. The large hull takes it when the node at the other end has a large-hull origin.
 
-**Doors** don't change the graph yet: links through a closed door are there, and a path may lead into it.
+**Movers** (doors, plats, trains: brush entities with `MOVETYPE_PUSH` and `SOLID_BSP`) aren't in the static world, so
+every doorway is linked as if its door were open. The builder records, per mover, the links its model cuts where the
+map draws it (traced with `ServerCollision.traceModelAtRest`: the walker's box lifted by a step, so a door-floor the
+walker steps onto doesn't count, and the large box between large-hull origins). Mappers draw a door closed, so
+these are the links the door closes. A bridge drawn in place cuts the drops through it the same way.
 
 **Build time** grows with the number of links (about 40 per node). e1m1 has 4,460 nodes and 179,507 links and builds in
 about two minutes in Node.js (`scripts/` and `plans/monster-chase-navigation.md` have the measurements).
@@ -74,10 +79,34 @@ A box that fits the walker gets `SMALL`, anything wider or taller `LARGE`. `Navi
 is no path or `nav_enabled` is 0. `Navigate` is the deprecated synchronous variant; it only answers on the thread that
 holds the graph.
 
+## Doors and other movers
+
+Whether a mover blocks anyone is the game's call: only it knows that a monster opens a plain door by walking into its
+trigger field but not a door fired by a button. It reports every change:
+
+```ts
+// while the door stands where the map draws it, or moves: monsters can't pass it, players can (they shoot it open)
+engine.SetNavigationBlocked(door.edict, true, false);
+```
+
+Monster paths then leave out the mover's links, player paths too when `players` is true. A mover never reported blocks
+nobody, so a game that doesn't report gets every doorway as open. Two movers on the same links (double doors) block
+until both say they don't. Report again after a saved game restored the mover: the map spawns first, and navigation
+knows the mover as it spawned.
+
+The server thread keeps the reports and passes each one to the worker as `nav.mover.blocked`. Reports from spawning,
+before the worker exists, and all of them again after every `nav.load` (a rebuilt mesh), so the worker never searches
+with stale doors.
+
+In id1, as an example: a door blocks while it is at its drawn position or moving (a `START_OPEN` door is out of the
+way at spawn and blocks once fired); a door with a trigger field blocks nobody, a shootable door blocks monsters only,
+a door with a key or a `targetname` and a secret door block both. A door that starts blocking monsters makes chasing
+monsters ask for a new path.
+
 ## Worker
 
 The server thread doesn't keep the graph. On map load it publishes `nav.load`; `NavigationWorker` loads the `.nav` file
-(node ids, origins, large-hull origins, links and their flags; no world, no collision) and answers every
+(node ids, origins, large-hull origins, links and their flags, the links each mover cuts; no world, no collision) and answers every
 `nav.path.request` with a `nav.path.response` (`docs/events.md`). Answers arrive a frame or more later and are not
 restored by a saved game.
 
@@ -85,8 +114,8 @@ restored by a saved game.
 
 The graph is cached as `maps/<map>.nav` through `COM.WriteGeneratedFile`: in the browser in the generated-files cache
 (`docs/asset-layer.md`), on a dedicated server under `data/<game>/maps/`. A mesh is rebuilt when it was written for
-another map build (checksum), another walker size, or another file format version (`NAV_FILE_VERSION`, 4 since link
-flags and large-hull origins). The worker reports such a mesh with `nav.build`, and the server thread rebuilds it, once
+another map build (checksum), another walker size, or another file format version (`NAV_FILE_VERSION`: 4 added link
+flags and large-hull origins, 5 the links each mover cuts). The worker reports such a mesh with `nav.build`, and the server thread rebuilds it, once
 per map, which stalls the server for the length of a build.
 
 Change the version whenever the layout of the file or what the builder decides changes, and regenerate the shipped

@@ -149,6 +149,7 @@ export function createInertEngineApi(overrides: object = {}): ServerGameAPI['eng
       return null;
     },
     SetAreaPortalState() {},
+    SetNavigationBlocked() {},
     GetCvar() {
       return { value: 0 };
     },

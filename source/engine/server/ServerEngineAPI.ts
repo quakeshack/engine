@@ -673,6 +673,26 @@ export class ServerEngineAPI {
     return this.#sv.server.navigation?.findPathAsync(start, end, Navigation.hullFor(box)) ?? Promise.resolve(null);
   }
 
+  /**
+   * Tells navigation whom a mover (a door, say) blocks while it stands where the map draws it or moves: the links it
+   * cuts there are left out of monster paths, player paths (no box given to `NavigateAsync`), or both. A mover never
+   * reported blocks nobody. Report every change, and again after a saved game restored the mover.
+   * @param edict The mover, a brush entity with its own model (`*12`).
+   * @param monsters Whether walking monsters can't pass it.
+   * @param players Whether players can't pass it.
+   */
+  SetNavigationBlocked(edict: ServerEdict, monsters: boolean, players: boolean): void {
+    const model = edict.entity?.model ?? null;
+
+    console.assert(model !== null && model.startsWith('*'), 'SetNavigationBlocked requires a brush entity with its own model');
+
+    if (model === null) {
+      return;
+    }
+
+    this.#sv.server.navigation?.setMoverBlocked(model, monsters, players);
+  }
+
   GetPHS(origin: Vector): Visibility {
     const worldmodel = this.#sv.server.worldmodel;
     console.assert(worldmodel !== null, 'server worldmodel required for PHS queries');

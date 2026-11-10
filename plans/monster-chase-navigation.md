@@ -2,8 +2,8 @@
 
 ## Status
 
-🚧 Phases 1, 2 and 4 done (2026-11-10); Phase 3 and Phase 5 (doors, added 2026-11-10) open. Decisions 1–7 made with the developer on
-2026-11-10; Phase 5 has open questions. Corner sticking was measured before any code changed (see "Measured" below).
+🚧 Phases 1, 2, 4 and 5 done (2026-11-10); Phase 3 open. Decisions 1–10 made
+with the developer on 2026-11-10. Corner sticking was measured before any code changed (see "Measured" below).
 
 ## Context
 
@@ -298,16 +298,15 @@ are: no rest-state sampling, no activation edges, no monsters pressing buttons o
   never searches with stale doors.
 - **`ChaseNavigator`** replans when a door on its current path closes, instead of waiting for its stuck timer.
 
-Open questions for the developer:
+Decided with the developer (2026-11-10), the recommended defaults:
 
-1. **How the game reports door state**: a call per change (`SetNavigationBlocked(edict, monsters, players)`), or a
-   marker interface the engine polls on `relinkEdict` (the mover plan's `NavGate.isNavTraversable()`)?
-   Recommendation: the call, from the door's own state changes (closed, opening, open, locked); the engine stays
-   game-agnostic and needs no polling.
-2. **Partly open doors** (opening or closing): blocked or not? Recommendation: blocked until fully open, as a
-   monster that arrives early waits at the door anyway. Plain doors a monster opens itself are never blocked for it.
-3. **Rotating doors and secret doors** (`func_door_rotating`, `func_door_secret` in mods): swept the same way at
-   their closed position? Recommendation: yes, anything the game reports as a door.
+8. **The game reports door state with one engine call per change** (`SetNavigationBlocked(edict, monsters, players)`
+   on `ServerEngineAPI`), from the door's own state changes. The engine doesn't poll and stays game-agnostic.
+9. **A door that is opening or closing is blocked until it is fully open.** A plain door a monster opens itself is
+   never blocked for monsters.
+10. **Anything the game reports as a door counts**, rotating and secret doors included. The builder records the links
+    of every pusher (`MOVETYPE_PUSH`, `SOLID_BSP`) at the position the map builds it in (its model at origin zero, which
+    is where a mapper draws a door closed); movers the game never reports never block anything.
 
 ## Phasing
 
@@ -366,7 +365,7 @@ Each phase ships on its own and leaves tests and lint green.
 
 ## Open questions
 
-None. Decisions 1–7 are recorded under Context.
+None. Decisions 1–7 are recorded under Context, 8–10 under design E.
 
 ## What shipped
 
@@ -479,3 +478,38 @@ None. Decisions 1–7 are recorded under Context.
   `nav.path.request` row in `docs/events.md`, `docs/README.md`, id1 `README.md`.
 - Not verified in a running game beyond the developer's e1m2 report. `data/id1/Makefile` still calls
   `../../dedicated.mjs`, which no longer exists (the bundle is `dist/dedicated/dedicated.mjs`); it is gitignored.
+
+### What actually shipped in Phase 5
+
+- Measured first, on e1m1–e1m7: 6–52 movers per map (doors, plats, trains) cut 6.8–24.5% of all links where the map
+  draws them (8,722–25,638 links), found in 0.2–1.3 s per map. Hundreds to a few thousand links per door, as every link
+  up to 128 units long through a doorway counts. The largest, 5,346 on e1m1, is a bridge (`*8`, a 16-unit slab at floor
+  level): the drop links through it. That showed "blocked" has to mean "where the map draws it", not "closed": a bridge
+  or a `START_OPEN` door blocks there too, just the other way round.
+- Engine: `ServerCollision.traceModelAtRest(modelIndex, …)` traces one brush model at origin zero (brush data, or the
+  clip hull `EntityHulls.forBrushModel` picks, now shared with `forEntity`). The builder records per mover (`MOVETYPE_PUSH`,
+  `SOLID_BSP`, a `*N` model) the links whose walker box, lifted by a step, or large box between large-hull origins runs
+  into it; `NAV_FILE_VERSION` 5 stores them (model name, node id and link index per link) and drops the relink list.
+  `ServerEngineAPI.SetNavigationBlocked(edict, monsters, players)` reaches `Navigation.setMoverBlocked`, which the
+  server thread keeps and passes on as `nav.mover.blocked` (new event, `docs/events.md`), and sends again after every
+  `nav.load`. The worker sets `BLOCKED_MONSTERS`/`BLOCKED_PLAYERS` on the links from every mover that cuts them (double
+  doors), and A* leaves them out for monster hulls or the player. Blocked bits are never saved.
+- Removed: `Navigation.relinkEdict` (its body was `// TODO: adjust the nav graph accordingly`; game reports replace it),
+  the relink skip list and timers, and the call from `ServerArea.linkEdict` that ran on every mover relink.
+- id1: `BaseDoorEntity._reportNavigation()` reports on every state change, after the doors are linked (only then is the
+  trigger field known), and after `deserialize`. A door blocks while it is at its drawn position or moving
+  (`_isOutOfTheWay`: `STATE_TOP`, or `STATE_BOTTOM` for `START_OPEN`; a secret door at rest at `_dest2`). Monsters pass
+  doors with a trigger field; players those and shootable ones; key, `targetname` and secret doors block both. A door
+  that starts blocking monsters sets `GameAI._navigationChangeTime`, and `ChaseNavigator` asks again when its path is
+  older (`_pathTime`, saved, the time the path was asked for). Hellwave reuses id1's doors.
+- Correction to the first draft of design E: monsters do open doors in id1 (the trigger field takes any living actor,
+  as in QuakeC); only doors without one stop them.
+- Not done: plats and trains are recorded but no game reports them, so they block nobody (the mover plan's riding and
+  waiting). A door with an `origin` key is drawn somewhere else than its model at origin zero; id1 doors have none.
+- Tests: `navigation.test.ts` (the corridor world with a door: unreported blocks nobody, monster-only block reroutes
+  monsters but not players, opening restores the path, a double door stays shut until both leaves open, the worker's
+  loaded graph blocks the same links, a rebuild resends the states after `nav.load`), `doors.test.ts` (plain, fired,
+  shootable, `START_OPEN`, restored and secret doors report the right blocks; a closing door bumps the change time),
+  `chase-navigator.test.ts` (a door change replans). Each was checked to fail with its fix reverted.
+- Docs: `docs/navigation.md` (movers, `SetNavigationBlocked`, v5), `docs/events.md`, id1 `README.md`.
+- Not verified in a running game.

@@ -20,7 +20,7 @@ import {
 } from './ServerCollisionSupport.ts';
 import { pointContents as legacyPointContents } from './ServerLegacyHullCollision.ts';
 import type { Octree } from '../../../shared/Octree.ts';
-import type { EntityHulls } from '../../common/collision/EntityHulls.ts';
+import { EntityHulls } from '../../common/collision/EntityHulls.ts';
 import type { ConsoleOutput } from '../../common/Services.ts';
 
 type CollisionModel = BrushModel | MeshModel | AliasModel | object | null;
@@ -527,6 +527,36 @@ export class ServerCollision {
     }
 
     return this._traceLegacyHullLine(worldModel.hulls[hullNum], start, end);
+  }
+
+  /**
+   * Traces a box against one brush model alone, placed where the map builds it: at origin zero, unrotated, which is
+   * where a mapper draws a door closed. Nothing else is traced, not the world, not the model's entity where it is now.
+   * @param modelIndex The brush model's index, `*1` and up for a map's submodels.
+   * @returns The collision trace against the model; an empty one when the index is no brush model.
+   */
+  traceModelAtRest(modelIndex: number, start: Vector, mins: Vector, maxs: Vector, end: Vector): CollisionTrace {
+    const model = this._getModelByIndex(modelIndex);
+
+    if (!this._isBrushModel(model)) {
+      return CollisionTrace.empty(end);
+    }
+
+    if (model.hasBrushData) {
+      return this._toServerTrace(this._traceBrushModel(model, start, mins, maxs, end, Vector.origin, Vector.origin), null);
+    }
+
+    const trace = CollisionTrace.hullInitial(end);
+    const offset = new Vector();
+    const hull = EntityHulls.forBrushModel(model, mins, maxs, Vector.origin, offset);
+
+    hull.trace(trace, start.copy().subtract(offset), end.copy().subtract(offset), false);
+
+    if (trace.fraction !== 1.0) {
+      trace.endpos.add(offset);
+    }
+
+    return trace;
   }
 
   /**

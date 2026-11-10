@@ -220,7 +220,6 @@ export class ServerArea {
     console.assert(ent.entity !== null);
     const entity = ent.entity! as BaseEntity;
 
-    this.sv.server.navigation!.relinkEdict(ent);
     this.unlinkEdict(ent);
 
     const absmin = new Vector();

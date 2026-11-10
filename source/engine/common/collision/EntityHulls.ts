@@ -58,6 +58,20 @@ export class EntityHulls {
     console.assert(entity.movetype !== Defs.moveType.MOVETYPE_NONE,
       'requires SOLID_BSP with MOVETYPE_NONE, use MOVETYPE_PUSH instead');
 
+    return EntityHulls.forBrushModel(model, mins, maxs, origin, outOffset);
+  }
+
+  /**
+   * Picks the clip hull of a brush model for a moving box, Quake's way: hull 0 for a point, hull 1 up to 32 units
+   * wide, hull 2 beyond.
+   * @param model - the brush model clipped against
+   * @param mins - minimum extents of the moving object
+   * @param maxs - maximum extents of the moving object
+   * @param origin - where the model is placed
+   * @param outOffset - receives the hull offset relative to the world origin
+   * @returns the hull structure used for collision tests
+   */
+  static forBrushModel(model: BrushModel, mins: Vector, maxs: Vector, origin: Vector, outOffset: Vector): Hull {
     const size = maxs[0] - mins[0];
     let hull: Hull;
     if (size < 3.0) {
