@@ -8,6 +8,7 @@ import { ServerEdict } from '../../source/engine/server/Edict.ts';
 import { Mod, ModelScope } from '../../source/engine/common/Mod.ts';
 
 import { defaultMockEngine, withMockEngine, mockedSV } from '../support/fixtures.ts';
+import { assertNear } from '../support/assertions.ts';
 import { createDirectoryFiles, createSilentConsole } from '../support/modelContext.ts';
 
 /**
@@ -101,6 +102,31 @@ void describe('ServerEdict', () => {
     });
 
     assert.deepEqual(linkCalls, [false, true]);
+  });
+
+  void test('sizes an entity from the union of the frame bounds of a skeletal model, which a server loads without render data', async () => {
+    const mod = new Mod();
+    mod.Init({ files: createDirectoryFiles(new URL('../fixtures/skeletal/', import.meta.url)), con: createSilentConsole(), loadRenderData: false });
+    const player = await mod.ForNameAsync('player.iqm', true, ModelScope.server);
+
+    withMockEngine(defaultMockEngine({
+      area: { linkEdict() {} },
+      server: {
+        modelPrecache: ['player.iqm'],
+        models: [player],
+      },
+    }), () => {
+      const edict = new ServerEdict(1, mockedSV());
+      edict.entity = createTestEntity();
+
+      edict.setModel('player.iqm', false);
+
+      // The bounds of progs/player.mdl: its header's translate, and translate + 255 * scale (see iqm-loader.test.ts).
+      assertNear(edict.entity!.mins[0], -44.17623, 1e-3);
+      assertNear(edict.entity!.mins[2], -35.06478, 1e-3);
+      assertNear(edict.entity!.maxs[0], 39.2196, 1e-3);
+      assertNear(edict.entity!.maxs[2], 48.4740, 1e-3);
+    });
   });
 
   void test('sets the bounds of an image sprite from its file', async () => {

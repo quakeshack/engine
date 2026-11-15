@@ -7,6 +7,7 @@ import { SpriteSPRLoader } from './model/loaders/SpriteSPRLoader.ts';
 import { BSP29Loader } from './model/loaders/BSP29Loader.ts';
 import { BSP2Loader } from './model/loaders/BSP2Loader.ts';
 import { WavefrontOBJLoader } from './model/loaders/WavefrontOBJLoader.ts';
+import { IQMLoader } from './model/loaders/IQMLoader.ts';
 import ParsedQC from './model/parsers/ParsedQC.ts';
 import { BSP38Loader } from './model/loaders/BSP38Loader.ts';
 import type { BaseModel } from './model/BaseModel.ts';
@@ -19,6 +20,8 @@ export enum ModelType {
   sprite = 1,
   alias = 2,
   mesh = 3,
+  /** Posed by a joint hierarchy and skinned on the CPU: Inter-Quake models. */
+  skeletal = 4,
 }
 
 export enum ModelScope {
@@ -138,6 +141,7 @@ export class Mod {
     this.modelLoaderRegistry.register(new SpriteSPRLoader(context));
     this.modelLoaderRegistry.register(new ImageSpriteLoader(context));
     this.modelLoaderRegistry.register(new WavefrontOBJLoader(context));
+    this.modelLoaderRegistry.register(new IQMLoader(context));
   }
 
   /**

@@ -2,28 +2,11 @@ import type { BaseMaterial } from '../../client/renderer/models/Materials.ts';
 
 import Vector from '../../../shared/Vector.ts';
 import { BaseModel } from './BaseModel.ts';
-
-interface MeshAnimation {
-  readonly name?: string;
-  readonly firstFrame?: number;
-  readonly frameCount?: number;
-  readonly fps?: number;
-}
-
-interface MeshBone {
-  readonly name?: string;
-  readonly parentIndex?: number;
-}
-
-interface MeshSubmesh {
-  readonly startIndex?: number;
-  readonly indexCount?: number;
-  readonly materialName?: string;
-}
+import { ModelType } from '../Mod.ts';
 
 /**
- * Mesh model, a generic polygon mesh format for OBJ, IQM, glTF, and similar assets.
- * Used for static and animated meshes with modern vertex attributes.
+ * Mesh model, a generic static polygon mesh format for OBJ and similar assets, with modern vertex attributes.
+ * Posed, skinned models are `SkeletalModel`s.
  */
 export class MeshModel extends BaseModel {
   /** Position buffer stored as flat `x, y, z` triplets. */
@@ -77,21 +60,9 @@ export class MeshModel extends BaseModel {
   /** Bounding sphere radius. */
   boundingradius = 16.0;
 
-  /** True when the mesh carries skeletal or keyframed animation data. */
-  animated = false;
-
-  /** Animation clips for future IQM or glTF support. */
-  animations: MeshAnimation[] = [];
-
-  /** Skeleton or bind-pose bone metadata. */
-  bones: MeshBone[] = [];
-
-  /** Optional submesh partitions for multi-material meshes. */
-  submeshes: MeshSubmesh[] = [];
-
   constructor(name: string) {
     super(name);
-    this.type = 3;
+    this.type = ModelType.mesh;
   }
 
   override createScopedView(): this {

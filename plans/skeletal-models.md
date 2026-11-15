@@ -3,7 +3,7 @@
 ## Status
 
 📝 Draft, nothing implemented, no open questions left (all settled 2026-11-13; quaternion handling
-added 2026-11-14, decisions 19–21). Phase 0 and Phase 1 done on 2026-11-15 (results below). Next: Phase 2.
+added 2026-11-14, decisions 19–21). Phases 0, 1 and 2 done on 2026-11-15 (results below). Next: Phase 3.
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
 parked: the core only has to leave room for them (Later: Half-Life studio models).
@@ -116,6 +116,41 @@ Blender and compared frame by frame with Blender's own evaluated mesh), `run-tes
   - Material names with dots (`player.mdl.0`) survive; how the engine maps them to files is Phase 2/4.
   - FTE reads at most 256 joints and treats every IQM as having one skin; DarkPlaces' `.skin` files stay
     our skin mechanism.
+
+### Phase 2 results (2026-11-15)
+
+Shipped (this repository, **not committed yet**): `ModelType.skeletal = 4`; `SkeletalModel` (abstract) and `IQMModel`
+(`common/model/`); `IQMLoader` (`common/model/loaders/`), registered in `Mod.Init`; `modelinfo <model>`
+(`common/model/ModelInfoCommand.ts`, registered in `Host.InitCommands`, so the client and the dedicated server both have it);
+`docs/skeletal-models.md` and its entry in `docs/README.md`; the unused `MeshModel` stubs (`animations`, `bones`, `submeshes`,
+`animated`) are gone, and its type is `ModelType.mesh` instead of the literal 3. `ModelLoader.canLoad` no longer throws a `RangeError`
+on a file shorter than four bytes (every loader had that; the registry now reports "no loader" instead).
+
+- **Tests** (`npm run typecheck` zero, ESLint clean): `test/common/iqm-loader.test.ts` (42), `test/common/model-info.test.ts` (5), a
+  sizing test in `test/physics/server-edict.test.ts`, and `test/support/iqmBuilder.ts`, an IQM writer written from FTE's struct
+  definitions and independent of the loader. Mutation checks (rotation order, scale channel offset, weight renormalization, the pose cap,
+  parent order, the bounds union, ignoring `loadRenderData`) each fail at least one test. The corrupted-file tests refuse every
+  truncation, every offset past the end and every huge count with `CorruptedResourceError`, never a `RangeError`.
+- **Exit met**: the server realm (`loadRenderData: false`) loads the real player through `Mod`, and `Edict.setModel()` sizes an entity
+  from it: (−44.18, −34.47, −35.06) to (39.22, 30.34, 48.47), the bounds of `player.mdl`'s header.
+- **Real fixture**: `test/fixtures/skeletal/player.iqm` (103 KB, the exporter's output, BSD 3-clause with the notice next to it).
+  The loader's poses match the independent Python reader to 1e-4 at four (frame, joint) pairs, including a scale of 0.8 and a rotation of w
+  and x, and every rotation in all 143 frames is a unit quaternion.
+
+Differences from the plan, and why:
+
+- **The fixture is in `test/fixtures/skeletal/`, not `data/`** (decision 9 said `data/`): the Dockerfile already copies `test/`, so
+  there is no `COPY` line and no `.dockerignore` change to forget.
+- **Textures are not resolved yet.** The loader keeps material names (`progs/player.mdl.0`) and the meshes that use them; creating
+  textures, `.qsmat` files and `.skin` files belong to Phase 4, where a renderer can show whether they are right (OBJ models have
+  no `.qsmat` hook either: `.qsmat.json` files are only referenced from a map's worldspawn today, so decision 12 needs a
+  per-model convention, which Phase 4 has to choose).
+- **Inverse bind matrices are not stored.** They are products of the rest pose and need the matrix helpers Phase 3 adds to `Quaternion`
+  (`toMatrix3x4Into`); Phase 3 computes them once at load. `SkeletalModel` has no `samplePose` yet for the same reason.
+- **Bounds without bounds**: a file that has frames but no bounds array gets the bind pose's bounds (with a console note) instead of
+  being refused, since third-party exporters differ here.
+- **Limits** against corrupted headers: 4096 joints, 65,536 frames and 8 million pose numbers (the shambler, 468 bones × 94 frames, uses a
+  twentieth of that).
 
 ### Decisions (2026-11-12, from the maintainer)
 

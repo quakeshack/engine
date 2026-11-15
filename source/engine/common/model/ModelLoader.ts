@@ -41,6 +41,10 @@ export abstract class ModelLoader {
    * @returns True when the loader can handle the supplied file.
    */
   canLoad(buffer: ArrayBuffer, filename: string): boolean {
+    if (buffer.byteLength < 4) {
+      return false;
+    }
+
     const view = new DataView(buffer);
     const magic = view.getUint32(0, true);
     const extension = filename.substring(filename.lastIndexOf('.')).toLowerCase();
