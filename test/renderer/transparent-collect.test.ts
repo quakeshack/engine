@@ -22,7 +22,7 @@ import { patchMembers } from '../support/clientState.ts';
  * @returns The entity.
  */
 function createEntity(model: BrushModel | SpriteModel, origin: Vector, alpha = 0.5): ClientEdict {
-  return { model, origin, alpha } as unknown as ClientEdict;
+  return { model, origin, worldOrigin: origin, alpha } as unknown as ClientEdict;
 }
 
 /**

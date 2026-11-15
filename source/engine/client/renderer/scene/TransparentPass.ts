@@ -257,9 +257,9 @@ class TransparentPass {
       return brushRenderer.getEntityViewDistance(model, entity, vieworg);
     }
 
-    const dx = entity.origin[0] - vieworg[0];
-    const dy = entity.origin[1] - vieworg[1];
-    const dz = entity.origin[2] - vieworg[2];
+    const dx = entity.worldOrigin[0] - vieworg[0];
+    const dy = entity.worldOrigin[1] - vieworg[1];
+    const dz = entity.worldOrigin[2] - vieworg[2];
 
     return Math.hypot(dx, dy, dz);
   }

@@ -285,6 +285,69 @@ void describe('svc.spawnstatic', () => {
   });
 });
 
+void describe('svc.deltapacketentities attachment', () => {
+  /**
+   * Sends what the server's writer makes of a state change to the client's parser.
+   * @param changes One change per update of the packet, applied to entity 7 in turn.
+   * @returns The registry the client keeps.
+   */
+  function roundTrip(changes: Array<Partial<ServerEntityState>>): ClientEntities {
+    const mockedRegistry = createMockClientRegistry();
+    const { message } = mockedRegistry.NET;
+    const previousClientEntities = clientRuntimeState.clientEntities;
+    const clientEntities = new ClientEntities();
+    const messages = new ServerMessages({ server: { time: 1, clientEntityFields: {} } } as unknown as Server);
+    let state = new ServerEntityState(7);
+
+    clientRuntimeState.clientEntities = clientEntities;
+    message.writeByte(Protocol.svc.deltapacketentities);
+
+    for (const change of changes) {
+      const next = new ServerEntityState(7);
+
+      next.set(state);
+      Object.assign(next, change);
+      messages.writeDeltaEntity(message, state, next);
+      state = next;
+    }
+
+    message.writeUint16(0);
+
+    try {
+      void withMockClientRegistry(mockedRegistry, () => {
+        parseServerMessage();
+      });
+
+      return clientEntities;
+    } finally {
+      clientRuntimeState.clientEntities = previousClientEntities;
+    }
+  }
+
+  void test('carries the parent and the tag from the server writer to the client entity, as the client\'s own entity of that number', () => {
+    const clientEntities = roundTrip([{ attachmentParent: 3, attachmentTag: 12 }]);
+    const entity = clientEntities.getEntity(7);
+
+    assert.equal(entity.attachmentParent, clientEntities.getEntity(3));
+    assert.equal(entity.attachmentTag, 12);
+    assert.equal(entity.attachmentTagName, null);
+  });
+
+  void test('a detach lets go of the parent, and an update without the bit leaves the attachment alone', () => {
+    // The frame update after the attachment must be read from where the attachment ended: a reader that is off by a
+    // byte gets the wrong frame, or runs into the terminator.
+    const attached = roundTrip([{ attachmentParent: 3, attachmentTag: 12 }, { frame: 17 }]).getEntity(7);
+
+    assert.notEqual(attached.attachmentParent, null);
+    assert.equal(attached.frame, 17);
+
+    const detached = roundTrip([{ attachmentParent: 3, attachmentTag: 12 }, { attachmentParent: 0, attachmentTag: -1 }]).getEntity(7);
+
+    assert.equal(detached.attachmentParent, null);
+    assert.equal(detached.attachmentTag, -1);
+  });
+});
+
 void describe('svc.deltapacketentities sequence block', () => {
   /**
    * Sends what the server's writer makes of a state change to the client's parser.

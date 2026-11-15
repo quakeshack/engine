@@ -182,4 +182,50 @@ void describe('DefaultClientEdictHandler.emit muzzle flash', () => {
     assert.deepEqual(flashOrigin(createFlashModel(), [0, 90, 0]).map((value) => Math.round(value)), [100, 210, 300]);
     assert.deepEqual(flashOrigin(createFlashModel(), [0, 0, 0]).map((value) => Math.round(value)), [110, 200, 300]);
   });
+
+  void test('puts the light on the tag_flash of a weapon attached to the entity, which has none itself', () => {
+    let origin: number[] = [];
+
+    withMockLegacyClientRegistry((clientEntities) => {
+      const holder = clientEntities.getEntity(1);
+      holder.model = new BaseModel('progs/player.mdl');
+      holder.effects |= effect.EF_MUZZLEFLASH;
+      holder.origin.setTo(100, 200, 300);
+      holder.angles.setTo(0, 90, 0);
+
+      const weapon = clientEntities.allocateClientEntity();
+      weapon.model = createFlashModel();
+      weapon.origin.setTo(0, 0, 0);
+      weapon.angles.setTo(0, 0, 0);
+      weapon.setAttachment(holder);
+      new DefaultClientEdictHandler(holder, {} as ClientEngineAPI).emit();
+
+      origin = Array.from(clientEntities.dlights.find((light) => light.entity === holder.num)!.origin);
+    });
+
+    // the weapon sits at the holder's origin and its tag is 10 units along its X, which faces +Y with the holder
+    assert.deepEqual(origin.map((value) => Math.round(value)), [100, 210, 300]);
+  });
+
+  void test('keeps the fixed place when the attached entity has no tag_flash either, and for an entity attached to something else', () => {
+    withMockLegacyClientRegistry((clientEntities) => {
+      const holder = clientEntities.getEntity(1);
+      const bystander = clientEntities.getEntity(2);
+      holder.model = new BaseModel('progs/player.mdl');
+      holder.effects |= effect.EF_MUZZLEFLASH;
+      holder.origin.setTo(100, 200, 300);
+      holder.angles.setTo(0, 90, 0);
+
+      const elsewhere = clientEntities.allocateClientEntity();
+      elsewhere.model = createFlashModel();
+      elsewhere.origin.setTo(0, 0, 0);
+      elsewhere.angles.setTo(0, 0, 0);
+      elsewhere.setAttachment(bystander);
+      new DefaultClientEdictHandler(holder, {} as ClientEngineAPI).emit();
+
+      const origin = Array.from(clientEntities.dlights.find((light) => light.entity === holder.num)!.origin);
+
+      assert.deepEqual(origin.map((value) => Math.round(value)), [100, 220, 316]);
+    });
+  });
 });

@@ -103,14 +103,14 @@ export class AliasModelRenderer extends ModelRenderer {
     // Frustum culling
     if (Camera.CullBox(
       new Vector(
-        e.origin[0] - clmodel.boundingradius,
-        e.origin[1] - clmodel.boundingradius,
-        e.origin[2] - clmodel.boundingradius,
+        e.worldOrigin[0] - clmodel.boundingradius,
+        e.worldOrigin[1] - clmodel.boundingradius,
+        e.worldOrigin[2] - clmodel.boundingradius,
       ),
       new Vector(
-        e.origin[0] + clmodel.boundingradius,
-        e.origin[1] + clmodel.boundingradius,
-        e.origin[2] + clmodel.boundingradius,
+        e.worldOrigin[0] + clmodel.boundingradius,
+        e.worldOrigin[1] + clmodel.boundingradius,
+        e.worldOrigin[2] + clmodel.boundingradius,
       ))) {
       return;
     }
@@ -132,7 +132,7 @@ export class AliasModelRenderer extends ModelRenderer {
 
     // Setup transforms
     gl.uniform3fv(program!.uOrigin!, e.lerp.origin);
-    gl.uniformMatrix3fv(program!.uAngles!, false, e.lerp.angles.toRotationMatrix());
+    gl.uniformMatrix3fv(program!.uAngles!, false, e.lerp.rotationMatrix);
 
     // Setup lighting
     const [ambientlight, shadelight, lightVector, dynamicShadeLight, dynamicLightVector] = EntityLighting.CalculateLightValues(e);
@@ -211,7 +211,7 @@ export class AliasModelRenderer extends ModelRenderer {
     const program = GL.UseProgram(ctx.isPointLight ? 'shadow-alias-point' : 'shadow-alias')!;
 
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
-    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
+    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.rotationMatrix);
     gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ctx.lightSpaceMatrix);
 
     const { frameA, frameB, targettime } = AliasModelRenderer._selectFrames(clmodel, entity);

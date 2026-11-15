@@ -1,6 +1,6 @@
 import Vector from '../../shared/Vector.ts';
 
-export const version = 44;
+export const version = 45;
 
 export const update_backup = 64;
 export const update_mask = update_backup - 1;
@@ -24,6 +24,8 @@ export enum u {
   size = 1 << 15,
   /** A byte of `sequenceField` bits follows, then the fields it names (`ServerMessages.writeDeltaEntity`). The word is 32 bits wide since protocol 44. */
   sequence = 1 << 16,
+  /** A `uint16` parent entity number (0 detaches) and a signed short tag index follow (`ServerMessages.writeDeltaEntity`). Added in protocol 45. */
+  attachment = 1 << 17,
 }
 
 /** Which fields of the sequence block follow, in this order. Sent after `u.sequence` and in `svc_spawnstatic`. */
@@ -219,6 +221,10 @@ export class EntityState {
   animtime: number;
   /** Playback speed multiplier of the sequence, 1 for the speed the model gives it. */
   framerate: number;
+  /** The entity this one is attached to, 0 for none: `origin` and `angles` are then an offset in the tag's space. */
+  attachmentParent: number;
+  /** Index of the parent's tag, -1 for the parent's origin. */
+  attachmentTag: number;
   origin: Vector;
   angles: Vector;
 
@@ -234,6 +240,8 @@ export class EntityState {
     this.sequence = -1;
     this.animtime = 0.0;
     this.framerate = 1.0;
+    this.attachmentParent = 0;
+    this.attachmentTag = -1;
     this.origin = new Vector();
     this.angles = new Vector();
   }

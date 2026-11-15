@@ -3,7 +3,7 @@
 ## Status
 
 📝 Draft, nothing implemented, no open questions left (all settled 2026-11-13; quaternion handling
-added 2026-11-14, decisions 19–21). Phases 0 to 4 and S done on 2026-11-15 (results below). Phase 5 done the same day. Next: Phase 6.
+added 2026-11-14, decisions 19–21). Phases 0 to 4 and S done on 2026-11-15 (results below). Phases 5 and 6 done the same day. Next: Phase 7.
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
 parked: the core only has to leave room for them (Later: Half-Life studio models).
@@ -389,6 +389,63 @@ Differences from the plan, and why:
   Phase 7. Until then the muzzle flash light is only tested on a synthetic model.
 - **`GetEntityTag` reads `lerp.origin` and `lerp.angles`**, which is what the renderer uses, so for the local player in first person (the view model is not an
   entity with tags) and with the predicted origin it is not checked.
+
+### Phase 6 results (2026-11-15)
+
+Shipped (**not committed yet**): protocol 45 with `u.attachment` (bit 17: parent `uint16`, tag index signed short), `ServerEdict.setAttachment`/`clearAttachment`
+and their rules, `ClientEdict.setAttachment`/`clearAttachment`, `AttachmentTransform` (the one composition, used by both realms), `ServerAttachments`,
+`EntityAttachments` (client resolution), `lerp.rotationMatrix`/`lerp.localOrigin`/`worldOrigin`, the renderers moved to them, savegame records, the muzzle flash on a
+child's `tag_flash`, docs ("Attachments" in `docs/skeletal-models.md`, `game-module-contract.md`, `client-entities.md`, README).
+
+- **Server**: the state is on the edict (symbol-keyed record: `#private` members make `Readonly<ServerEdict>`, which is what games get, unassignable). The tag
+  is looked up by name in the parent's current model **each time it is sent**, so a parent that changes model is followed with no re-resolution step; a missing tag logs once.
+  `isInPXS` answers for the root of the chain, which covers PVS, PHS and the sent set; `traversePVS` also always sends what hangs on the client's own edict (a
+  player in noclip inside a wall has no leaves; the browser pass found that). `ED.Free(parent)` releases each child at its world transform (parent's pose by `frame`, or by
+  `sequence` from `animtime`, unblended) and relinks it, a loop is refused at `setAttachment`, savegames carry `[parent, tagName]` as an optional third element.
+- **Client**: `ClientEntities.emit` defers attached entities, then puts one on screen when its parent was (`emitSerial`), repeating up to eight rounds, so any
+  numbering and any chain work and a loop never draws. The resolved transform is stored on the child. `lerp.origin` is the resolved origin, `lerp.localOrigin` the own one,
+  `lerp.rotationMatrix` the renderers' `uAngles` (for a free entity exactly `angles.toRotationMatrix()`). Culling, sorting and the sprite quad read `worldOrigin`.
+  The handler's `emit` runs **before** the resolve (a spinning pickup's angles are part of its offset), and lights and trails use the origin of the last resolve.
+- **Tests**: 56 more (3,318 to 3,374): `entity-attachments` (client: composition, chain, depth, loop, emit pass, view entity, spin), `server-attachments`
+  (API, loops, tag by name, PVS, release on free, `writeEntitiesToClient`), wire writer and parser, savegame, `toModelRotationMatrixInto` against `toRotationMatrix`,
+  renderer culling and uniforms, muzzle flash on a child. Mutation checks (composition order, offset not turned by the tag, view instead of model angles, no parent check in the emit pass,
+  own PVS for a child, PVS of the child instead of the root, no release on free, transposed matrix, the noclip rule, resolve before the handler) each fail a test.
+
+**Browser pass** (`browser-ui-verification`, software GL, e1m1, id1 with the swapped soldier and player; attachments made from the page through
+`window.engine.SV.server.edicts[n].setAttachment`, since no game uses them yet) and a second one for two fixes:
+- A nailgun attached to soldier `Arm.R.006` is sent and resolved; its `lerp.origin` matches `entitytag` (240.74, 2386.11 against 240.7, 2386.1) and moves with the animation;
+  on a paused soldier it is within 0.2 units of the tag and its matrix within about 1 degree of the tag's angles.
+- Armor on the player's `R.hand` and the nailgun on the armor: neither is drawn in first person, both with `chase_active 1`, at different world origins (a chain).
+- An unknown tag puts the child at the parent's origin plus the offset and logs once. Freeing the soldier detaches the child and leaves it at (240.7, 2386.1, 44.3)
+  (43.5 drawn before: the unblended pose). A client-only entity on `Arm.L.006` draws and stops being drawn when its parent is freed. After `save` and `load` the
+  attachment (edict 15 to parent 1, `R.hand`) is back.
+- Second pass: under noclip, also inside rock, the child reaches the client and is drawn in chase view; an attached `MF_ROTATE` item spins about the tag's axis on a paused
+  soldier (about 58 degrees per 350 ms, six distinct matrices); `EF_DIMLIGHT` and `EF_BRIGHTLIGHT` put the light at the child's `lerp.origin` plus 16.
+- 0 page errors; only 404s of optional textures.
+
+Not checked: **shadows of an attached entity** (a diff of two shots was dominated by the lava; the shadow passes use the same `lerp.origin` and `lerp.rotationMatrix` and a unit
+test covers the renderer's uniforms, but nothing drew one), a weapon attached in a real game (no game uses attachments until Phase 7), a muzzle flash on a real attached `tag_flash`,
+the first frame of a new attachment (a light there may use the offset), a WebSocket or WebRTC client, pointer lock, real-GPU timing.
+
+Differences from the plan, and why:
+
+- **No separate "resolved quaternion stored on the child, parents first" pass over `visedicts`.** The resolve happens in the deferred pass that also decides visibility, and
+  `EntityAttachments.transformInto` recurses through the chain on demand, so `GetEntityTag` of an attached entity needs no cached state and cannot be a frame behind.
+- **The tag index on the wire is a signed short, -1 for the parent's origin** (DarkPlaces: 1-based, 0 for the origin). An IQM can have more than 255 joints.
+- **Client-only attachments hold the tag name and look it up every frame**; server ones carry the index the server resolved.
+- **An oriented sprite takes the parent's place but not its turn** (the sprite code reads angles, and a camera-facing flash is the case that matters). Documented.
+- **`MF_ROTATE` and the lights of an attached entity** needed the emit-before-resolve order and `worldOrigin` in `ClientLegacy`; trails of an attached entity are zero length.
+- **Attached entities are not saved on the client** (a client-only entity's parent is a reference no save format has); the server's are.
+- **Relinking after a detach is the game's job**: `clearAttachment` leaves the origin alone, and a game sets it with `setOrigin` (JSDoc and docs say so).
+- **Found afterwards, not part of attachments: the muzzle flash was swallowed, for two reasons**, both old behavior. (1) Flush against a wall the light, 20 units ahead
+  of an entity with a 16 wide hull, is inside the wall and the cube shadow of the world blacks it out (measured: light point contents -2, the room dark with
+  `r_shadow_point 1` and lit with 0). `ClientEntities.emit` now pulls the light of a server entity back to 4 units before the first wall on the line from the entity's
+  origin (`#pullLightsOutOfWalls`). (2) The entity that owns the light cast into it once `EF_MUZZLEFLASH` was gone, while the light was still fading, and in
+  some poses its arm or weapon covers much of it: with the player hidden as the reference, the lit floor beside it lost up to a third of its light in attack frames 103,
+  107, 113, 115, 117 and run frame 9, and none in the standing frames. The point is never *inside* the IQM player or soldier mesh in any frame (ray parity, nearest vertex 1.6 to
+  2 units), it is covered, not enclosed. The owner of a light, and what is attached to it, no longer casts into that light (`ShadowMap.pointLightOwners`); the same
+  frames then match the hidden-player reference. A first measurement with a standing pose showed no effect and the change was reverted for a while; the pose was the variable.
+- **`ServerEdict` has no `#private` members** and the new state is symbol-keyed, for the reason above.
 
 ### Decisions (2026-11-12, from the maintainer)
 
@@ -984,7 +1041,7 @@ rules, client resolution pass in quaternions, `lerp.rotationMatrix` and the rend
 client-only attachments, chains, visibility and prediction rules.
 *Tests: protocol round trip, chain order and cycles, parent freed, child hidden with the view entity,
 interpolated child matches parent tag.* *Browser: an entity attached to a monster's tag stays on it
-while it animates, with shadows, in third person.* *Exit: general attachments work.*
+while it animates, with shadows, in third person.* *Exit: general attachments work.* **Done 2026-11-15, see Phase 6 results.**
 
 **Phase 7: exporter features for attachments, Hellwave integration.** Cutting out parts, tag
 renaming, colormap masks, `export_attachment.py` with grip files; Hellwave player and weapons, gun

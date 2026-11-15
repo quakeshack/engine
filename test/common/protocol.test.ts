@@ -5,8 +5,8 @@ import * as Protocol from '../../source/engine/network/Protocol.ts';
 
 void describe('Protocol', () => {
   // A version change breaks every connected peer, so it has to be a deliberate edit here too.
-  void test('stays at protocol version 44', () => {
-    assert.equal(Protocol.version, 44);
+  void test('stays at protocol version 45', () => {
+    assert.equal(Protocol.version, 45);
   });
 
   // The entity update flag word was 16 bits wide until protocol 44 and every bit of it was in use: `u.sequence` is the
@@ -16,7 +16,7 @@ void describe('Protocol', () => {
 
     assert.ok(bits.every((bit) => bit > 0) && Math.max(...bits) > 0xffff);
     assert.equal(new Set(bits).size, bits.length);
-    assert.equal(bits.reduce((all, bit) => all | bit, 0) >>> 0, 0x1ffff);
+    assert.equal(bits.reduce((all, bit) => all | bit, 0) >>> 0, 0x3ffff);
   });
 
   void test('names the fields of the sequence block by distinct bits that fit in the byte the block starts with', () => {

@@ -97,14 +97,14 @@ export class MeshModelRenderer extends ModelRenderer {
     // Frustum culling
     if (Camera.CullBox(
       new Vector(
-        e.origin[0] + clmodel.mins[0],
-        e.origin[1] + clmodel.mins[1],
-        e.origin[2] + clmodel.mins[2],
+        e.worldOrigin[0] + clmodel.mins[0],
+        e.worldOrigin[1] + clmodel.mins[1],
+        e.worldOrigin[2] + clmodel.mins[2],
       ),
       new Vector(
-        e.origin[0] + clmodel.maxs[0],
-        e.origin[1] + clmodel.maxs[1],
-        e.origin[2] + clmodel.maxs[2],
+        e.worldOrigin[0] + clmodel.maxs[0],
+        e.worldOrigin[1] + clmodel.maxs[1],
+        e.worldOrigin[2] + clmodel.maxs[2],
       ))) {
       return;
     }
@@ -121,7 +121,7 @@ export class MeshModelRenderer extends ModelRenderer {
     GL.BindVAO(clmodel.vao!);
 
     // Setup uniforms
-    const viewMatrix = e.lerp.angles.toRotationMatrix();
+    const viewMatrix = e.lerp.rotationMatrix;
     gl.uniform3fv(program.uOrigin!, e.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, viewMatrix);
 
@@ -181,7 +181,7 @@ export class MeshModelRenderer extends ModelRenderer {
     const program = GL.UseProgram(ctx.isPointLight ? 'shadow-point' : 'shadow-brush')!;
 
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
-    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
+    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.rotationMatrix);
     gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ctx.lightSpaceMatrix);
 
     const indexType = clmodel.indices instanceof Uint16Array ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT;

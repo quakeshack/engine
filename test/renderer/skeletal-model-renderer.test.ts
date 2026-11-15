@@ -103,6 +103,8 @@ void describe('SkeletalModelRenderer', () => {
   const bound: string[] = [];
   let recording: RecordingContext = createRecordingContext();
   let culled = false;
+  /** The `mins` of every box the renderer asked the camera about. */
+  const culledBoxes: number[][] = [];
   let restoreClientState: () => void = () => {};
   let skinning: { mock: { callCount(): number } } = { mock: { callCount: () => 0 } };
 
@@ -132,7 +134,8 @@ void describe('SkeletalModelRenderer', () => {
 
     return {
       origin: new Vector(10, 20, 30),
-      lerp: { origin: new Vector(10, 20, 30), angles: new Vector(), frame: entityPose.lerpFrame },
+      worldOrigin: new Vector(10, 20, 30),
+      lerp: { origin: new Vector(10, 20, 30), angles: new Vector(), rotationMatrix: new Vector().toRotationMatrix(), frame: entityPose.lerpFrame },
       frame: entityPose.frame,
       sequence: -1,
       animtime: 0,
@@ -197,6 +200,7 @@ void describe('SkeletalModelRenderer', () => {
     recording = createRecordingContext();
     bound.length = 0;
     culled = false;
+    culledBoxes.length = 0;
 
     GL.gl = recording.gl;
     publishGlReady(recording.gl);
@@ -213,7 +217,10 @@ void describe('SkeletalModelRenderer', () => {
     DefaultTextures.blacktexture = createTexture('black');
     restoreClientState = patchMembers(clientRuntimeState, { scores: [{ colors: 0x3c }] });
 
-    mock.method(Camera, 'CullBox', () => culled);
+    mock.method(Camera, 'CullBox', (mins: Vector) => {
+      culledBoxes.push(Array.from(mins));
+      return culled;
+    });
     mock.method(EntityLighting, 'CalculateLightValues', () => [new Vector(), new Vector(), new Vector(), new Vector(), new Vector()]);
     skinning = mock.method(SkeletalAnimation, 'skinMeshInto');
   });
@@ -365,6 +372,32 @@ void describe('SkeletalModelRenderer', () => {
 
       assert.equal(skinning.mock.callCount(), 0);
       assert.equal(recording.invocations('drawElements').length, 0);
+    });
+
+    // An attached entity's own origin is an offset in tag space: culled by that, a weapon in the player's hand
+    // would vanish or stay when the player turns the corner.
+    void test('culls an attached entity by where the attachment puts it, not by its own origin', async () => {
+      const model = await loadModel();
+
+      renderer.render(model, createEntity({ frame: 1 }, { origin: new Vector(1, 2, 3), worldOrigin: new Vector(500, 600, 700) }), 0);
+
+      assert.equal(culledBoxes.length, 1);
+      assert.ok(culledBoxes[0][0] > 400 && culledBoxes[0][1] > 500 && culledBoxes[0][2] > 600, `the box is around (500, 600, 700): ${culledBoxes[0].join(', ')}`);
+    });
+
+    void test('draws with the origin and the rotation the entity\'s lerp gives, which for an attached entity are the attachment\'s', async () => {
+      const model = await loadModel();
+      const rotationMatrix = new Vector(0, 90, 0).toRotationMatrix();
+      const entity = createEntity({ frame: 1 });
+
+      Object.assign(entity.lerp, { origin: new Vector(7, 8, 9), rotationMatrix });
+      renderer.render(model, entity, 0);
+
+      assert.deepEqual(lastUniform('uOrigin'), [7, 8, 9]);
+      // uniformMatrix3fv(location, transpose, values)
+      const uploaded = recording.invocations('uniformMatrix3fv').filter((args) => args[0] === 'uAngles').at(-1)!;
+
+      assert.deepEqual(Array.from(uploaded[2] as ArrayLike<number>).map((value) => Math.round(value * 1e6) / 1e6), rotationMatrix.map((value) => Math.round(value * 1e6) / 1e6));
     });
 
     void test('skins an entity once for the frame, and its shadow passes upload the same vertices again', async () => {

@@ -427,6 +427,33 @@ export class Quaternion extends Array<number> {
   }
 
   /**
+   * Writes a rotation as the nine numbers `Vector.toRotationMatrix()` gives an entity with the same turn: row major,
+   * the rows are the entity's axes (forward, left, up). The model renderers upload this matrix as `uAngles`, so an
+   * entity whose rotation is a quaternion (an attached one) draws through the same shader code as one with angles.
+   * The rotation must be unit length.
+   * @param out Array receiving the 9 numbers.
+   * @param outOffset Index of the first.
+   * @param rotation Array holding the rotation (`w, x, y, z`).
+   * @param rotationOffset Index of its `w`.
+   */
+  static toModelRotationMatrixInto(out: QuaternionStorage, outOffset: number, rotation: ArrayLike<number>, rotationOffset: number): void {
+    const w = rotation[rotationOffset];
+    const x = rotation[rotationOffset + 1];
+    const y = rotation[rotationOffset + 2];
+    const z = rotation[rotationOffset + 3];
+
+    out[outOffset] = 1.0 - 2.0 * (y * y + z * z);
+    out[outOffset + 1] = 2.0 * (x * y + w * z);
+    out[outOffset + 2] = 2.0 * (x * z - w * y);
+    out[outOffset + 3] = 2.0 * (x * y - w * z);
+    out[outOffset + 4] = 1.0 - 2.0 * (x * x + z * z);
+    out[outOffset + 5] = 2.0 * (y * z + w * x);
+    out[outOffset + 6] = 2.0 * (x * z + w * y);
+    out[outOffset + 7] = 2.0 * (y * z - w * x);
+    out[outOffset + 8] = 1.0 - 2.0 * (x * x + y * y);
+  }
+
+  /**
    * Create a copy of this quaternion.
    */
   copy(): Quaternion {

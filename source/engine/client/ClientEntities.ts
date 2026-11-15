@@ -10,6 +10,7 @@ import * as Def from '../common/Def.ts';
 import { content, effect, moveType, solid } from '../../shared/Defs.ts';
 import Chase from './Chase.ts';
 import ClientEntityPhysics from './ClientEntityPhysics.ts';
+import { clientCollision } from './ClientPhysics.ts';
 import { DefaultClientEdictHandler } from './ClientLegacy.ts';
 import { BaseClientEdictHandler, type ClientSpawnParameters } from '../../shared/ClientEdict.ts';
 import GameModule from '../common/GameModule.ts';
@@ -23,11 +24,29 @@ import rendererCvars from './renderer/resources/RendererCvars.ts';
 import Host from '../common/Host.ts';
 import S from './Sound.ts';
 import Camera from './renderer/scene/Camera.ts';
+import { EntityAttachments } from './EntityAttachments.ts';
+import { MAX_ATTACHMENT_DEPTH } from '../common/AttachmentTransform.ts';
 
 interface ClientEntityLerpState {
   readonly frame: [number, number, number];
+  /**
+   * Where to draw the entity: its own interpolated origin, or, for an entity attached to another, the place the
+   * attachment puts it this frame (`EntityAttachments`), which its own origin is only an offset to.
+   */
   readonly origin: Vector;
+  /**
+   * The entity's own angles, interpolated. For an attached entity they are an offset in tag space and nothing draws
+   * by them: renderers take `rotationMatrix`.
+   */
   readonly angles: Vector;
+  /** The entity's own interpolated origin, the offset in tag space for an attached entity. */
+  readonly localOrigin: Vector;
+  /**
+   * The nine numbers of the rotation to draw the entity with, the form the model renderers upload as `uAngles` (what
+   * `Vector.toRotationMatrix()` gives): from `angles` for an entity that stands free, from the rotation the attachment
+   * resolved for an attached one, which never becomes angles on the way.
+   */
+  readonly rotationMatrix: number[];
 }
 
 interface TempEntitySounds {
@@ -142,6 +161,20 @@ export class ClientBeam {
 }
 
 /**
+ * Follows the parents of an entity to the top of its chain, at most `MAX_ATTACHMENT_DEPTH` of them.
+ * @returns The entity itself when it stands free.
+ */
+function findAttachmentRoot(entity: ClientEdict): ClientEdict {
+  let root = entity;
+
+  for (let depth = 0; root.attachmentParent !== null && depth < MAX_ATTACHMENT_DEPTH; depth++) {
+    root = root.attachmentParent;
+  }
+
+  return root;
+}
+
+/**
  * The engine-side record of one entity on the client, the counterpart of `ServerEdict`. "Edict"
  * is the engine's word for that record (number, model, origin, links); what a game thinks of as
  * the entity is its handler.
@@ -237,6 +270,32 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   readonly lerp: ClientEntityLerpState;
 
   /**
+   * The entity this one follows, `null` when it stands free. An attached entity's `origin` and `angles` are its offset
+   * in the tag's space, and it is drawn exactly when its parent is (`EntityAttachments`). The server sets it for
+   * entities it sends (`Protocol.u.attachment`); a game sets it for its own client-only entities with
+   * {@link ClientEdict.setAttachment}.
+   */
+  attachmentParent: ClientEdict | null = null;
+  /** Index of the parent's tag that the server resolved, -1 for the parent's origin. */
+  attachmentTag = -1;
+  /**
+   * The name of the tag a client-only entity follows, looked up in the parent's model every frame so a parent that
+   * changes model is followed. `null` when the tag index came from the server.
+   */
+  attachmentTagName: string | null = null;
+  /** Where the attachment put the entity this frame: origin `x, y, z`, rotation `w, x, y, z`. Valid while `attachmentResolved`. */
+  readonly attachmentTransform = new Float64Array(7);
+  /** The origin part of `attachmentTransform` as a vector, for what reads an origin (`worldOrigin`, `lerp.origin`). */
+  readonly attachmentOrigin = new Vector();
+  /**
+   * Whether `attachmentTransform` was resolved by the last emit pass that drew the entity. An entity that is not drawn
+   * (its parent is not) keeps what it had, and is not read.
+   */
+  attachmentResolved = false;
+  /** The emit pass that last put this entity on screen, so an attached entity can tell whether its parent was. */
+  emitSerial = 0;
+
+  /**
    * Time-smoothed static/dynamic lighting terms, blended towards the newly
    * sampled values each frame by `EntityLighting.CalculateLightValues` so lighting eases
    * across lightmap boundaries instead of snapping. Null until first sampled.
@@ -306,6 +365,9 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
         return [that.framePrevious, that.frame, (time - that.frameTime) / (that.lerpEndTime - that.frameTime)];
       },
       get origin(): Vector {
+        return that.attachmentResolved ? that.attachmentOrigin : this.localOrigin;
+      },
+      get localOrigin(): Vector {
         const time = clientRuntimeState.clientMessages.renderTime;
         if (that.lerpEndTime <= time || clientCvars.nolerp.value || that.originPrevious.isInfinite()) {
           return that.origin;
@@ -327,6 +389,15 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
         }
         const f = Math.min(1, Math.max(0, (time - that.anglesTime) / (that.lerpEndTime - that.anglesTime)));
         return Quaternion.slerpAngles(that.anglesPrevious, that.angles, f, new Vector());
+      },
+      get rotationMatrix(): number[] {
+        if (!that.attachmentResolved) {
+          return this.angles.toRotationMatrix();
+        }
+
+        const matrix: number[] = new Array<number>(9).fill(0);
+        Quaternion.toModelRotationMatrixInto(matrix, 0, that.attachmentTransform, 3);
+        return matrix;
       },
     };
 
@@ -369,6 +440,58 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   }
 
   /**
+   * The entity at the top of the chain of parents this one hangs on, the one whose place decides where this one is.
+   * @returns The root, this entity itself when it stands free. A chain deeper than `MAX_ATTACHMENT_DEPTH` stops there.
+   */
+  get attachmentRoot(): ClientEdict {
+    return findAttachmentRoot(this);
+  }
+
+  /**
+   * Where the entity is in the world, not interpolated: what culling and sorting look at. Its own `origin` for an
+   * entity that stands free, the place the attachment put it this frame for an attached one, whose own `origin` is only
+   * an offset.
+   * @returns The position. It is not a copy: read it, do not change it.
+   */
+  get worldOrigin(): Vector {
+    return this.attachmentResolved ? this.attachmentOrigin : this.origin;
+  }
+
+  /**
+   * Attaches this client-only entity to another entity, to a tag of its model or to its origin, the same as
+   * `ServerEdict.setAttachment` does for server entities, without any network traffic: a muzzle flash sprite on the
+   * barrel, a spark on a hand. From now on `origin` and `angles` are this entity's offset in the tag's space and it is
+   * drawn exactly when its parent is, hidden in first person when the parent is the view entity. The attachment
+   * follows the parent while it lives; when the parent is freed this entity stops being drawn, and the game that
+   * attached it frees it or attaches it elsewhere. Attachments of client-only entities are not saved.
+   * @param parent The entity to follow, a server entity or another client-only one.
+   * @param tagName The name of a tag of the parent's model, `null` for the parent's origin. A name the model does not have also gives the origin.
+   */
+  setAttachment(parent: ClientEdict, tagName: string | null = null): void {
+    console.assert(parent !== this, 'ClientEdict.setAttachment: an entity cannot be attached to itself');
+
+    this.attachmentParent = parent;
+    this.attachmentTag = -1;
+    this.attachmentTagName = tagName === '' ? null : tagName;
+    this.attachmentResolved = false;
+  }
+
+  /**
+   * Lets go of the parent: `origin` and `angles` are world values again, which the game that detaches on purpose
+   * sets first.
+   *
+   * Note: set the origin with `setOrigin()`, not by assigning `origin`. The entity's leaves were linked at the offset
+   * while it was attached, and only `setOrigin()` relinks it. With a plain assignment the PVS check of a client-only
+   * entity keeps using the old leaves and the entity is drawn only where the offset was.
+   */
+  clearAttachment(): void {
+    this.attachmentParent = null;
+    this.attachmentTag = -1;
+    this.attachmentTagName = null;
+    this.attachmentResolved = false;
+  }
+
+  /**
    * A client-owned entity has no corresponding server-tracked slot (`num === -1`): static
    * (`svc_spawnstatic`) decorations, temp entities, and future client-only simulated entities
    * all share this sentinel.
@@ -408,6 +531,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.sequence = -1;
     this.animtime = 0.0;
     this.framerate = 1.0;
+    this.clearAttachment();
     this.modelindex = 0;
     this.skinnum = 0;
     this.colormap = 0;
@@ -656,6 +780,9 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   }
 }
 
+/** How far in front of a wall a light that was pulled out of it is left, in world units. */
+const LIGHT_WALL_MARGIN = 4.0;
+
 export default class ClientEntities {
   /**
    * All client-owned entities (`num === -1`), allocated via `allocateClientEntity()`. Despite the
@@ -692,6 +819,12 @@ export default class ClientEntities {
    * The PVS of the view the last `emit()` pass was made for, `null` before the first pass of a map.
    */
   #viewVisibility: Visibility | null = null;
+
+  /** Counts the `emit()` passes, so an entity can tell whether its parent was put on screen in this one. */
+  #emitSerial = 0;
+
+  /** The attached entities of the current `emit()` pass, waiting for their parents (`#emitAttachedEntities`). */
+  readonly #attachedCandidates: ClientEdict[] = [];
 
   tempEntitySounds: TempEntitySounds = {
     wizhit: null,
@@ -1083,6 +1216,43 @@ export default class ClientEntities {
     }
   }
 
+  /**
+   * Keeps the light of an entity on the entity's side of the walls. A game places it at the entity's muzzle, 20 units
+   * ahead of the origin, which is farther than a player's hull is wide: flush against a wall (or a closed door) the
+   * light is inside the wall, and the world's shadow swallows it, leaving only the shooter lit. Walking away from the
+   * wall made it appear. The light is moved back along the line from the entity's origin to where the game put it, to
+   * `LIGHT_WALL_MARGIN` units before the first wall on it.
+   *
+   * Lights that belong to no server entity (explosions, beams, client-only entities) are left where they are. So is a
+   * light of an entity whose own origin is in solid, which is a noclipping player.
+   */
+  #pullLightsOutOfWalls(): void {
+    for (const dl of this.dlights) {
+      if (dl.entity <= 0 || dl.isFree()) {
+        continue;
+      }
+
+      const owner = this.entities[dl.entity];
+
+      if (owner === undefined || owner.free || owner.origin.isInfinite()) {
+        continue;
+      }
+
+      const start = owner.origin;
+      const trace = clientCollision.traceStaticWorldLine(start, dl.origin);
+
+      if (trace.fraction >= 1.0 || trace.startsolid) {
+        continue;
+      }
+
+      const reach = Math.max(dl.origin.distanceTo(start) * trace.fraction - LIGHT_WALL_MARGIN, 0.0);
+      const direction = dl.origin.copy().subtract(start);
+
+      direction.normalize();
+      dl.origin = start.copy().add(direction.multiply(reach));
+    }
+  }
+
   #thinkDlights(): void {
     for (let i = 0; i < Def.limits.dlights; i++) {
       const dl = this.dlights[i];
@@ -1167,8 +1337,7 @@ export default class ClientEntities {
         continue;
       }
 
-      clent.emit();
-      this.visedicts[this.num_visedicts++] = clent;
+      this.#stageOrDefer(clent);
     }
 
     const worldmodel = clientRuntimeState.worldmodel;
@@ -1192,14 +1361,64 @@ export default class ClientEntities {
         continue;
       }
 
-      // not visible in PVS
-      if (!vis.areRevealed(clent.leafs)) {
+      // an attached entity is where its parent is, so it has no leaves of its own to look up
+      if (clent.attachmentParent === null && !vis.areRevealed(clent.leafs)) {
         continue;
       }
 
-      clent.emit();
-      this.visedicts[this.num_visedicts++] = clent;
+      this.#stageOrDefer(clent);
     }
+  }
+
+  /**
+   * Puts an entity on screen, or holds it back when it is attached: an attached entity is drawn exactly when its parent
+   * is, which is only known once every entity has been looked at (`#emitAttachedEntities`).
+   * @param clent The entity, already checked for having a model and not being hidden.
+   */
+  #stageOrDefer(clent: ClientEdict): void {
+    if (clent.attachmentParent !== null) {
+      this.#attachedCandidates.push(clent);
+      return;
+    }
+
+    clent.emit();
+    this.#stage(clent);
+  }
+
+  #stage(clent: ClientEdict): void {
+    clent.emitSerial = this.#emitSerial;
+    this.visedicts[this.num_visedicts++] = clent;
+  }
+
+  /**
+   * Resolves the entities attached to others and puts those whose parent is on screen on screen too, parents first so
+   * a chain (a flash on a weapon on a player) works whatever order the entities are numbered in. An entity whose
+   * parent is not drawn, or cannot be placed, or is in a loop, stays out.
+   */
+  #emitAttachedEntities(): void {
+    const pending = this.#attachedCandidates;
+
+    for (let round = 0; round < MAX_ATTACHMENT_DEPTH && pending.length > 0; round++) {
+      let remaining = 0;
+
+      for (const clent of pending) {
+        if (clent.attachmentParent!.emitSerial !== this.#emitSerial) {
+          pending[remaining++] = clent;
+          continue;
+        }
+
+        // the handler runs first: what it does to the entity's own angles (a spinning pickup) is part of its offset
+        clent.emit();
+
+        if (EntityAttachments.resolve(clent)) {
+          this.#stage(clent);
+        }
+      }
+
+      pending.length = remaining;
+    }
+
+    pending.length = 0;
   }
 
   /**
@@ -1226,9 +1445,7 @@ export default class ClientEntities {
         continue;
       }
 
-      ent.emit();
-
-      this.visedicts[this.num_visedicts++] = ent;
+      this.#stageOrDefer(ent);
     }
   }
 
@@ -1238,9 +1455,14 @@ export default class ClientEntities {
       return;
     }
 
+    this.#emitSerial++;
+    this.#attachedCandidates.length = 0;
+
     this.#emitEntities();
     this.#emitProjectiles();
     this.#emitTempEntities();
+    this.#emitAttachedEntities();
+    this.#pullLightsOutOfWalls();
   }
 
   /**

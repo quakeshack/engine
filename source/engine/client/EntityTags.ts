@@ -1,7 +1,9 @@
 import { Quaternion } from '../../shared/Vector.ts';
 import type Vector from '../../shared/Vector.ts';
+import { TRANSFORM_SIZE } from '../common/AttachmentTransform.ts';
 import { SkeletalModel } from '../common/model/SkeletalModel.ts';
 import type { ClientEdict } from './ClientEntities.ts';
+import { EntityAttachments } from './EntityAttachments.ts';
 import { SkeletalPoseSelection } from './renderer/models/SkeletalPoseSelection.ts';
 
 /**
@@ -15,8 +17,8 @@ export class EntityTags {
   /** The tag in the model's space: origin `x, y, z`, then rotation `w, x, y, z`. */
   static readonly #local = new Float64Array(7);
 
-  /** The entity's turn as a quaternion. */
-  static readonly #entityRotation = new Float64Array(4);
+  /** Where the entity is in the world, through its attachments if it has any: origin, then rotation. */
+  static readonly #entityTransform = new Float64Array(TRANSFORM_SIZE);
 
   /** The tag's turn in the world. */
   static readonly #worldRotation = new Float64Array(4);
@@ -28,7 +30,8 @@ export class EntityTags {
   static readonly #noScale = new Float32Array([1, 1, 1]);
 
   /**
-   * Finds where a tag is in the world right now: the entity's smoothed origin and angles applied to the tag of the
+   * Finds where a tag is in the world right now: the entity's smoothed origin and angles (or, for an entity attached to
+   * another, where the attachment puts it, a chain of any depth) applied to the tag of the
    * pose the entity is drawn in (the same pose as the vertices, with the same blending), so something placed there
    * is on the weapon, the hand or the muzzle that is on the screen.
    *
@@ -61,21 +64,24 @@ export class EntityTags {
       return false;
     }
 
-    const entityRotation = EntityTags.#entityRotation;
-    const matrix = EntityTags.#entityMatrix;
-    const entityOrigin = entity.lerp.origin;
+    const entityTransform = EntityTags.#entityTransform;
 
-    Quaternion.fromModelAnglesInto(entityRotation, 0, entity.lerp.angles);
-    Quaternion.toMatrix3x4Into(matrix, 0, entityRotation, 0, EntityTags.#noOffset, 0, EntityTags.#noScale, 0);
+    if (!EntityAttachments.transformInto(entity, entityTransform)) {
+      return false;
+    }
+
+    const matrix = EntityTags.#entityMatrix;
+
+    Quaternion.toMatrix3x4Into(matrix, 0, entityTransform, 3, EntityTags.#noOffset, 0, EntityTags.#noScale, 0);
 
     outOrigin.setTo(
-      entityOrigin[0] + matrix[0] * local[0] + matrix[1] * local[1] + matrix[2] * local[2],
-      entityOrigin[1] + matrix[4] * local[0] + matrix[5] * local[1] + matrix[6] * local[2],
-      entityOrigin[2] + matrix[8] * local[0] + matrix[9] * local[1] + matrix[10] * local[2],
+      entityTransform[0] + matrix[0] * local[0] + matrix[1] * local[1] + matrix[2] * local[2],
+      entityTransform[1] + matrix[4] * local[0] + matrix[5] * local[1] + matrix[6] * local[2],
+      entityTransform[2] + matrix[8] * local[0] + matrix[9] * local[1] + matrix[10] * local[2],
     );
 
     if (outAngles !== null) {
-      Quaternion.multiplyInto(EntityTags.#worldRotation, 0, entityRotation, 0, local, 3);
+      Quaternion.multiplyInto(EntityTags.#worldRotation, 0, entityTransform, 3, local, 3);
       Quaternion.toModelAnglesInto(outAngles, 0, EntityTags.#worldRotation, 0);
     }
 

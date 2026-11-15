@@ -545,7 +545,8 @@ void describe('BrushModelRenderer liquids of brush entities', () => {
    * @returns The entity.
    */
   function createEntity(model: BrushModel, alpha: number): ClientEdict {
-    return { model, alpha, origin: new Vector() } as unknown as ClientEdict;
+    const origin = new Vector();
+    return { model, alpha, origin, worldOrigin: origin } as unknown as ClientEdict;
   }
 
   void test('an opaque entity with water is drawn in the transparent pass, nothing else draws its liquids', () => {
@@ -993,7 +994,7 @@ void describe('BrushModelRenderer.getEntityScreenBounds', () => {
    * @returns The entity.
    */
   function createEntity(origin: Vector, drawnAt: Vector, angles = new Vector()): ClientEdict {
-    return { origin, lerp: { origin: drawnAt, angles } } as unknown as ClientEdict;
+    return { origin, worldOrigin: origin, lerp: { origin: drawnAt, angles } } as unknown as ClientEdict;
   }
 
   // The draw uses lerp.origin. A pane on a moving door is between two server positions, and a copy made for where the

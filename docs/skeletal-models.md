@@ -5,9 +5,9 @@ format is [Inter-Quake Model](https://sourceforge.net/projects/iqm/) (`.iqm`), v
 [plans/skeletal-models.md](../plans/skeletal-models.md).
 
 **What works today:** loading, on the client and on the server, including `setModel()` sizing and the `modelinfo` command; posing;
-drawing with lighting, shadows, a glow layer and player colors; named sequences; tags. A game uses an `.iqm` where it used an `.mdl`: `frame`
+drawing with lighting, shadows, a glow layer and player colors; named sequences; tags; attachments. A game uses an `.iqm` where it used an `.mdl`: `frame`
 picks the pose and the client blends neighboring frames like it does for alias models, or the game plays a sequence by name.
-**What does not exist yet:** attachments (an entity that follows a tag by itself), view weapons, per-skin textures. Those are later phases of the
+**What does not exist yet:** view weapons, per-skin textures. Those are later phases of the
 plan; this page grows with each of them.
 
 ## Making a model
@@ -150,13 +150,54 @@ if (engine.GetEntityTag(entity, 'tag_flash', origin, angles)) {
 - **Rigid**: a tag has an origin and a rotation, no scale. A rig that scales a bone (the LibreQuake player's gun bone is at 0.8) leaves
   that scale to the model that is attached; the tag's axes are the bone's, made orthonormal.
 - **On the server too**: the server keeps the joints and frames of a model it precaches, so `GetTagIndex` works there and `sampleTag`
-  can place a tag for a game that needs one (projectile origins); the world transform of an entity exists on the client only.
+  can place a tag for a game that needs one (projectile origins); the world transform of an entity as it is drawn exists on the client only (the server
+  works out where an attached child is only when its parent is freed).
 - **The muzzle flash**: an entity with `EF_MUZZLEFLASH` puts its dynamic light on the model's `tag_flash` when it has one (the pose
   does not blend during a flash, like for alias models), and 20 units ahead and 16 up from the origin, as always, when it has not.
 - **`entitytag <entity number> [tag]`** prints where a tag of an entity is in the world (and without a tag name lists the tags of its
   model). Run it again while the entity animates or moves and the numbers move with it; `entities` lists the numbers.
 
-Attachments, an entity that follows a tag without the game placing it every frame, come with Phase 6 of the plan.
+## Attachments
+
+An entity can be attached to a tag of another entity, or to its origin, and then **follows it without the game placing it every
+frame**: a weapon in a player's hand, a flash on a muzzle, a hat. It works as DarkPlaces' `setattachment` does.
+
+```ts
+// server, in the game: the weapon entity follows the player's `tag_weapon`
+weapon.edict.setAttachment(player.edict, 'tag_weapon');   // weapon.solid is SOLID_NOT
+weapon.origin = new Vector(0, 0, 2);                      // an offset in the tag's space, a holster shift
+weapon.edict.clearAttachment();                           // let go
+
+// client, for an entity of the game's own client code (nothing is sent)
+flashSprite.setAttachment(weaponEntity, 'tag_flash');
+```
+
+- **The child's own `origin` and `angles` are its transform in the tag's space**: its world transform is the parent's origin and
+  angles, times the tag, times that. That is how a game shifts a holstered gun without a tag of its own. Reading `origin` of an
+  attached entity gives the offset, not a place in the world; `GetEntityTag` and `lerp.origin` give the place.
+- **Server rules.** An attached entity should be `SOLID_NOT` and does not move by itself (`console.assert` in development).
+  It is sent to a client **whenever its parent is**, wherever its offset would put it: PVS, PHS and culling follow the parent, and for
+  a chain the root. Attaching to itself or in a loop is refused with a warning. The tag is looked up by name in the parent's *current*
+  model each time it is sent, so a parent that changes model is followed; an unknown tag attaches to the parent's origin and says so once
+  in developer mode. **Freeing the parent lets go of the children and keeps each where it was in the world** (turned as it was, for the
+  pose the parent's `frame`, or `sequence` from the `animtime` the game set, was in), so a dropped weapon lies where it was held. Saves
+  keep attachments (in the edict's record), so a held weapon is still held after a load.
+- **Client rules.** An attached entity is drawn **exactly when its parent is**, with no PVS check of its own: hidden in first person when
+  the parent is the view entity, shown with the chase camera, hidden when the parent has `EF_NODRAW` or no model, is freed, or is in a
+  loop. Chains work (a flash on a weapon on a player), up to eight deep, in whatever order the entities are numbered.
+  The child follows the pose its parent is drawn in, blended the same way, so it is on the hand that is on the screen.
+- **Client-only entities** can attach to server entities and to each other. Their `origin` and `angles` start out non-finite, so
+  set both before attaching. When the parent is freed the child stops being drawn, and the game frees or re-attaches it. They are not
+  saved.
+- **Renderers draw with `lerp.rotationMatrix`**, not `lerp.angles`: for an entity that stands free it is the matrix of its angles, for an
+  attached one the rotation the attachment resolved, which never becomes angles on the way. An oriented sprite (`angles` selects its
+  facing) takes the place of its parent but not the parent's turn; a flash sprite that faces the camera is not affected.
+- **The muzzle flash** of an entity with `EF_MUZZLEFLASH` goes to its own `tag_flash`, else to the `tag_flash` of an entity attached to it
+  (the weapon it holds), else to the fixed place. Whichever place the game picks, the light of a server entity is pulled back out of a wall it ended up in (the fixed place is 20 units ahead,
+  a player's hull is 16 wide), to 4 units before the wall on the line from the entity, so a flash against a wall still lights the room. The entity a dynamic light belongs to, and what is attached to it, does not cast into that light's cube shadow: the light sits at its weapon,
+  where an arm or the weapon covers part of it in some poses.
+- **On the wire** (protocol 45): update bit `u.attachment` (bit 17) is followed by the parent's entity number (`uint16`, 0 detaches) and the
+  tag's index (signed short, -1 for the parent's origin).
 
 ## Drawing
 

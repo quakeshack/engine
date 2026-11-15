@@ -597,6 +597,16 @@ function parsePacketEntities() {
       readSequenceBlock(clent);
     }
 
+    if (bits & Protocol.u.attachment) {
+      const parentNumber = net.message.readUint16();
+      const tag = net.message.readShort();
+
+      clent.attachmentParent = parentNumber === 0 ? null : clientRuntimeState.clientEntities.getEntity(parentNumber);
+      clent.attachmentTag = tag;
+      clent.attachmentTagName = null;
+      clent.attachmentResolved = false;
+    }
+
     if (bits & Protocol.u.nextthink) {
       clent.lerpEndTime = clientRuntimeState.clientMessages.mtime[0] + net.message.readByte() / 255.0;
     }

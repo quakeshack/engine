@@ -174,7 +174,7 @@ export class SkeletalModelRenderer extends ModelRenderer {
     GL.BindVAO(gpuMesh.vao);
 
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
-    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
+    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.rotationMatrix);
 
     const [ambientlight, shadelight, lightPosition, dynamicShadeLight, dynamicLightPosition] = EntityLighting.CalculateLightValues(entity);
     gl.uniform3fv(program.uAmbientLight!, ambientlight);
@@ -232,7 +232,7 @@ export class SkeletalModelRenderer extends ModelRenderer {
     GL.BindVAO(gpuMesh.vao);
 
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
-    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
+    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.rotationMatrix);
     gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ctx.lightSpaceMatrix);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, gpuMesh.vertexBuffer);
@@ -280,8 +280,8 @@ export class SkeletalModelRenderer extends ModelRenderer {
     const mins = SkeletalModelRenderer.#cullMins;
     const maxs = SkeletalModelRenderer.#cullMaxs;
 
-    mins.setTo(entity.origin[0] - radius, entity.origin[1] - radius, entity.origin[2] - radius);
-    maxs.setTo(entity.origin[0] + radius, entity.origin[1] + radius, entity.origin[2] + radius);
+    mins.setTo(entity.worldOrigin[0] - radius, entity.worldOrigin[1] - radius, entity.worldOrigin[2] - radius);
+    maxs.setTo(entity.worldOrigin[0] + radius, entity.worldOrigin[1] + radius, entity.worldOrigin[2] + radius);
 
     return Camera.CullBox(mins, maxs);
   }

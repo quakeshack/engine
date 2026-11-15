@@ -466,7 +466,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * @returns False when its bounds are outside of the frustum.
    */
   isEntityInView(clmodel: BrushModel, entity: ClientEdict): boolean {
-    BrushModelRenderer.#loadEntityBounds(clmodel, entity.origin);
+    BrushModelRenderer.#loadEntityBounds(clmodel, entity.worldOrigin);
 
     return !Camera.CullBox(BrushModelRenderer.#entityMins, BrushModelRenderer.#entityMaxs);
   }
@@ -479,7 +479,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const angles = entity.lerp.angles;
 
     // the bounds of an inline submodel are those of its vertices at rest, they say nothing once it has turned
-    if (clmodel.submodel && (angles[0] !== 0.0 || angles[1] !== 0.0 || angles[2] !== 0.0)) {
+    if (clmodel.submodel && (entity.attachmentResolved || angles[0] !== 0.0 || angles[1] !== 0.0 || angles[2] !== 0.0)) {
       Camera.WholeScreen(out);
       return;
     }
@@ -544,7 +544,7 @@ export class BrushModelRenderer extends ModelRenderer {
       return;
     }
 
-    const viewMatrix = e.lerp.angles.toRotationMatrix();
+    const viewMatrix = e.lerp.rotationMatrix;
 
     if (pass === 0) {
       GL.BindVAO(clmodel.opaqueVAO!);
@@ -845,7 +845,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const program = GL.UseProgram(ctx.isPointLight ? 'shadow-point' : 'shadow-brush')!;
 
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
-    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
+    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.rotationMatrix);
     gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ctx.lightSpaceMatrix);
 
     for (let i = 0; i < clmodel.chains.length; i++) {
@@ -1377,7 +1377,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * @returns Distance in world units.
    */
   getEntityViewDistance(clmodel: BrushModel, entity: ClientEdict, vieworg: Float32Array | number[]): number {
-    BrushModelRenderer.#loadEntityBounds(clmodel, entity.origin);
+    BrushModelRenderer.#loadEntityBounds(clmodel, entity.worldOrigin);
 
     return this._getBoundsDistanceToView(BrushModelRenderer.#entityMins, BrushModelRenderer.#entityMaxs, vieworg);
   }

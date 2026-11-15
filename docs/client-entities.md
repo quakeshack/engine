@@ -132,6 +132,10 @@ override think(): void {
 
 `ClientEngineAPI.IsInPVS(entity)` tells whether the entity is in the PVS of the current view, also for entities that are not drawn. An effect source can skip its work while nobody can see it. It reflects the previous frame, is coarse (a wall in the way does not count), and answers "yes" when it cannot tell. If the source skips effects while hidden, replay what it missed when it comes back, so the effect does not start from nothing in front of the player.
 
+### Following another entity: `setAttachment`
+
+`clientEdict.setAttachment(parent, 'tag_flash')` makes a client-only entity follow a tag of another entity (a server entity or another client-only one), or its origin with `null`, with no network traffic: a flash sprite on a barrel, a spark on a hand. Its `origin` and `angles` are then its offset in the tag's space (set both before attaching, they start out non-finite), it is drawn exactly when its parent is (no PVS check of its own, hidden with the view entity in first person), and it stops being drawn when the parent is freed: free it or attach it elsewhere. `clearAttachment()` lets go; the origin and angles are world values again. Attachments of client-only entities are not saved. See [Skeletal models](skeletal-models.md#attachments).
+
 ### Other client API a handler can use
 
 `CL.time`, `CL.frametime` and `CL.gravity` for timing and physics, `Traceline()` for the world, `DetermineStaticWorldContents()` for water and the like, `AllocDlight()` for dynamic lights, `RocketTrail()` for trails.

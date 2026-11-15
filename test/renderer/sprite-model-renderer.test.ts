@@ -125,7 +125,7 @@ void describe('SpriteModelRenderer', () => {
    * @returns An entity at `origin`, turned by `yaw`.
    */
   function entityAt(origin: Vector, yaw: number, extra: Record<string, unknown> = {}): ClientEdict {
-    return { origin, angles: new Vector(0, yaw, 0), frame: 0, sequence: -1, animtime: 0, framerate: 1, alpha: 1, effects: 0, syncbase: 0, ...extra } as unknown as ClientEdict;
+    return { origin, worldOrigin: origin, angles: new Vector(0, yaw, 0), frame: 0, sequence: -1, animtime: 0, framerate: 1, alpha: 1, effects: 0, syncbase: 0, ...extra } as unknown as ClientEdict;
   }
 
   /**

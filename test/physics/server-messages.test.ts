@@ -316,6 +316,65 @@ void describe('ServerMessages.startSound', () => {
   });
 });
 
+void describe('ServerMessages.writeDeltaEntity attachment', () => {
+  /**
+   * Writes the delta between two states.
+   * @param from The first state's attachment.
+   * @param to The second state's attachment.
+   * @returns Whether anything was written, the buffer and its size.
+   */
+  function write(from: { parent: number; tag: number }, to: { parent: number; tag: number }): { wrote: boolean; view: DataView; size: number } {
+    const context = installWriteDeltaEntityContext();
+
+    try {
+      const messages = new ServerMessages(context.sv);
+      const before = new ServerEntityState(3);
+      const after = new ServerEntityState(3);
+      const buffer = new SzBuffer(64, 'ServerMessages.writeDeltaEntity attachment');
+
+      before.attachmentParent = from.parent;
+      before.attachmentTag = from.tag;
+      after.attachmentParent = to.parent;
+      after.attachmentTag = to.tag;
+
+      const wrote = messages.writeDeltaEntity(buffer, before, after);
+
+      return { wrote, view: new DataView(buffer.data), size: buffer.cursize };
+    } finally {
+      context.restore();
+    }
+  }
+
+  void test('sends nothing while the entity stays attached to the same tag, which is every frame of a held weapon', () => {
+    assert.equal(write({ parent: 1, tag: 4 }, { parent: 1, tag: 4 }).wrote, false);
+  });
+
+  void test('sends the parent as an unsigned short and the tag as a signed short after the flag word', () => {
+    const { wrote, view, size } = write({ parent: 0, tag: -1 }, { parent: 300, tag: 12 });
+
+    assert.equal(wrote, true);
+    assert.equal(view.getUint32(2, true), Protocol.u.attachment, 'the bit is above 16, so the word has to be 32 bits wide');
+    assert.equal(view.getUint16(6, true), 300);
+    assert.equal(view.getInt16(8, true), 12);
+    assert.equal(size, 2 + 4 + 2 + 2);
+  });
+
+  void test('sends the change of tag alone, as when the parent switches to a model with the tag elsewhere', () => {
+    const { view } = write({ parent: 1, tag: 4 }, { parent: 1, tag: 9 });
+
+    assert.equal(view.getUint16(6, true), 1);
+    assert.equal(view.getInt16(8, true), 9);
+  });
+
+  void test('sends a detach as parent 0, with the tag -1 the origin of the parent also has', () => {
+    const { wrote, view } = write({ parent: 1, tag: 4 }, { parent: 0, tag: -1 });
+
+    assert.equal(wrote, true);
+    assert.equal(view.getUint16(6, true), 0);
+    assert.equal(view.getInt16(8, true), -1);
+  });
+});
+
 void describe('ServerMessages.writeDeltaEntity sequence block', () => {
   /**
    * Writes the delta between two states.

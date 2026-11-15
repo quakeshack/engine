@@ -325,6 +325,27 @@ void describe('model angle convention', () => {
   });
 });
 
+void describe('Quaternion.toModelRotationMatrixInto', () => {
+  // The model renderers upload this matrix as `uAngles`; an attached entity draws through the same shader code as one
+  // that has angles, so for every turn the two forms of it have to agree, element by element and in the same order.
+  void test('is the matrix toRotationMatrix gives for the same turn, for pitched, yawed and rolled angles', () => {
+    const samples: [number, number, number][] = [
+      [0, 0, 0], [0, 90, 0], [30, 0, 0], [0, 0, 25], [30, 60, 15], [-45, 200, 70], [89, 10, -120], [-10, -170, 5],
+    ];
+
+    for (const angles of samples) {
+      const quaternion = new Float64Array(4);
+      const matrix = new Array<number>(10).fill(-1);
+
+      Quaternion.fromModelAnglesInto(quaternion, 0, angles);
+      Quaternion.toModelRotationMatrixInto(matrix, 1, quaternion, 0);
+
+      new Vector(...angles).toRotationMatrix().forEach((value, index) => { assertNear(matrix[1 + index], value, 1e-12); });
+      assert.equal(matrix[0], -1);
+    }
+  });
+});
+
 void describe('Quaternion.fromMatrix3x4Into', () => {
   /**
    * @param quaternion `w, x, y, z`.

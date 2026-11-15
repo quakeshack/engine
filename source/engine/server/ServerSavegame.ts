@@ -57,9 +57,13 @@ export default class ServerSavegame {
     for (const edict of sv.server.edicts) {
       const entity = edict.entity;
 
-      edicts.push(edict.isFree() || entity === null || !(entity instanceof SerializableEntity)
-        ? null
-        : [entity.classname, entity.serialize()]);
+      if (edict.isFree() || entity === null || !(entity instanceof SerializableEntity)) {
+        edicts.push(null);
+        continue;
+      }
+
+      const attachment = edict.attachmentSnapshot();
+      edicts.push(attachment === null ? [entity.classname, entity.serialize()] : [entity.classname, entity.serialize(), attachment]);
     }
 
     return {
@@ -177,6 +181,30 @@ export default class ServerSavegame {
 
       entity.deserialize(entityData);
       edict.linkEdict();
+    }
+
+    ServerSavegame.#applyAttachments(edicts, savedEdicts);
+  }
+
+  /**
+   * Attaches the entities that were attached when the game was saved, once every entity is back to attach to.
+   */
+  static #applyAttachments(edicts: ServerEdict[], savedEdicts: ServerSaveState['edicts']): void {
+    for (let index = 0; index < edicts.length; index++) {
+      const attachment = savedEdicts[index]?.[2];
+
+      if (attachment === undefined || edicts[index].isFree()) {
+        continue;
+      }
+
+      const [parentNumber, tagName] = attachment;
+      const parent = edicts[parentNumber];
+
+      if (parent === undefined || parent.isFree()) {
+        continue;
+      }
+
+      edicts[index].setAttachment(parent, tagName);
     }
   }
 }

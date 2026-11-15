@@ -380,6 +380,13 @@ export class ServerMessages {
         continue;
       }
 
+      // what hangs on an entity that is always sent goes with it, even when that one has no leaves to look up (a
+      // player in noclip, inside a wall)
+      if (!ent.isFree() && ent.attachmentParent !== null && alwaysIncludeEdictIds.includes(ent.attachmentRoot.num)) {
+        yield ent;
+        continue;
+      }
+
       if (!includeFree && ent.isFree()) {
         continue;
       }
@@ -588,6 +595,10 @@ export class ServerMessages {
       bits |= Protocol.u.sequence;
     }
 
+    if (from.attachmentParent !== to.attachmentParent || from.attachmentTag !== to.attachmentTag) {
+      bits |= Protocol.u.attachment;
+    }
+
     if (bits === 0) {
       return false;
     }
@@ -662,6 +673,11 @@ export class ServerMessages {
       }
     }
 
+    if (bits & Protocol.u.attachment) {
+      msg.writeUint16(to.attachmentParent);
+      msg.writeShort(to.attachmentTag);
+    }
+
     if (bits & Protocol.u.nextthink) {
       if (from.nextthink <= 0) {
         from.nextthink = this.sv.server.time;
@@ -731,6 +747,8 @@ export class ServerMessages {
       toState.sequence = entity.sequence ?? -1;
       toState.animtime = entity.animtime ?? null;
       toState.framerate = entity.framerate ?? 1.0;
+      toState.attachmentParent = ent.attachmentParent?.num ?? 0;
+      toState.attachmentTag = ent.attachmentTagIndex();
       toState.free = false;
       toState.maxs.set(entity.maxs);
       toState.mins.set(entity.mins);
