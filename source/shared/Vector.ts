@@ -31,8 +31,22 @@ export class DirectionalVectors {
   }
 }
 
+/** Storage a quaternion helper can write into: a plain array or a typed array. */
+type QuaternionStorage = number[] | Float32Array | Float64Array;
+
 /**
- * Quaternion.
+ * Quaternion, stored as `[w, x, y, z]`.
+ *
+ * That layout is the engine-wide rule: every flat array that holds rotations (skeletal poses, tags, attachments) uses
+ * it too, and a file format that stores another order (IQM: `x, y, z, w`) is reordered once, in its loader.
+ *
+ * The static `…Into` and `…At` helpers read and write quaternions inside flat arrays at an offset and never
+ * allocate, so they are safe in per-joint, per-frame loops. The object methods (`slerp`, `multiply`, `normalize`)
+ * delegate to them: there is one implementation of each.
+ *
+ * Two angle conventions meet here. `Vector.angleVectors()` and `Vector.toQuaternion()` use the view convention
+ * (positive pitch looks down). `Vector.toRotationMatrix()`, which every model renderer uses, negates pitch, Quake's
+ * model convention (positive pitch tilts a model's nose up). `fromModelAnglesInto` follows the model convention.
  */
 export class Quaternion extends Array<number> {
   constructor(w = 1.0, x = 0.0, y = 0.0, z = 0.0) {
@@ -76,21 +90,35 @@ export class Quaternion extends Array<number> {
    * Normalize this quaternion in place. Returns the original length.
    */
   normalize(): number {
-    const length = Math.hypot(this[0], this[1], this[2], this[3]);
+    return Quaternion.normalizeAt(this, 0);
+  }
+
+  /**
+   * Scales the quaternion stored at `offset` to unit length, in place. A zero-length quaternion becomes the identity.
+   * @param quaternions Flat array holding the quaternion at `offset` (`w, x, y, z`).
+   * @param offset Index of its `w`.
+   * @returns The length before normalizing.
+   */
+  static normalizeAt(quaternions: QuaternionStorage, offset: number): number {
+    const w = quaternions[offset];
+    const x = quaternions[offset + 1];
+    const y = quaternions[offset + 2];
+    const z = quaternions[offset + 3];
+    const length = Math.sqrt(w * w + x * x + y * y + z * z);
 
     if (length === 0.0) {
-      this[0] = 1.0;
-      this[1] = 0.0;
-      this[2] = 0.0;
-      this[3] = 0.0;
+      quaternions[offset] = 1.0;
+      quaternions[offset + 1] = 0.0;
+      quaternions[offset + 2] = 0.0;
+      quaternions[offset + 3] = 0.0;
       return 0.0;
     }
 
-    const invLength = 1.0 / length;
-    this[0] *= invLength;
-    this[1] *= invLength;
-    this[2] *= invLength;
-    this[3] *= invLength;
+    const inverseLength = 1.0 / length;
+    quaternions[offset] = w * inverseLength;
+    quaternions[offset + 1] = x * inverseLength;
+    quaternions[offset + 2] = y * inverseLength;
+    quaternions[offset + 3] = z * inverseLength;
     return length;
   }
 
@@ -105,27 +133,60 @@ export class Quaternion extends Array<number> {
     const q1 = new Quaternion(to[0], to[1], to[2], to[3]);
     q0.normalize();
     q1.normalize();
+    Quaternion.slerpInto(q0, 0, q0, 0, q1, 0, t);
+    return q0;
+  }
 
-    let dot = q0[0] * q1[0] + q0[1] * q1[1] + q0[2] * q1[2] + q0[3] * q1[3];
+  /**
+   * Spherical interpolation of the quaternions stored at `fromOffset` and `toOffset`, written to `outOffset`.
+   *
+   * Takes the shortest path (`q` and `-q` are the same rotation, so a negative dot product flips `to`) and falls
+   * back to a normalized linear interpolation when the two are nearly equal. Both inputs must already be unit
+   * length and are not normalized again; the result is unit length. `out` may be the same array and offset as
+   * either input.
+   * @param out Array receiving the result.
+   * @param outOffset Index of the result's `w`.
+   * @param from Array holding the start rotation.
+   * @param fromOffset Index of its `w`.
+   * @param to Array holding the end rotation.
+   * @param toOffset Index of its `w`.
+   * @param t Interpolation factor in [0, 1].
+   */
+  static slerpInto(
+    out: QuaternionStorage, outOffset: number,
+    from: ArrayLike<number>, fromOffset: number,
+    to: ArrayLike<number>, toOffset: number,
+    t: number,
+  ): void {
+    const w0 = from[fromOffset];
+    const x0 = from[fromOffset + 1];
+    const y0 = from[fromOffset + 2];
+    const z0 = from[fromOffset + 3];
+    let w1 = to[toOffset];
+    let x1 = to[toOffset + 1];
+    let y1 = to[toOffset + 2];
+    let z1 = to[toOffset + 3];
+
+    let dot = w0 * w1 + x0 * x1 + y0 * y1 + z0 * z1;
 
     if (dot < 0.0) {
-      q1[0] = -q1[0];
-      q1[1] = -q1[1];
-      q1[2] = -q1[2];
-      q1[3] = -q1[3];
+      w1 = -w1;
+      x1 = -x1;
+      y1 = -y1;
+      z1 = -z1;
       dot = -dot;
     }
 
     if (dot > 0.9995) {
-      q0[0] += (q1[0] - q0[0]) * t;
-      q0[1] += (q1[1] - q0[1]) * t;
-      q0[2] += (q1[2] - q0[2]) * t;
-      q0[3] += (q1[3] - q0[3]) * t;
-      q0.normalize();
-      return q0;
+      out[outOffset] = w0 + (w1 - w0) * t;
+      out[outOffset + 1] = x0 + (x1 - x0) * t;
+      out[outOffset + 2] = y0 + (y1 - y0) * t;
+      out[outOffset + 3] = z0 + (z1 - z0) * t;
+      Quaternion.normalizeAt(out, outOffset);
+      return;
     }
 
-    const clampedDot = Math.max(-1.0, Math.min(1.0, dot));
+    const clampedDot = Math.min(1.0, dot);
     const theta0 = Math.acos(clampedDot);
     const theta = theta0 * t;
     const sinTheta = Math.sin(theta);
@@ -133,12 +194,10 @@ export class Quaternion extends Array<number> {
     const s0 = Math.cos(theta) - clampedDot * sinTheta / sinTheta0;
     const s1 = sinTheta / sinTheta0;
 
-    return new Quaternion(
-      q0[0] * s0 + q1[0] * s1,
-      q0[1] * s0 + q1[1] * s1,
-      q0[2] * s0 + q1[2] * s1,
-      q0[3] * s0 + q1[3] * s1,
-    );
+    out[outOffset] = w0 * s0 + w1 * s1;
+    out[outOffset + 1] = x0 * s0 + x1 * s1;
+    out[outOffset + 2] = y0 * s0 + y1 * s1;
+    out[outOffset + 3] = z0 * s0 + z1 * s1;
   }
 
   /**
@@ -169,13 +228,125 @@ export class Quaternion extends Array<number> {
    * @param other
    */
   multiply(other: Quaternion): this {
-    const [aw, ax, ay, az] = this;
-    const [bw, bx, by, bz] = other;
-    this[0] = aw * bw - ax * bx - ay * by - az * bz;
-    this[1] = aw * bx + ax * bw + ay * bz - az * by;
-    this[2] = aw * by - ax * bz + ay * bw + az * bx;
-    this[3] = aw * bz + ax * by - ay * bx + az * bw;
+    Quaternion.multiplyInto(this, 0, this, 0, other, 0);
     return this;
+  }
+
+  /**
+   * Hamilton product of the quaternions stored at `leftOffset` and `rightOffset`, written to `outOffset`:
+   * the rotation `right` applied first, then `left`. `out` may be the same array and offset as either input.
+   * @param out Array receiving the product.
+   * @param outOffset Index of the product's `w`.
+   * @param left Array holding the left factor.
+   * @param leftOffset Index of its `w`.
+   * @param right Array holding the right factor.
+   * @param rightOffset Index of its `w`.
+   */
+  static multiplyInto(
+    out: QuaternionStorage, outOffset: number,
+    left: ArrayLike<number>, leftOffset: number,
+    right: ArrayLike<number>, rightOffset: number,
+  ): void {
+    const aw = left[leftOffset];
+    const ax = left[leftOffset + 1];
+    const ay = left[leftOffset + 2];
+    const az = left[leftOffset + 3];
+    const bw = right[rightOffset];
+    const bx = right[rightOffset + 1];
+    const by = right[rightOffset + 2];
+    const bz = right[rightOffset + 3];
+    out[outOffset] = aw * bw - ax * bx - ay * by - az * bz;
+    out[outOffset + 1] = aw * bx + ax * bw + ay * bz - az * by;
+    out[outOffset + 2] = aw * by - ax * bz + ay * bw + az * bx;
+    out[outOffset + 3] = aw * bz + ax * by - ay * bx + az * bw;
+  }
+
+  /**
+   * Writes the rotation of an entity's `angles` in the convention model renderers use: the quaternion whose matrix
+   * is the transpose of `Vector.toRotationMatrix()` (that matrix holds the entity's axes as rows). Pitch is
+   * negated against `Vector.toQuaternion()`.
+   * @param out Array receiving the quaternion.
+   * @param outOffset Index of its `w`.
+   * @param angles Pitch, yaw, roll in degrees.
+   */
+  static fromModelAnglesInto(out: QuaternionStorage, outOffset: number, angles: ArrayLike<number>): void {
+    Quaternion.#fromEulerInto(out, outOffset, -angles[0], angles[1], angles[2]);
+  }
+
+  /**
+   * Writes the rotation of Euler angles in the view convention of `Vector.angleVectors()` (no pitch negation).
+   * @param out Array receiving the quaternion.
+   * @param outOffset Index of its `w`.
+   * @param angles Pitch, yaw, roll in degrees.
+   */
+  static fromViewAnglesInto(out: QuaternionStorage, outOffset: number, angles: ArrayLike<number>): void {
+    Quaternion.#fromEulerInto(out, outOffset, angles[0], angles[1], angles[2]);
+  }
+
+  /**
+   * Euler angles in degrees to a quaternion, rotating about X (roll), then Y (pitch), then Z (yaw).
+   * @param out Array receiving the quaternion.
+   * @param outOffset Index of its `w`.
+   * @param pitch Degrees.
+   * @param yaw Degrees.
+   * @param roll Degrees.
+   */
+  static #fromEulerInto(out: QuaternionStorage, outOffset: number, pitch: number, yaw: number, roll: number): void {
+    const halfPitch = pitch * Math.PI / 360.0;
+    const halfYaw = yaw * Math.PI / 360.0;
+    const halfRoll = roll * Math.PI / 360.0;
+    const sinRoll = Math.sin(halfRoll);
+    const cosRoll = Math.cos(halfRoll);
+    const sinPitch = Math.sin(halfPitch);
+    const cosPitch = Math.cos(halfPitch);
+    const sinYaw = Math.sin(halfYaw);
+    const cosYaw = Math.cos(halfYaw);
+    out[outOffset] = cosRoll * cosPitch * cosYaw + sinRoll * sinPitch * sinYaw;
+    out[outOffset + 1] = sinRoll * cosPitch * cosYaw - cosRoll * sinPitch * sinYaw;
+    out[outOffset + 2] = cosRoll * sinPitch * cosYaw + sinRoll * cosPitch * sinYaw;
+    out[outOffset + 3] = cosRoll * cosPitch * sinYaw - sinRoll * sinPitch * cosYaw;
+  }
+
+  /**
+   * Writes the transform `translation * rotation * scale` as a 3×4 matrix, row major: three rows of
+   * `[column 0, column 1, column 2, translation]`, the bottom row `0, 0, 0, 1` implied. The scale applies along
+   * the joint's own axes before the rotation, so it is non-uniform-safe. The rotation must be unit length.
+   * The three inputs may sit in one array (a pose), which is why each has its own offset.
+   * @param out Array receiving the 12 numbers.
+   * @param outOffset Index of the first.
+   * @param rotation Array holding the rotation (`w, x, y, z`).
+   * @param rotationOffset Index of its `w`.
+   * @param translation Array holding the translation (`x, y, z`).
+   * @param translationOffset Index of its `x`.
+   * @param scale Array holding the scale (`x, y, z`).
+   * @param scaleOffset Index of its `x`.
+   */
+  static toMatrix3x4Into(
+    out: QuaternionStorage, outOffset: number,
+    rotation: ArrayLike<number>, rotationOffset: number,
+    translation: ArrayLike<number>, translationOffset: number,
+    scale: ArrayLike<number>, scaleOffset: number,
+  ): void {
+    const w = rotation[rotationOffset];
+    const x = rotation[rotationOffset + 1];
+    const y = rotation[rotationOffset + 2];
+    const z = rotation[rotationOffset + 3];
+    const scaleX = scale[scaleOffset];
+    const scaleY = scale[scaleOffset + 1];
+    const scaleZ = scale[scaleOffset + 2];
+
+    out[outOffset] = (1.0 - 2.0 * (y * y + z * z)) * scaleX;
+    out[outOffset + 1] = 2.0 * (x * y - w * z) * scaleY;
+    out[outOffset + 2] = 2.0 * (x * z + w * y) * scaleZ;
+    out[outOffset + 3] = translation[translationOffset];
+    out[outOffset + 4] = 2.0 * (x * y + w * z) * scaleX;
+    out[outOffset + 5] = (1.0 - 2.0 * (x * x + z * z)) * scaleY;
+    out[outOffset + 6] = 2.0 * (y * z - w * x) * scaleZ;
+    out[outOffset + 7] = translation[translationOffset + 1];
+    out[outOffset + 8] = 2.0 * (x * z - w * y) * scaleX;
+    out[outOffset + 9] = 2.0 * (y * z + w * x) * scaleY;
+    out[outOffset + 10] = (1.0 - 2.0 * (x * x + y * y)) * scaleZ;
+    out[outOffset + 11] = translation[translationOffset + 2];
   }
 
   /**
@@ -437,7 +608,11 @@ export default class Vector extends Float32Array {
   }
 
   /**
-   * Assumes this Vector is [roll, pitch, yaw] and generates a 3x3 rotation matrix.
+   * Assumes this Vector is [pitch, yaw, roll] in degrees and generates a 3x3 rotation matrix in the model
+   * convention: pitch is negated (positive pitch tilts a model's nose up), unlike `angleVectors()`.
+   * The nine numbers are row major and the rows are the entity's axes (forward, left, up), so the matrix takes
+   * world vectors into the entity's space and its transpose takes entity vectors into the world.
+   * `Quaternion.fromModelAnglesInto` gives the same rotation as a quaternion.
    */
   toRotationMatrix(): number[] {
     let [pitch, yaw, roll] = this;
@@ -719,27 +894,13 @@ export default class Vector extends Float32Array {
   }
 
   /**
-   * Convert these Euler angles (this) into a quaternion [w, x, y, z].
+   * Convert these Euler angles (this) into a quaternion [w, x, y, z], in the view convention of `angleVectors()`.
+   * For the pitch convention of model renderers use `Quaternion.fromModelAnglesInto`.
    */
   toQuaternion(): Quaternion {
-    const pitch = this[0] * Math.PI / 180.0;
-    const yaw = this[1] * Math.PI / 180.0;
-    const roll = this[2] * Math.PI / 180.0;
-    const halfRoll = roll * 0.5;
-    const halfPitch = pitch * 0.5;
-    const halfYaw = yaw * 0.5;
-    const sinRoll = Math.sin(halfRoll);
-    const cosRoll = Math.cos(halfRoll);
-    const sinPitch = Math.sin(halfPitch);
-    const cosPitch = Math.cos(halfPitch);
-    const sinYaw = Math.sin(halfYaw);
-    const cosYaw = Math.cos(halfYaw);
-    const w = cosRoll * cosPitch * cosYaw + sinRoll * sinPitch * sinYaw;
-    const x = sinRoll * cosPitch * cosYaw - cosRoll * sinPitch * sinYaw;
-    const y = cosRoll * sinPitch * cosYaw + sinRoll * cosPitch * sinYaw;
-    const z = cosRoll * cosPitch * sinYaw - sinRoll * sinPitch * cosYaw;
-
-    return new Quaternion(w, x, y, z);
+    const quaternion = new Quaternion();
+    Quaternion.fromViewAnglesInto(quaternion, 0, this);
+    return quaternion;
   }
 
   /**

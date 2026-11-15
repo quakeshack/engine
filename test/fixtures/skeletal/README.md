@@ -16,6 +16,20 @@ vertices, 1060 triangles, one material (`progs/player.mdl.0`). The union of its 
 of `player.mdl` to the last digit, and a reader written independently of the engine's loader skins it to within 0.015 units
 of what Blender shows (see `plans/skeletal-models.md`, Phase 0 and 1). The texture is not part of the fixture.
 
+## `player-pose-reference.json`
+
+Joint matrices and skinned vertices (every seventh) of eight poses of `player.iqm`: five whole frames and three fractions between
+neighbors (`frameA`, `frameB`, `blend`). Written by `make-player-pose-reference.py` with the IQM reader and skinning of `qs-tools`
+(`blender/iqm_format.py`) and an interpolation written again in float64, so no engine code is involved:
+
+```sh
+python3 -I make-player-pose-reference.py <path to qs-tools/blender>
+```
+
+`test/common/skeletal-animation.test.ts` compares `SkeletalAnimation` with it. Regenerate only when `player.iqm` changes.
+
+## License of the model
+
 The model is part of LibreQuake and is used under its BSD 3-clause licence:
 
 > Copyright © 2019-2023 Contributors to the LibreQuake project. All rights reserved.

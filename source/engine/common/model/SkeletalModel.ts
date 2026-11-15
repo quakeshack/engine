@@ -72,6 +72,12 @@ export abstract class SkeletalModel extends BaseModel {
   /** The bind pose, one pose per joint. */
   restPose: Float32Array = new Float32Array(0);
 
+  /**
+   * The inverse of every joint's bind pose matrix, `jointCount * SkeletalAnimation.MATRIX_FLOATS` numbers (3×4,
+   * row major), computed once by the loader. A joint matrix times this moves a bind pose vertex to its posed place.
+   */
+  inverseBindMatrices: Float32Array = new Float32Array(0);
+
   /** Every frame's pose of every joint: `frameCount * jointCount * POSE_FLOATS` numbers, frame major. */
   framePoses: Float32Array = new Float32Array(0);
 

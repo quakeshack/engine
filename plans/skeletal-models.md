@@ -3,7 +3,7 @@
 ## Status
 
 📝 Draft, nothing implemented, no open questions left (all settled 2026-11-13; quaternion handling
-added 2026-11-14, decisions 19–21). Phases 0, 1 and 2 done on 2026-11-15 (results below). Next: Phase 3.
+added 2026-11-14, decisions 19–21). Phases 0, 1, 2 and 3 done on 2026-11-15 (results below). Next: Phase 4.
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
 parked: the core only has to leave room for them (Later: Half-Life studio models).
@@ -151,6 +151,49 @@ Differences from the plan, and why:
   being refused, since third-party exporters differ here.
 - **Limits** against corrupted headers: 4096 joints, 65,536 frames and 8 million pose numbers (the shambler, 468 bones × 94 frames, uses a
   twentieth of that).
+
+### Phase 3 results (2026-11-15)
+
+Shipped (this repository, **not committed yet**): `SkeletalAnimation` (`common/model/SkeletalAnimation.ts`);
+`SkeletalModel.inverseBindMatrices`, filled by `IQMLoader` at load; the flat-array helpers on `Quaternion` in `source/shared/Vector.ts`;
+the "Posing a model" section of `docs/skeletal-models.md`.
+
+- **API**: `SkeletalAnimation.computePose(model, frameA, frameB, blend, outJointMatrices, outSkinningMatrices | null)` writes 3×4 row-major
+  matrices (`MATRIX_FLOATS` = 12 per joint) into caller-owned arrays and allocates nothing. Helpers: `multiplyMatrix3x4Into`,
+  `invertMatrix3x4Into` (general affine, so uneven scale and shear invert), `writeIdentity`, `computeInverseBindMatrices`.
+  Frames are clamped to the model and the blend to 0..1 (a frame number comes off the wire). One pose of the player (25 joints) costs
+  3.5 µs, measured with a plain loop in Node, which puts CPU skinning's pose half far below the vertex half (794 vertices × 4 weights).
+- **`Quaternion`** gained `slerpInto`, `multiplyInto`, `normalizeAt`, `toMatrix3x4Into`, `fromModelAnglesInto` and `fromViewAnglesInto`
+  (all `[w, x, y, z]`, flat arrays with offsets); `slerp`, `multiply`, `normalize` and `toQuaternion()` delegate, so there is one
+  implementation. `toRotationMatrix()`'s JSDoc is fixed: it says `[pitch, yaw, roll]`, the negated pitch and that its rows are the
+  entity's axes.
+- **The convention claims were checked, not assumed.** A test pins that `fromModelAnglesInto` is the transpose of `toRotationMatrix()` for
+  eight pitched, yawed and rolled angle sets, and another that `toQuaternion()` still matches `angleVectors()` (forward, minus right, up) and
+  differs from the model convention for any pitch. Phase 6 builds on the first.
+- **Acceptance against an independent reference**: `test/fixtures/skeletal/player-pose-reference.json` (joint matrices and every seventh
+  vertex of eight poses, five whole frames and three fractions) comes from `qs-tools`' reader and skinning with the interpolation written
+  again in float64 (`make-player-pose-reference.py`). The engine matches it to **8e-6** (joint matrices) and **5e-5** (vertices). A second test
+  checks that the posed vertices stay inside the per-frame bounds that the file itself records.
+- **Tests**: `test/common/skeletal-animation.test.ts` (20) and 13 added to `test/common/vector.test.ts`. Mutation checks each fail at least
+  one test: no shortest-path flip, skinning matrices multiplied in the wrong order, scale applied along the wrong axis, pitch not negated,
+  an unclamped frame, a dropped matrix entry, and a linear blend in place of the slerp. Typecheck zero, ESLint clean, `npm test` green.
+
+Differences from the plan, and why:
+
+- **Not "against FTE's pose".** FTE has no pose dump (its dedicated server prints no bounds or counts, Phase 0), so the reference is
+  `qs-tools`' reader, which Phase 0 and 1 checked against Blender's evaluated mesh. That is the stronger check anyway: it ties the engine to
+  what the artist sees.
+- **No `samplePose` on the subclasses.** `SkeletalAnimation` reads `framePoses` directly; the plan's `samplePose(selection, out)` is left for the
+  day a second format needs another way to decode poses (Half-Life), since nothing needs the indirection now.
+- **A pose selection is three arguments (`frameA`, `frameB`, `blend`), not an object**, to keep the call allocation-free.
+- **`toMatrix3x4Into` takes the rotation, translation and scale as three arrays with offsets**, so a pose (one array) can be passed three times
+  with different offsets, and `Quaternion` stays free of the pose layout.
+- **Trap: import cycle at module evaluation.** `SkeletalModel` imports `Mod` (for `ModelType`), which imports the loaders, which import
+  `SkeletalAnimation`. A static scratch buffer sized with `SkeletalModel.POSE_FLOATS` threw "Cannot access 'SkeletalModel' before
+  initialization". `SkeletalAnimation` has its own `LOCAL_POSE_FLOATS` and asserts that it equals `POSE_FLOATS` in `computePose`.
+- **A zero-scale joint** in a rest pose has no inverse bind matrix: it gets the identity and the loader logs it in developer mode, rather than
+  filling vertices with NaN.
+- **No tag code yet.** `sampleTag` and orthonormalization are Phase 5; `computePose(..., null)` is the call they will use.
 
 ### Decisions (2026-11-12, from the maintainer)
 

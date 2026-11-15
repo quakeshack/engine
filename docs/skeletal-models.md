@@ -69,6 +69,30 @@ and weights, triangles), `meshes` and `materials` (names only; the renderer reso
 dedicated server, the server worker) reads and validates the same data and then keeps none of it: it has joints, poses, sequences
 and bounds, which is what `setModel()` and, later, tags need. Both realms refuse the same files.
 
+## Posing a model: `SkeletalAnimation`
+
+`SkeletalAnimation.computePose(model, frameA, frameB, blend, outJointMatrices, outSkinningMatrices)`
+(`common/model/SkeletalAnimation.ts`) turns two frames and a blend into matrices. It uses no GL, so the server can use it for
+tags and the client for skinning, and it allocates nothing: the caller owns the output arrays,
+`jointCount * SkeletalAnimation.MATRIX_FLOATS` numbers each.
+
+- **Matrices** are 3×4, row major: three rows of `[column 0, column 1, column 2, translation]`, the bottom row `0, 0, 0, 1` implied.
+- **Interpolation** is linear for translation and scale and a shortest-path slerp (`Quaternion.slerpInto`) for rotation. A pose is
+  never interpolated as matrices, which would shorten a limb halfway through a turn. Frame numbers are clamped to the model's frames
+  (they come off the wire) and the blend to 0 to 1.
+- **Composition** is parent matrix times local matrix, so a joint may carry non-uniform scale (it shears its children, as in the
+  IQM reference tools).
+- **Joint matrices** (`outJointMatrices`) are joint space to model space and are what tags will read. **Skinning matrices** are the
+  joint matrix times the inverse bind matrix and move a vertex of `meshData.positions` to its posed place:
+  `position' = Σ weight × (skinning[joint] × position)` over the vertex's four influences. Pass `null` where only joints are
+  needed.
+- **Inverse bind matrices** (`SkeletalModel.inverseBindMatrices`) are computed once by the loader from the rest pose. A joint with a
+  zero scale in the rest pose has no inverse: it gets the identity and the loader says so in developer mode.
+
+The rotations of an entity's `angles` meet this code through `Quaternion.fromModelAnglesInto`, which follows
+`Vector.toRotationMatrix()` (the convention every model renderer uses: pitch negated, the matrix holding the entity's axes as
+rows). `Vector.toQuaternion()` and `angleVectors()` use the view convention instead, with no pitch negation.
+
 ## `modelinfo <model>`
 
 Prints bounds and counts of any model, and for a skeletal model the joint tree (each joint is going to be a tag), the sequences with
@@ -78,3 +102,6 @@ their frame ranges and loop flags, the materials and the meshes. It loads the mo
 
 `test/fixtures/skeletal/player.iqm` is the LibreQuake player exported as above (BSD 3-clause, see the README next to it). The
 loader tests compare its decoded poses with the numbers of an independent reader and its bounds with the header of `player.mdl`.
+`player-pose-reference.json` next to it holds joint matrices and skinned vertices of eight poses (whole frames and fractions)
+worked out in float64 by `qs-tools`' reader, with `make-player-pose-reference.py` as the generator; the animation tests compare
+`SkeletalAnimation` with it.

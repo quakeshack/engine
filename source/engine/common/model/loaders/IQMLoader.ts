@@ -2,6 +2,7 @@ import Vector from '../../../../shared/Vector.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
 import { IQMModel } from '../IQMModel.ts';
 import { ModelLoader } from '../ModelLoader.ts';
+import { SkeletalAnimation } from '../SkeletalAnimation.ts';
 import type { SkeletalMaterial, SkeletalMeshData, SkeletalMeshRange, SkeletalSequence } from '../SkeletalModel.ts';
 import { SkeletalModel } from '../SkeletalModel.ts';
 
@@ -169,6 +170,14 @@ export class IQMLoader extends ModelLoader {
     loadmodel.jointParents = parents;
     loadmodel.restPose = restPose;
     loadmodel.framePoses = framePoses;
+
+    const inverseBind = SkeletalAnimation.computeInverseBindMatrices(restPose, parents);
+    loadmodel.inverseBindMatrices = inverseBind.matrices;
+
+    if (inverseBind.singularJoints > 0) {
+      this.context.con.DPrint(`IQMLoader: ${name} has ${inverseBind.singularJoints} joint(s) with a zero scale in the rest pose, vertices weighted to them are not skinned correctly\n`);
+    }
+
     loadmodel.frameBounds = frameBounds;
     loadmodel.sequences = sequences;
 
