@@ -247,6 +247,10 @@ skin; e1m1, the default worker server, files served through Playwright context r
   shadow samplers, so the shadow units are the alias program's, and by a test for every program (no 2D shadow sampler on unit 7 or 8 outside
   `brush`). **That fix is not confirmed in a browser.**
 
+*Maintainer smoke test* (2026-11-15, id1 with the swapped files in a real browser): the game looks right, entity 1 reports the `.iqm`, and
+`modelinfo progs/player.iqm` prints the expected rig (25 joints, 20 sequences, 143 frames, 794 vertices, bounds equal to the header of
+`player.mdl`). The fix for the colored MDL player was not part of that test.
+
 Not checked, so open: the axe frames and the frames of other animations of the IQM player, shadows from a translucent entity (none are cast),
 pointer lock and mouse look (not possible in that harness), the glow layer (no asset has one), a pixel comparison of the alias player
 against `HEAD` (unit-tested only; the colored MDL player was only drawn to count errors), and frame time or a horde on a real GPU. The exit
