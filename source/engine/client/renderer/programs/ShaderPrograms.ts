@@ -99,7 +99,9 @@ class ShaderPrograms {
             ['aNormal', gl.FLOAT, 3],
             ['aTexCoord', gl.FLOAT, 2],
           ],
-          ['tTexture', 'tLuminance', 'tPlayer', 'tShadowMap', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2', 'tShadowBlockerMap'])),
+          // tPlayer comes last, which gives the shadow samplers the units of the alias program. The blocker used to sit on
+          // unit 7, brush's tSpecular, and a colored player turned the world black (see the skeletal program below).
+          ['tTexture', 'tLuminance', 'tShadowMap', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2', 'tShadowBlockerMap', 'tPlayer'])),
 
       // for rendering sprites (usually effects)
       Promise.resolve(GL.CreateProgram('sprite',

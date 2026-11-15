@@ -143,7 +143,7 @@ Texture units are shared by all programs, and what a program leaves on a unit is
 have a compare mode that a plain `sampler2D` rejects, and `brush` binds its `tSpecular` (unit 7) and `tNormal` (unit 8) only for a
 world with a deluxemap, so a shadow texture left on one of them fails the next world draw (`GL_INVALID_OPERATION: Mismatch between
 texture format and sampler type`, and the world draws black). That is why the `skeletal` program lists `null` for the units 4 to 9
-and keeps its shadow samplers on the units 10 to 14, where `brush` has its own.
+and keeps its shadow samplers on the units 10 to 14, where `brush` has its own. The same rule holds for every program (a test in `shader-programs.test.ts` checks that no program but `brush` has a 2D shadow sampler on unit 7 or 8): the `player` program of colored MDL players broke the world for good until its `tPlayer` sampler moved behind the shadow samplers.
 
 ## `modelinfo <model>`
 

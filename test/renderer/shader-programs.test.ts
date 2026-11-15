@@ -118,4 +118,26 @@ void describe('ShaderPrograms.Init', () => {
     assert.deepEqual(unitsOf('skeletal'), unitsOf('brush'));
     assert.ok(Object.values(unitsOf('brush')).every((unit) => unit >= 10), 'brush has its shadow samplers behind its own layers');
   });
+
+  // Found by the browser pass: a colored MDL player (the `player` program had its blocker map on unit 7) made every world
+  // draw fail for good, about 9,400 errors per 3 seconds, and the world stayed black once the player was gone.
+  // The cube samplers are no risk: they use another texture target than brush's sampler2Ds.
+  void test('no program but brush keeps a 2D shadow sampler on a unit brush reads as a plain sampler2D without binding it', () => {
+    const BRUSH_UNBOUND_UNITS = [7, 8]; // tSpecular and tNormal, bound only for a world with a deluxemap
+    const offenders: string[] = [];
+
+    for (const { identifier, textures } of entries) {
+      if (identifier === 'brush' || identifier === 'brush-refract') {
+        continue;
+      }
+
+      for (const name of ['tShadowMap', 'tShadowBlockerMap']) {
+        if (BRUSH_UNBOUND_UNITS.includes(textures.indexOf(name))) {
+          offenders.push(`${identifier}: ${name} on unit ${textures.indexOf(name)}`);
+        }
+      }
+    }
+
+    assert.deepEqual(offenders, []);
+  });
 });
