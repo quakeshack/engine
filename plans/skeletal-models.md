@@ -3,7 +3,7 @@
 ## Status
 
 📝 Draft, nothing implemented, no open questions left (all settled 2026-11-13; quaternion handling
-added 2026-11-14, decisions 19–21). Phase 0 done on 2026-11-15 (results below). Next: Phase 1.
+added 2026-11-14, decisions 19–21). Phase 0 and Phase 1 done on 2026-11-15 (results below). Next: Phase 2.
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
 parked: the core only has to leave room for them (Later: Half-Life studio models).
@@ -79,6 +79,44 @@ Done (no FTE needed):
 
 Phase 0 is complete apart from this plan's go-ahead to start Phase 1.
 
+### Phase 1 results (2026-11-15)
+
+Shipped in `qs-tools/blender/` (the `qs-tools` repository, **not committed yet**): `export_iqm.py`,
+`iqm_format.py` (a complete IQM v2 reader and writer with no Blender dependency, in numpy),
+`tests/test_iqm_format.py` (32 tests), `tests/test_export_iqm.py` (35 tests, scenes built in headless
+Blender and compared frame by frame with Blender's own evaluated mesh), `run-tests.sh`, `README.md`.
+
+- **Options**: `--info`, `--frames`, `--loop`, `--normals blender|smooth|flat`, `--material-prefix`,
+  `--textures-dir`, frame range and frame rate, `--armature`/`--mesh`. The material string is the prefix
+  plus the stem of the Base Color image (the PNG is written next to the model). Rotations are reordered
+  once, in the writer and the reader; a test pins the byte order, and mutation checks confirmed that the
+  tests fail for a wrong quaternion order, a missing world-matrix bake, a plain-matrix normal transform,
+  a missing mirror winding flip and a missing V flip.
+- **Real assets**, checked against Blender at every 7th frame: the **player** (25 joints, 143 frames, 794
+  vertices from 539 with smooth normals, 103 KB) is within 0.015 units, which is the 16-bit pose
+  quantization. The **soldier** (31 joints, 114 frames, 613 vertices from 449, 89 KB, IK baked) is within
+  0.022 units on the vertices that keep all their weights. 35 of its 449 vertices have more than four
+  influences (up to 9); the dropped weight is at most 6.1%, and those vertices move by at most 0.58
+  units in the worst frame. The `$frame` lines of `qcsrc/monsters/grunt.qc` name exactly the soldier's
+  114 frames (`stand`, `death`, `run`, `prowl`, … after stripping digits and a trailing underscore).
+- **FTE's GL client** (`modelviewer`, 2026-07-13 build) shows both exports textured, solid, smoothly
+  shaded and posed like the MDL from the same camera: no axis or winding problem (**the open winding
+  question of Phase 0 is closed: counter-clockwise, indices as Blender writes them**). It lists our
+  animation names and loop flags (`axrun (6 poses, looped)`, `stand (8 poses, looped)`) and the material
+  `progs/soldier.mdl.0`. The player IQM shows the plain skin where FTE tints the MDL with default player
+  colors: the colormap masks are Phase 7 (exporter) and Phase 4 (renderer).
+- **Findings for later phases**:
+  - The player's equipment (built-in gun, axe, flash) is still in the exported mesh. Cutting it out is
+    Phase 7 (`--strip-groups`).
+  - The dog has per-frame shape keys at 0 (import leftovers) and `Copy Rotation` constraints on its
+    legs; both export fine.
+  - Frame names are a property of the animation list, not the MDL frames: anims group runs of frames by
+    name and a name that repeats later is an error (the exporter would otherwise write two sequences
+    with the same name).
+  - Material names with dots (`player.mdl.0`) survive; how the engine maps them to files is Phase 2/4.
+  - FTE reads at most 256 joints and treats every IQM as having one skin; DarkPlaces' `.skin` files stay
+    our skin mechanism.
+
 ### Decisions (2026-11-12, from the maintainer)
 
 1. **IQM first.** It is the first skeletal format. Half-Life `IDST` v10 follows later as a second
@@ -117,6 +155,11 @@ Phase 0 is complete apart from this plan's go-ahead to start Phase 1.
     wire bumps the version (E).
 17. **The exporter supports what the LibreQuake files need now**: Blender 5.x (the survey used 5.3),
     and only the rig features those files use (J).
+    *Amended 2026-11-15 after Phase 1:* the files need more than the survey showed. The soldier and the
+    dog use IK and Copy Rotation constraints, the soldier has unused shape keys, and its file also holds
+    a camera's action. The exporter reads each bone's evaluated pose, so constraints are baked in and
+    correct; they are reported, not refused. Shape keys are refused only when in use (above 0, or
+    animated or driven), and the actions of other objects are ignored with a note (J).
 18. **Focus on IQM.** Half-Life studio models stay in mind but get no work in this pass.
 
 ### Decisions (2026-11-14, from the maintainer)
@@ -533,10 +576,10 @@ A general command-line tool in the `qs-tools` repository, run as
 the IQM repository's add-on: we need frame order, weight pruning, cutting out parts and tag baking
 anyway, and we control which Blender versions it supports.
 
-**Scope** (decided 2026-11-13): what the LibreQuake files need now. Blender 5.x only, armature
-deformation with vertex groups, one action per file, image-texture materials. Anything else (shape
-keys, several actions, constraints, other Blender versions) is reported as unsupported, not
-exported half-way.
+**Scope** (decided 2026-11-13, amended 2026-11-15): what the LibreQuake files need now. Blender 5.x
+only, armature deformation with vertex groups, image-texture materials. Bone constraints are baked
+through the evaluated pose. Shape keys that are in use, other modifiers, dual quaternion skinning and
+other Blender versions are reported as unsupported, not exported half-way.
 
 - **Export**: deforming bones plus named tag bones; vertices with the 4 strongest weights rescaled to
   sum to 1 (reports how many vertices lost weight and the largest weight dropped); one frame per scene
