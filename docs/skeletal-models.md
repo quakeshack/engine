@@ -5,9 +5,9 @@ format is [Inter-Quake Model](https://sourceforge.net/projects/iqm/) (`.iqm`), v
 [plans/skeletal-models.md](../plans/skeletal-models.md).
 
 **What works today:** loading, on the client and on the server, including `setModel()` sizing and the `modelinfo` command; posing;
-drawing with lighting, shadows, a glow layer and player colors; named sequences. A game uses an `.iqm` where it used an `.mdl`: `frame`
+drawing with lighting, shadows, a glow layer and player colors; named sequences; tags. A game uses an `.iqm` where it used an `.mdl`: `frame`
 picks the pose and the client blends neighboring frames like it does for alias models, or the game plays a sequence by name.
-**What does not exist yet:** tags and attachments, view weapons, per-skin textures. Those are later phases of the
+**What does not exist yet:** attachments (an entity that follows a tag by itself), view weapons, per-skin textures. Those are later phases of the
 plan; this page grows with each of them.
 
 ## Making a model
@@ -120,6 +120,44 @@ this.framerate = 1.5;                                                     // opt
   shown for one period), 0 for one that holds a pose. A level change resets the server clock to 1.0, so a game that carries an
   animating entity across levels sets `animtime` again.
 
+## Tags
+
+A tag is a named place on a model that something else can follow: the muzzle of a weapon, the hand of a monster, the head. **Every
+joint of a skeletal model is a tag**, named like the joint (`modelinfo` lists them); the exporter renames the bones a game looks up
+(`tag_weapon`, `tag_flash`). Nothing else has tags: alias, brush and sprite models answer "none".
+
+```ts
+// server or client: does this model have a muzzle?
+const flash = engine.GetTagIndex('progs/weapon.iqm', 'tag_flash'); // -1 when it has none
+
+// client: where is the muzzle of that entity on the screen right now?
+const origin = new Vector();
+const angles = new Vector();
+
+if (engine.GetEntityTag(entity, 'tag_flash', origin, angles)) {
+  const light = engine.AllocDlight(entity.num);   // an effect placed on the weapon that is drawn
+  light.origin = origin;
+}
+```
+
+- **`GetEntityTag(entity, tagName, outOrigin, outAngles)`** (client) answers for the entity as it is drawn this frame: its smoothed
+  origin and angles applied to the tag of the pose it is in, which is the pose of the vertices (the same sequence or `lerp.frame`, the
+  same blend), so an effect there sits on the weapon, the hand or the muzzle that is on the screen. `false` when the entity has no
+  model with that tag, and the vectors are untouched. The angles are in the convention of an entity's `angles`, so giving them to an
+  entity turns it the way the tag is turned. They are the only place a tag's turn becomes Euler angles; inside the engine it stays a quaternion.
+- **`GetTagIndex(modelName, tagName)`** (both engine APIs) is the index of a tag, -1 for none. The model has to be precached; on the
+  server it also has to have finished loading, so ask while the map runs.
+- **Rigid**: a tag has an origin and a rotation, no scale. A rig that scales a bone (the LibreQuake player's gun bone is at 0.8) leaves
+  that scale to the model that is attached; the tag's axes are the bone's, made orthonormal.
+- **On the server too**: the server keeps the joints and frames of a model it precaches, so `GetTagIndex` works there and `sampleTag`
+  can place a tag for a game that needs one (projectile origins); the world transform of an entity exists on the client only.
+- **The muzzle flash**: an entity with `EF_MUZZLEFLASH` puts its dynamic light on the model's `tag_flash` when it has one (the pose
+  does not blend during a flash, like for alias models), and 20 units ahead and 16 up from the origin, as always, when it has not.
+- **`entitytag <entity number> [tag]`** prints where a tag of an entity is in the world (and without a tag name lists the tags of its
+  model). Run it again while the entity animates or moves and the numbers move with it; `entities` lists the numbers.
+
+Attachments, an entity that follows a tag without the game placing it every frame, come with Phase 6 of the plan.
+
 ## Drawing
 
 `SkeletalModelRenderer` (`source/engine/client/renderer/models/`) is registered for `IQMModel`; a later format registers its own
@@ -172,7 +210,7 @@ and keeps its shadow samplers on the units 10 to 14, where `brush` has its own. 
 
 ## `modelinfo <model>`
 
-Prints bounds and counts of any model, and for a skeletal model the joint tree (each joint is going to be a tag), the sequences with
+Prints bounds and counts of any model, and for a skeletal model the joint tree (each joint is a tag), the sequences with
 their frame ranges and loop flags, the materials and the meshes. It loads the model if it is not loaded.
 
 ## Test fixture

@@ -3,7 +3,7 @@
 ## Status
 
 📝 Draft, nothing implemented, no open questions left (all settled 2026-11-13; quaternion handling
-added 2026-11-14, decisions 19–21). Phases 0 to 4 and S done on 2026-11-15 (results below). Next: Phase 5.
+added 2026-11-14, decisions 19–21). Phases 0 to 4 and S done on 2026-11-15 (results below). Phase 5 done the same day. Next: Phase 6.
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
 parked: the core only has to leave room for them (Later: Half-Life studio models).
@@ -333,6 +333,62 @@ Differences from the plan, and why:
   a model only), so no game code had to change for sprites. For IQM sequences id1's `BaseEntity` needs `sequence`, `animtime: number | null = null`,
   `framerate`; that edit is in the working tree of the id1 submodule (with a temporary soldier hack and the model swaps), not committed.
 - **`ViewmodelConfig` is Phase 8's**, not here.
+
+### Phase 5 results (2026-11-15)
+
+Shipped: `BaseModel.getTagIndex`/`sampleTag` (no tags by default) with the skeletal answers, `SkeletalAnimation.sampleJointInto`,
+`GetTagIndex` on both engine APIs, `GetEntityTag` on the client API (`EntityTags`), the muzzle flash light on `tag_flash`, the `entitytag` console command, the
+`Quaternion` conversions they need, and the "Tags" section of `docs/skeletal-models.md`.
+
+- **Model side**: every joint is a tag. `sampleJointInto` composes the joint with its parents from the root exactly as `computePose` does (the frame
+  clamping is one shared helper, so a tag is where the vertices are: a test checks them against `computePose` at a fraction between two frames, and against
+  the independent float64 reference of the player for every joint of eight poses), then makes the axes orthonormal (Gram-Schmidt: the first axis keeps its
+  direction, a rig's scale and shear go, a bone scaled to nothing gives the identity) and writes origin `x, y, z` and rotation `w, x, y, z`. The server answers
+  the same, since it keeps joints and frames.
+- **Client side**: `EntityTags.resolve` applies the entity's smoothed origin and angles (the model convention, `Quaternion.fromModelAnglesInto`) to the tag of
+  the pose from `SkeletalPoseSelection.select`, which is the code that used to be private to the renderer and now serves both, so the tag follows the same
+  sequence or `lerp.frame` and the same blend as the vertices. Rotations stay quaternions; `Quaternion.toModelAnglesInto` is the one place they become angles.
+  A positive pitch lifts a tag 10 units ahead (the model convention), pinned against `Vector.toRotationMatrix()`.
+- **Muzzle flash**: with `EF_MUZZLEFLASH` the dynamic light sits on the entity's own `tag_flash`; without one it is where it always was. A child attached to the
+  entity is Phase 6.
+- **`entitytag <entity number> [tag]`** prints where the tag is and its angles, or lists the model's tags. Run again while the entity moves, the numbers move.
+- **Tests**: 47 more (3,271 to 3,318): `model-tags` (20), `entity-tags` (17), muzzle flash cases in `client-legacy`, the two conversions in `vector`, and an import
+  order test. Mutation checks (a tag that ignores its parents, no orthonormalization, the view pitch convention in `EntityTags` and in the angles, the
+  composition order, a pose that ignores sequences, a muzzle flash that ignores the tag) each fail a test; the composition order needed its own test (a pitched
+  entity and a turned tag, which do not commute).
+
+**Browser pass** (`browser-ui-verification`, headless Chromium on software GL, e1m1, id1 with the swapped soldier and player; the console typed for real):
+- **The exit criterion**: `entitytag 93` lists the soldier's 31 joints and `entitytag 93 Arm.R.006` / `Bone.006` printed different origins and angles on each call as the `prowl`
+  animation ran (for example `Arm.R.006` z -195.6, -198.6, -194.9). `nowhere`, an entity that does not exist, a dog (`progs/dog.mdl has no tags`), the BSP and no arguments
+  (usage) all print a message and do not crash.
+- **Tag against drawn vertices**: captured in the same call as `GetEntityTag`, three instants. The distance from a tag to the nearest skinned vertex is 1.0 to 1.4 for hands
+  and foot joints and 0.5 to 1.1 for the gun tip on the soldier (49 units tall), and 2.7 for the player's `head`, 1.1 for `R.hand`, 0.09 for `flash`. IK helper joints sit
+  6 to 10 units outside the mesh, as pole targets do. The world position was checked by projecting the tags onto a paused frame (`Camera.WorldToScreen`) and drawing markers:
+  they land on heads, hands, gun tips and feet of the soldiers and the player.
+- **Turn**: with the yaw of one soldier overridden to 270, 0, 90 and 180 the `Arm.R.006` offset kept its length (9.35) and height and turned by exactly 90 degrees per step,
+  and the tag's yaw with it. Two walking soldiers in the same pose at 106.3 degrees apart in yaw had tag offsets 106.4 degrees apart.
+- **Muzzle flash**: the player's shotgun flash is at (0, 20, 16) from its origin at yaw 90, the fallback; a soldier with `EF_MUZZLEFLASH` has it at (0, -20, 16) at yaw 270,
+  also the fallback, since no real model has a `tag_flash`. With one joint renamed to `tag_flash` in the page's copy of the model the light moved onto the tag, 0.00 units
+  from `GetEntityTag` over six samples, and back to the fallback when renamed back.
+- **API**: `GetEntityTag` fills the vectors for a real tag and leaves them untouched (777 and 888 before) for an unknown tag, a model without it and a dog; `GetTagIndex` gives
+  the joint index and -1 for a missing name, `tag_flash` and an alias model.
+- **Rest**: soldiers and the IQM player animate, `color 4 13` still tints, the rocket explosion `.spr` plays, `r_speeds` showed 3684 alias polys with the skeletal pass at
+  about 0.58 ms CPU; 0 GL errors over every run, no pageerrors.
+- **Seen on the side**: the soldier's joints keep their Blender names (`Bone.006`, `Arm.R.006`, ...), only the player's are `head` and `R.hand`; the soldier's `R` bones
+  are on its left side (the asset names them mirrored; the vertices agree with the tags). Tag lookup is case sensitive.
+
+Not checked: pointer lock and mouse look, real-GPU rendering, the predicted origin of the local player in first person, and a real `tag_flash` (none exists until Phase 7).
+
+Differences from the plan, and why:
+
+- **`ModelType` moved into `common/model/ModelType.ts`** (re-exported by `Mod.ts`, nothing else changed). `SkeletalModel` imported `Mod` for the enum, `Mod` imports the
+  loaders, and `IQMModel extends SkeletalModel` was evaluated before `SkeletalModel` had finished whenever something imported `SkeletalModel` first, which `EntityTags`
+  did through `ClientEngineAPI`: five unrelated test files failed with "Cannot access 'SkeletalModel' before initialization". This is the second time that trap
+  bit (see Phase 3); a test whose first import is `SkeletalModel` now pins the order.
+- **No real model has a `tag_flash` yet.** The LibreQuake player's rig names the equipment bones `playergun`, `flash` and `playeraxe`; the exporter's `--tag` renaming is
+  Phase 7. Until then the muzzle flash light is only tested on a synthetic model.
+- **`GetEntityTag` reads `lerp.origin` and `lerp.angles`**, which is what the renderer uses, so for the local player in first person (the view model is not an
+  entity with tags) and with the predicted origin it is not checked.
 
 ### Decisions (2026-11-12, from the maintainer)
 

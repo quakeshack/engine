@@ -15,14 +15,7 @@ import type { SpriteImageDecoding } from './model/sprite/SpriteImageDecoding.ts'
 import { BrushModel } from './model/BSP.ts';
 import { DEFAULT_MODEL_LOAD_OPTIONS, type ModelFiles, type ModelLoadContext, type ModelLoadOptions, type ModelTextures } from './model/ModelLoadContext.ts';
 
-export enum ModelType {
-  brush = 0,
-  sprite = 1,
-  alias = 2,
-  mesh = 3,
-  /** Posed by a joint hierarchy and skinned on the CPU: Inter-Quake models. */
-  skeletal = 4,
-}
+export { ModelType } from './model/ModelType.ts';
 
 export enum ModelScope {
   shared = 'shared',

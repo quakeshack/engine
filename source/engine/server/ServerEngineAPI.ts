@@ -530,6 +530,17 @@ export class ServerEngineAPI {
     return this.#findLoadedModel(modelName, 'GetSequenceIndex').sequenceIndex(name);
   }
 
+  /**
+   * Finds a tag of a model, a named place on it such as the muzzle of a weapon or the hand of a monster. Every joint of
+   * a skeletal model is one. See [Skeletal models](docs/skeletal-models.md#tags).
+   * @param modelName A model that was precached and has finished loading.
+   * @param tagName The name of the tag.
+   * @returns The tag's index, -1 when the model has no tag of that name, and for a model that has no tags.
+   */
+  GetTagIndex(modelName: string, tagName: string): number {
+    return this.#findLoadedModel(modelName, 'GetTagIndex').getTagIndex(tagName);
+  }
+
   #findLoadedModel(modelName: string, caller: string): BaseModel {
     if (!this.#sv.server.modelPrecache.includes(modelName)) {
       throw new HostError(`ServerEngineAPI.${caller}: ${modelName} not precached`);

@@ -1,5 +1,4 @@
 import Vector from '../../../../shared/Vector.ts';
-import { effect } from '../../../../shared/Defs.ts';
 import { eventBus } from '../../../common/EventBus.ts';
 import type { BaseModel } from '../../../common/model/BaseModel.ts';
 import { SkeletalAnimation } from '../../../common/model/SkeletalAnimation.ts';
@@ -16,6 +15,7 @@ import Camera from '../scene/Camera.ts';
 import RenderStats from '../scene/RenderStats.ts';
 import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
 import { PlayerColors } from './PlayerColors.ts';
+import { SkeletalPoseSelection } from './SkeletalPoseSelection.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -95,9 +95,6 @@ export class SkeletalModelRenderer extends ModelRenderer {
 
   /** Skinning matrices of the pose being made. */
   static #skinningMatrices = new Float32Array(0);
-
-  /** The frames a sequence selects, written by `SkeletalAnimation.samplePlayback`. */
-  static readonly #sequencePose: [number, number, number] = [0, 0, 0];
 
   static readonly #cullMins = new Vector();
   static readonly #cullMaxs = new Vector();
@@ -290,33 +287,6 @@ export class SkeletalModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Picks the two frames to blend and the weight of the second. An entity that selects a sequence the model has plays
-   * it from its `animtime`, blending a frame into the next while interpolation is on. Any other follows its `frame`
-   * the way alias models do: the interpolated frame, or the plain one while interpolation is off or a muzzle flash
-   * makes the pose jump.
-   * @param model The skeletal model.
-   * @param entity The entity.
-   * @returns Frame A, frame B and the blend. A sequence's result is a scratch array, valid until the next call.
-   */
-  static #selectPose(model: SkeletalModel, entity: ClientEdict): [number, number, number] {
-    const interpolate = Boolean(rendererCvars.interpolation.value);
-
-    if (entity.sequence >= 0) {
-      const elapsed = clientRuntimeState.clientMessages.renderTime - entity.animtime;
-
-      if (SkeletalAnimation.samplePlayback(model, entity.sequence, elapsed, entity.framerate, interpolate, SkeletalModelRenderer.#sequencePose)) {
-        return SkeletalModelRenderer.#sequencePose;
-      }
-    }
-
-    if (interpolate && (entity.effects & effect.EF_MUZZLEFLASH) === 0) {
-      return entity.lerp.frame;
-    }
-
-    return [entity.frame, entity.frame, 0];
-  }
-
-  /**
    * The skinned vertices of an entity for the frame it is in, made again only when the pose changed since the last
    * call, so the main pass and the shadow passes of a frame share one skinning.
    * @param model The skeletal model.
@@ -325,7 +295,7 @@ export class SkeletalModelRenderer extends ModelRenderer {
    * @returns Interleaved vertices (`VERTEX_FLOATS` numbers each), owned by the cache: valid until the next call for this entity.
    */
   static #skinnedPose(model: SkeletalModel, meshData: SkeletalMeshData, entity: ClientEdict): Float32Array {
-    const [frameA, frameB, blend] = SkeletalModelRenderer.#selectPose(model, entity);
+    const [frameA, frameB, blend] = SkeletalPoseSelection.select(model, entity);
     let pose = SkeletalModelRenderer.#skinnedPoses.get(entity);
 
     if (pose === undefined || pose.meshData !== meshData) {

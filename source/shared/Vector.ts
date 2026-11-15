@@ -284,6 +284,83 @@ export class Quaternion extends Array<number> {
   }
 
   /**
+   * The angles of an entity, in the convention model renderers use, for a rotation: the inverse of
+   * `fromModelAnglesInto`. This is where a rotation becomes Euler angles for game code, which works in angles: a game
+   * that gives an entity these angles turns it the way the quaternion does. Pitch goes by `asin`, so it comes out in
+   * -90 to 90 and a rotation that tilts further comes back as the equivalent yaw and roll.
+   * @param out Array receiving pitch, yaw and roll in degrees.
+   * @param outOffset Index of the pitch.
+   * @param quaternion Array holding the rotation (`w, x, y, z`), unit length.
+   * @param quaternionOffset Index of its `w`.
+   */
+  static toModelAnglesInto(out: QuaternionStorage, outOffset: number, quaternion: ArrayLike<number>, quaternionOffset: number): void {
+    const w = quaternion[quaternionOffset];
+    const x = quaternion[quaternionOffset + 1];
+    const y = quaternion[quaternionOffset + 2];
+    const z = quaternion[quaternionOffset + 3];
+    const degrees = 180.0 / Math.PI;
+
+    out[outOffset] = -Math.asin(Math.max(-1.0, Math.min(1.0, 2.0 * (w * y - z * x)))) * degrees;
+    out[outOffset + 1] = Math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)) * degrees;
+    out[outOffset + 2] = Math.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y)) * degrees;
+  }
+
+  /**
+   * The rotation of the upper left 3×3 of a 3×4 matrix, as written by `toMatrix3x4Into`. The three columns must be
+   * orthonormal (a rotation with no scale and no shear); a matrix that is not one gets a rotation that is only as
+   * good as its columns, so orthonormalize first (`SkeletalAnimation.sampleJointInto` does).
+   * @param out Array receiving the quaternion (`w, x, y, z`), unit length.
+   * @param outOffset Index of its `w`.
+   * @param matrix Array holding the matrix, row major.
+   * @param matrixOffset Index of its first number.
+   */
+  static fromMatrix3x4Into(out: QuaternionStorage, outOffset: number, matrix: ArrayLike<number>, matrixOffset: number): void {
+    const m00 = matrix[matrixOffset];
+    const m01 = matrix[matrixOffset + 1];
+    const m02 = matrix[matrixOffset + 2];
+    const m10 = matrix[matrixOffset + 4];
+    const m11 = matrix[matrixOffset + 5];
+    const m12 = matrix[matrixOffset + 6];
+    const m20 = matrix[matrixOffset + 8];
+    const m21 = matrix[matrixOffset + 9];
+    const m22 = matrix[matrixOffset + 10];
+    const trace = m00 + m11 + m22;
+
+    // Take the largest of w, x, y, z as the pivot: dividing by a small one loses all precision near a half turn.
+    if (trace > 0.0) {
+      const scale = 0.5 / Math.sqrt(trace + 1.0);
+
+      out[outOffset] = 0.25 / scale;
+      out[outOffset + 1] = (m21 - m12) * scale;
+      out[outOffset + 2] = (m02 - m20) * scale;
+      out[outOffset + 3] = (m10 - m01) * scale;
+    } else if (m00 > m11 && m00 > m22) {
+      const scale = 2.0 * Math.sqrt(1.0 + m00 - m11 - m22);
+
+      out[outOffset] = (m21 - m12) / scale;
+      out[outOffset + 1] = 0.25 * scale;
+      out[outOffset + 2] = (m01 + m10) / scale;
+      out[outOffset + 3] = (m02 + m20) / scale;
+    } else if (m11 > m22) {
+      const scale = 2.0 * Math.sqrt(1.0 + m11 - m00 - m22);
+
+      out[outOffset] = (m02 - m20) / scale;
+      out[outOffset + 1] = (m01 + m10) / scale;
+      out[outOffset + 2] = 0.25 * scale;
+      out[outOffset + 3] = (m12 + m21) / scale;
+    } else {
+      const scale = 2.0 * Math.sqrt(1.0 + m22 - m00 - m11);
+
+      out[outOffset] = (m10 - m01) / scale;
+      out[outOffset + 1] = (m02 + m20) / scale;
+      out[outOffset + 2] = (m12 + m21) / scale;
+      out[outOffset + 3] = 0.25 * scale;
+    }
+
+    Quaternion.normalizeAt(out, outOffset);
+  }
+
+  /**
    * Euler angles in degrees to a quaternion, rotating about X (roll), then Y (pitch), then Z (yaw).
    * @param out Array receiving the quaternion.
    * @param outOffset Index of its `w`.

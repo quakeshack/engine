@@ -1,6 +1,7 @@
 import type { GLTexture } from '../../client/GL.ts';
 import { BaseModel } from './BaseModel.ts';
-import { ModelType } from '../Mod.ts';
+import { SkeletalAnimation } from './SkeletalAnimation.ts';
+import { ModelType } from './ModelType.ts';
 
 /** A named run of frames, played by the sequence state of an entity. */
 export interface SkeletalSequence {
@@ -128,6 +129,25 @@ export abstract class SkeletalModel extends BaseModel {
    */
   get jointCount(): number {
     return this.jointNames.length;
+  }
+
+  /**
+   * Every joint is a tag, named like the joint: a rig names the bones of a hand or a gun, the exporter renames them to what a
+   * game looks up (`tag_weapon`, `tag_flash`).
+   * @param name The joint's name.
+   * @returns The joint's index, -1 when there is none of that name.
+   */
+  override getTagIndex(name: string): number {
+    return name === '' ? -1 : this.jointNames.indexOf(name);
+  }
+
+  /**
+   * The joint as a rigid transform in model space, which is the same place `SkeletalAnimation.computePose` puts it (see
+   * `SkeletalAnimation.sampleJointInto`). The server realm has the joints and frames too, so it answers the same.
+   * @returns `false` for an index that is no joint.
+   */
+  override sampleTag(index: number, frameA: number, frameB: number, blend: number, out: Float32Array | Float64Array | number[]): boolean {
+    return SkeletalAnimation.sampleJointInto(this, index, frameA, frameB, blend, out);
   }
 
   /**

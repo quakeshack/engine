@@ -8,6 +8,7 @@ import { effect, modelFlags } from '../../shared/Defs.ts';
 import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
 
 import { clientRuntimeState } from './ClientState.ts';
+import { EntityTags } from './EntityTags.ts';
 import Particles from './renderer/effects/Particles.ts';
 
 
@@ -30,12 +31,19 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
     }
     if ((clent.effects & effect.EF_MUZZLEFLASH) !== 0) {
       const dl = clientRuntimeState.clientEntities.allocateDynamicLight(clent.num);
-      const fv = clent.angles.angleVectors().forward;
-      dl.origin = new Vector(
-        clent.origin[0] + 20.0 * fv[0],
-        clent.origin[1] + 20.0 * fv[1],
-        clent.origin[2] + 16.0 + 20.0 * fv[2],
-      );
+      const flashOrigin = new Vector();
+
+      if (EntityTags.resolve(clent, 'tag_flash', flashOrigin)) {
+        // a model with a tag at its muzzle: the light sits there, whatever the pose
+        dl.origin = flashOrigin;
+      } else {
+        const fv = clent.angles.angleVectors().forward;
+        dl.origin = new Vector(
+          clent.origin[0] + 20.0 * fv[0],
+          clent.origin[1] + 20.0 * fv[1],
+          clent.origin[2] + 16.0 + 20.0 * fv[2],
+        );
+      }
       dl.radius = 200.0 + Math.random() * 32.0;
       dl.minlight = 32.0;
       dl.die = clientRuntimeState.time + 0.5;

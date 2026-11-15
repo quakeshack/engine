@@ -204,6 +204,31 @@ export class BaseModel {
   }
 
   /**
+   * Finds a tag: a named place on the model that something else can follow, such as the muzzle of a weapon or the hand
+   * of a monster. A model without tags has none.
+   * @param _name The name of the tag.
+   * @returns The index that `sampleTag` takes, -1 when there is none of that name.
+   */
+  getTagIndex(_name: string): number {
+    return -1;
+  }
+
+  /**
+   * Where a tag is on the model for a pose between two frames. The transform is rigid, with no scale, and in the model's
+   * own space: apply the entity's origin and angles to it to get the world.
+   * @param _index A tag index from `getTagIndex`.
+   * @param _frameA First frame.
+   * @param _frameB Second frame.
+   * @param _blend Weight of `frameB`, 0 to 1. The pose of a tag is interpolated like the model's vertices, so the two
+   * are at the same place.
+   * @param _out Receives the origin `x, y, z` and the rotation as a quaternion `w, x, y, z`, 7 numbers.
+   * @returns `false` when the model has no such tag, and `out` untouched.
+   */
+  sampleTag(_index: number, _frameA: number, _frameB: number, _blend: number, _out: Float32Array | Float64Array | number[]): boolean {
+    return false;
+  }
+
+  /**
    * Finds a named sequence, so a game does not depend on their order. A model without named sequences has none.
    * What the number selects depends on the format: see `SpriteModel` and `SkeletalModel`.
    * @param _name The name of the sequence.

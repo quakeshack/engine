@@ -1,4 +1,5 @@
 import type { ClientDlight, ClientEdict } from './ClientEntities.ts';
+import { EntityTags } from './EntityTags.ts';
 import { BitmapFont, type BitmapFontConfig } from './BitmapFont.ts';
 import type { GLTexture } from './GL.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
@@ -510,6 +511,31 @@ export class ClientEngineAPI extends CommonEngineAPI {
    */
   GetSequenceIndex(modelName: string, name: string): number {
     return this.ModForName(modelName).sequenceIndex(name);
+  }
+
+  /**
+   * Finds a tag of a model, a named place on it such as the muzzle of a weapon or the hand of a monster. Every joint of
+   * a skeletal model is one. See [Skeletal models](docs/skeletal-models.md#tags).
+   * @param modelName A model the server precached.
+   * @param tagName The name of the tag.
+   * @returns The tag's index, -1 when the model has no tag of that name, and for a model that has no tags.
+   */
+  GetTagIndex(modelName: string, tagName: string): number {
+    return this.ModForName(modelName).getTagIndex(tagName);
+  }
+
+  /**
+   * Where a tag of an entity is in the world right now: its origin and angles as the entity is drawn this frame, the
+   * pose interpolated like the model's vertices, so an effect placed there sits on the weapon, the hand or the muzzle
+   * that is on the screen. The angles are in the convention of an entity's `angles`.
+   * @param entity The entity.
+   * @param tagName The name of the tag.
+   * @param outOrigin Receives the world position.
+   * @param outAngles Receives pitch, yaw and roll in degrees.
+   * @returns `false` when the entity has no model with a tag of that name (only skeletal models have tags), and the outputs are untouched.
+   */
+  GetEntityTag(entity: ClientEdict, tagName: string, outOrigin: Vector, outAngles: Vector): boolean {
+    return EntityTags.resolve(entity, tagName, outOrigin, outAngles);
   }
 
   /**

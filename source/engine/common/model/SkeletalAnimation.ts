@@ -41,6 +41,36 @@ export class SkeletalAnimation {
   /** The product of a matrix multiplication, so that the output may alias an input. */
   static readonly #product = new Float32Array(SkeletalAnimation.MATRIX_FLOATS);
 
+  /** The frames of the pose being made: where each starts in `framePoses`, and the weight of the second. */
+  static readonly #frameSelection: [number, number, number] = [0, 0, 0];
+
+  /** The joints from the one asked for up to its root, filled by `sampleJointInto`. */
+  static #chain = new Int32Array(0);
+
+  /** The matrix of the joint being sampled, composed from the root down. */
+  static readonly #tagMatrix = new Float32Array(SkeletalAnimation.MATRIX_FLOATS);
+
+  /**
+   * Clamps the frame numbers and the blend of a pose to what the model has (a frame number off the wire is not
+   * trusted). One place for `computePose` and `sampleJointInto`, so a tag is always where the vertices are.
+   * @param model The model.
+   * @param frameA First frame.
+   * @param frameB Second frame.
+   * @param blend Weight of the second frame.
+   * @returns Where frame A and frame B start in `framePoses`, and the weight in 0 to 1. A scratch array, valid until the next call.
+   */
+  static #selectFrames(model: SkeletalModel, frameA: number, frameB: number, blend: number): [number, number, number] {
+    const lastFrame = model.frameCount - 1;
+    const frameFloats = model.jointCount * SkeletalModel.POSE_FLOATS;
+    const selection = SkeletalAnimation.#frameSelection;
+
+    selection[0] = Math.min(Math.max(Math.trunc(frameA), 0), lastFrame) * frameFloats;
+    selection[1] = Math.min(Math.max(Math.trunc(frameB), 0), lastFrame) * frameFloats;
+    selection[2] = Math.min(Math.max(blend, 0.0), 1.0);
+
+    return selection;
+  }
+
   /**
    * Computes the matrix of every joint in model space for a pose between two frames, and optionally the
    * skinning matrices (joint matrix times inverse bind matrix) that move a bind pose vertex to its place.
@@ -69,12 +99,9 @@ export class SkeletalAnimation {
     console.assert(Number.isFinite(blend), 'finite blend');
     console.assert(LOCAL_POSE_FLOATS === SkeletalModel.POSE_FLOATS, 'pose layout changed');
 
-    const lastFrame = model.frameCount - 1;
     const poseFloats = SkeletalModel.POSE_FLOATS;
     const matrixFloats = SkeletalAnimation.MATRIX_FLOATS;
-    const offsetA = Math.min(Math.max(Math.trunc(frameA), 0), lastFrame) * jointCount * poseFloats;
-    const offsetB = Math.min(Math.max(Math.trunc(frameB), 0), lastFrame) * jointCount * poseFloats;
-    const weight = Math.min(Math.max(blend, 0.0), 1.0);
+    const [offsetA, offsetB, weight] = SkeletalAnimation.#selectFrames(model, frameA, frameB, blend);
     const pose = SkeletalAnimation.#localPose;
     const localMatrix = SkeletalAnimation.#localMatrix;
 
@@ -96,6 +123,120 @@ export class SkeletalAnimation {
         SkeletalAnimation.multiplyMatrix3x4Into(outSkinningMatrices, matrixOffset, outJointMatrices, matrixOffset, inverseBindMatrices, matrixOffset);
       }
     }
+  }
+
+  /**
+   * The place of one joint in model space for a pose between two frames, as a rigid transform: the origin and the
+   * rotation of a tag. The joint is composed with its parents exactly as `computePose` does (same frames, same
+   * interpolation), and then its axes are orthonormalized, since a tag carries no scale: a rig that scales a bone
+   * (the 0.8 on a gun bone of a player) leaves the scale to the model that is attached to it.
+   * @param model The model.
+   * @param joint The joint.
+   * @param frameA First frame.
+   * @param frameB Second frame.
+   * @param blend Weight of `frameB`.
+   * @param out Receives the origin `x, y, z` and the rotation `w, x, y, z`, 7 numbers.
+   * @returns `false` when the model has no such joint, and `out` untouched.
+   */
+  static sampleJointInto(model: SkeletalModel, joint: number, frameA: number, frameB: number, blend: number, out: Float32Array | Float64Array | number[]): boolean {
+    if (!Number.isInteger(joint) || joint < 0 || joint >= model.jointCount) {
+      return false;
+    }
+
+    console.assert(Number.isFinite(blend), 'finite blend');
+
+    const { jointParents, framePoses } = model;
+    const poseFloats = SkeletalModel.POSE_FLOATS;
+    const [offsetA, offsetB, weight] = SkeletalAnimation.#selectFrames(model, frameA, frameB, blend);
+
+    if (SkeletalAnimation.#chain.length < model.jointCount) {
+      SkeletalAnimation.#chain = new Int32Array(model.jointCount);
+    }
+
+    const chain = SkeletalAnimation.#chain;
+    let depth = 0;
+
+    for (let ancestor = joint; ancestor >= 0; ancestor = jointParents[ancestor]) {
+      chain[depth++] = ancestor;
+    }
+
+    const pose = SkeletalAnimation.#localPose;
+    const localMatrix = SkeletalAnimation.#localMatrix;
+    const matrix = SkeletalAnimation.#tagMatrix;
+
+    for (let index = depth - 1; index >= 0; index--) {
+      const poseOffset = chain[index] * poseFloats;
+
+      SkeletalAnimation.#interpolateLocalPose(pose, framePoses, offsetA + poseOffset, offsetB + poseOffset, weight);
+      Quaternion.toMatrix3x4Into(localMatrix, 0, pose, 3, pose, 0, pose, 7);
+
+      if (index === depth - 1) {
+        matrix.set(localMatrix);
+      } else {
+        SkeletalAnimation.multiplyMatrix3x4Into(matrix, 0, matrix, 0, localMatrix, 0);
+      }
+    }
+
+    out[0] = matrix[3];
+    out[1] = matrix[7];
+    out[2] = matrix[11];
+    SkeletalAnimation.#orthonormalizeInto(matrix);
+    Quaternion.fromMatrix3x4Into(out, 3, matrix, 0);
+
+    return true;
+  }
+
+  /**
+   * Replaces the axes of a matrix (its three columns) with the nearest right-handed orthonormal set, keeping the
+   * first axis's direction and the plane of the first two (Gram-Schmidt). A rig's scale and shear go, the turn stays.
+   * A column that has no length (a bone scaled to nothing) leaves the identity.
+   * @param matrix A 3×4 matrix, changed in place; the translation is not touched.
+   */
+  static #orthonormalizeInto(matrix: Float32Array): void {
+    let xx = matrix[0];
+    let xy = matrix[4];
+    let xz = matrix[8];
+    let yx = matrix[1];
+    let yy = matrix[5];
+    let yz = matrix[9];
+    const xLength = Math.sqrt(xx * xx + xy * xy + xz * xz);
+
+    if (xLength < 1e-9) {
+      xx = 1.0; xy = 0.0; xz = 0.0;
+    } else {
+      xx /= xLength; xy /= xLength; xz /= xLength;
+    }
+
+    const along = yx * xx + yy * xy + yz * xz;
+
+    yx -= along * xx;
+    yy -= along * xy;
+    yz -= along * xz;
+
+    let yLength = Math.sqrt(yx * yx + yy * yy + yz * yz);
+
+    if (yLength < 1e-9) {
+      // The second axis is missing or runs along the first: any perpendicular one will do.
+      const useY = Math.abs(xy) < 0.9;
+
+      yx = 0.0;
+      yy = useY ? 1.0 : 0.0;
+      yz = useY ? 0.0 : 1.0;
+      const alongSubstitute = yx * xx + yy * xy + yz * xz;
+
+      yx -= alongSubstitute * xx;
+      yy -= alongSubstitute * xy;
+      yz -= alongSubstitute * xz;
+      yLength = Math.sqrt(yx * yx + yy * yy + yz * yz);
+    }
+
+    yx /= yLength; yy /= yLength; yz /= yLength;
+
+    matrix[0] = xx; matrix[4] = xy; matrix[8] = xz;
+    matrix[1] = yx; matrix[5] = yy; matrix[9] = yz;
+    matrix[2] = xy * yz - xz * yy;
+    matrix[6] = xz * yx - xx * yz;
+    matrix[10] = xx * yy - xy * yx;
   }
 
   /**

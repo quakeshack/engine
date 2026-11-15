@@ -7,41 +7,12 @@ import { IQMLoader } from '../../source/engine/common/model/loaders/IQMLoader.ts
 import { SkeletalAnimation } from '../../source/engine/common/model/SkeletalAnimation.ts';
 import { SkeletalModel } from '../../source/engine/common/model/SkeletalModel.ts';
 import { assertNear } from '../support/assertions.ts';
-import { buildIqm, createTwoJointSpec, type IqmPose } from '../support/iqmBuilder.ts';
+import { buildIqm, createTwoJointSpec } from '../support/iqmBuilder.ts';
 import { createDirectoryFiles, createModelLoadContext } from '../support/modelContext.ts';
+import { createModel, poseOf } from '../support/skeletalModels.ts';
 
 const MATRIX_FLOATS = SkeletalAnimation.MATRIX_FLOATS;
 const SQRT_HALF = Math.SQRT1_2;
-
-/**
- * Builds a model from poses, the way a loader leaves it, without a file.
- * @param parents The parent of every joint.
- * @param restPose The rest pose of every joint.
- * @param frames Every frame's pose of every joint.
- * @returns The model, with its inverse bind matrices computed.
- */
-function createModel(parents: number[], restPose: IqmPose[], frames: IqmPose[][]): IQMModel {
-  const model = new IQMModel('progs/test.iqm');
-  model.jointNames = parents.map((_parent, index) => `joint${index}`);
-  model.jointParents = Int32Array.from(parents);
-  model.restPose = Float32Array.from(restPose.flat());
-  model.framePoses = Float32Array.from(frames.flat(2));
-  model._num_frames = frames.length;
-  model.inverseBindMatrices = SkeletalAnimation.computeInverseBindMatrices(model.restPose, model.jointParents).matrices;
-  return model;
-}
-
-/**
- * A pose with a rotation about Z.
- * @param translation Where the joint sits in its parent.
- * @param degrees The turn about Z.
- * @param scale The scale along the joint's axes.
- * @returns Ten numbers: translation, rotation `w, x, y, z`, scale.
- */
-function poseOf(translation: number[], degrees = 0, scale: number[] = [1, 1, 1]): IqmPose {
-  const half = degrees * Math.PI / 360.0;
-  return [...translation, Math.cos(half), 0, 0, Math.sin(half), ...scale];
-}
 
 /**
  * Poses a model and returns copies of the matrices.

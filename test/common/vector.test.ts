@@ -324,3 +324,101 @@ void describe('model angle convention', () => {
     assert.ok(Math.abs(pitched[2] - new Vector(30, 0, 0).toQuaternion()[2]) > 0.1);
   });
 });
+
+void describe('Quaternion.fromMatrix3x4Into', () => {
+  /**
+   * @param quaternion `w, x, y, z`.
+   * @returns Its rotation, recovered through a matrix.
+   */
+  function throughMatrix(quaternion: ArrayLike<number>): Float64Array {
+    const recovered = new Float64Array(4);
+
+    Quaternion.fromMatrix3x4Into(recovered, 0, matrixOf(quaternion), 0);
+
+    return recovered;
+  }
+
+  /**
+   * @param a One quaternion.
+   * @param b Another.
+   * @returns How far they are as rotations: 0 for the same one, whichever sign they are written with.
+   */
+  function rotationDistance(a: ArrayLike<number>, b: ArrayLike<number>): number {
+    return 1 - Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]);
+  }
+
+  void test('gives back the rotation a matrix was made from, for turns about every axis and in between', () => {
+    const turns: number[][] = [];
+
+    for (const axis of [0, 1, 2]) {
+      for (const degrees of [0, 30, 90, 150, -40, -170]) {
+        turns.push(turnAbout(axis, degrees));
+      }
+    }
+
+    turns.push(new Quaternion(0.5, 0.5, 0.5, 0.5), Array.from(new Vector(30, 60, 15).toQuaternion()), Array.from(new Vector(-45, 200, 70).toQuaternion()));
+
+    for (const quaternion of turns) {
+      assert.ok(rotationDistance(throughMatrix(quaternion), quaternion) < 1e-6, `rotation ${quaternion.join(', ')}`);
+    }
+  });
+
+  void test('keeps its precision near a half turn, where the trace of the matrix is about -1', () => {
+    // A conversion that always divides by the trace loses everything here; the largest component has to be the pivot.
+    for (const axis of [0, 1, 2]) {
+      for (const degrees of [179.9, 180, -179.9]) {
+        const quaternion = turnAbout(axis, degrees);
+
+        assert.ok(rotationDistance(throughMatrix(quaternion), quaternion) < 1e-6, `${degrees} degrees about axis ${axis}`);
+      }
+    }
+  });
+
+  void test('returns a unit quaternion', () => {
+    const recovered = throughMatrix(Array.from(new Vector(10, 20, 30).toQuaternion()));
+
+    assertNear(Math.hypot(recovered[0], recovered[1], recovered[2], recovered[3]), 1, 1e-12);
+  });
+});
+
+void describe('Quaternion.toModelAnglesInto', () => {
+  const inRange: [number, number, number][] = [[0, 0, 0], [30, 60, 15], [-45, 100, 70], [89, 10, -120], [-10, -170, 5], [0, 179, 0]];
+
+  void test('is the inverse of fromModelAnglesInto, so a game that is given the angles turns an entity the way the quaternion does', () => {
+    for (const angles of inRange) {
+      const quaternion = new Float64Array(4);
+      const recovered = new Float64Array(3);
+
+      Quaternion.fromModelAnglesInto(quaternion, 0, angles);
+      Quaternion.toModelAnglesInto(recovered, 0, quaternion, 0);
+
+      angles.forEach((value, index) => { assertNear(recovered[index], value, 1e-6); });
+    }
+  });
+
+  void test('gives angles with the same rotation matrix as toRotationMatrix, also past 90 degrees of pitch where the numbers differ', () => {
+    // A pitch of 120 is the same turn as a pitch of 60 with the yaw and roll turned half way round.
+    for (const angles of [...inRange, [120, 10, 20], [-100, 200, 300]]) {
+      const quaternion = new Float64Array(4);
+      const recovered = new Float64Array(3);
+
+      Quaternion.fromModelAnglesInto(quaternion, 0, angles);
+      Quaternion.toModelAnglesInto(recovered, 0, quaternion, 0);
+
+      const wanted = new Vector(...angles).toRotationMatrix();
+      const got = new Vector(...recovered).toRotationMatrix();
+
+      wanted.forEach((value, index) => { assertNear(got[index], value, 1e-6); });
+    }
+  });
+
+  void test('writes at the offset and leaves the numbers around it alone', () => {
+    const out = [9, 9, 9, 9, 9];
+
+    Quaternion.toModelAnglesInto(out, 1, [Math.cos(Math.PI / 4), 0, 0, Math.sin(Math.PI / 4)], 0);
+
+    assert.equal(out[0], 9);
+    assert.equal(out[4], 9);
+    assertNear(out[2], 90, 1e-6);
+  });
+});
