@@ -3,7 +3,6 @@ import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
 import { getEntityBloomEmissiveScale } from '../postprocess/BloomEffect.ts';
 import { eventBus } from '../../../common/EventBus.ts';
 import GL from '../../GL.ts';
-import W from '../../../common/W.ts';
 import { effect } from '../../../../shared/Defs.ts';
 import { AliasModel, type AliasSingleFrame, type AliasGroupedFrameEntry, type AliasSingleSkin, type AliasGroupedSkinEntry } from '../../../common/model/AliasModel.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
@@ -14,6 +13,7 @@ import EntityLighting from '../lighting/EntityLighting.ts';
 import ShadowMap from '../lighting/ShadowMap.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
 import Camera from '../scene/Camera.ts';
+import { PlayerColors } from './PlayerColors.ts';
 import DefaultTextures from '../resources/DefaultTextures.ts';
 import RenderStats from '../scene/RenderStats.ts';
 
@@ -46,6 +46,9 @@ interface AliasFrameSelection {
  * Handles frame interpolation, skinning, and player color translation.
  */
 export class AliasModelRenderer extends ModelRenderer {
+  /** Red, green and blue of the shirt or pants color being set. */
+  static readonly #playerColor = new Float32Array(3);
+
   override get profileName(): string {
     return 'alias models';
   }
@@ -117,21 +120,12 @@ export class AliasModelRenderer extends ModelRenderer {
     if (e.colormap !== 0 && clmodel.player && rendererCvars.nocolors.value === 0) {
       program = GL.UseProgram('player');
 
-      // Calculate player colors
-      let top = (clientRuntimeState.scores[e.colormap - 1].colors & 0xf0) + 4;
-      let bottom = ((clientRuntimeState.scores[e.colormap - 1].colors & 0xf) << 4) + 4;
-      if (top <= 127) {
-        top += 7;
-      }
-      if (bottom <= 127) {
-        bottom += 7;
-      }
-      top = W.d_8to24table[top];
-      bottom = W.d_8to24table[bottom];
-
       // Set player color uniforms
-      gl.uniform3f(program!.uTop!, top & 0xff, (top >> 8) & 0xff, top >> 16);
-      gl.uniform3f(program!.uBottom!, bottom & 0xff, (bottom >> 8) & 0xff, bottom >> 16);
+      const colors = clientRuntimeState.scores[e.colormap - 1].colors;
+      PlayerColors.shirtInto(colors, AliasModelRenderer.#playerColor);
+      gl.uniform3fv(program!.uTop!, AliasModelRenderer.#playerColor);
+      PlayerColors.pantsInto(colors, AliasModelRenderer.#playerColor);
+      gl.uniform3fv(program!.uBottom!, AliasModelRenderer.#playerColor);
     } else {
       program = GL.UseProgram('alias');
     }

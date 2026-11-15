@@ -3,6 +3,7 @@ import { CorruptedResourceError } from '../../Errors.ts';
 import { IQMModel } from '../IQMModel.ts';
 import { ModelLoader } from '../ModelLoader.ts';
 import { SkeletalAnimation } from '../SkeletalAnimation.ts';
+import { SkeletalMaterialLoader } from '../SkeletalMaterialLoader.ts';
 import type { SkeletalMaterial, SkeletalMeshData, SkeletalMeshRange, SkeletalSequence } from '../SkeletalModel.ts';
 import { SkeletalModel } from '../SkeletalModel.ts';
 
@@ -150,7 +151,7 @@ export class IQMLoader extends ModelLoader {
     return new TextDecoder('latin1').decode(new Uint8Array(buffer, 0, IQM_MAGIC.length)) === IQM_MAGIC;
   }
 
-  override load(buffer: ArrayBuffer, name: string): Promise<IQMModel> {
+  override async load(buffer: ArrayBuffer, name: string): Promise<IQMModel> {
     const reader = new IQMReader(buffer, name);
     const header = reader.readHeader();
     const loadmodel = new IQMModel(name);
@@ -194,11 +195,15 @@ export class IQMLoader extends ModelLoader {
       loadmodel.materials = materials;
       loadmodel.meshes = ranges;
       loadmodel.meshData = { ...vertices, triangles } satisfies SkeletalMeshData;
+
+      if (this.context.textures !== null) {
+        await SkeletalMaterialLoader.load(materials, this.context.textures, this.context.con);
+      }
     }
 
     loadmodel.needload = false;
 
-    return Promise.resolve(loadmodel);
+    return loadmodel;
   }
 
   /**
@@ -254,7 +259,7 @@ export class IQMLoader extends ModelLoader {
 
       if (materialIndex === -1) {
         materialIndex = materials.length;
-        materials.push({ name: mesh.material });
+        materials.push({ name: mesh.material, diffuse: null, glow: null, shirt: null, pants: null });
       }
 
       ranges.push({

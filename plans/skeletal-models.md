@@ -3,7 +3,7 @@
 ## Status
 
 📝 Draft, nothing implemented, no open questions left (all settled 2026-11-13; quaternion handling
-added 2026-11-14, decisions 19–21). Phases 0, 1, 2 and 3 done on 2026-11-15 (results below). Next: Phase 4.
+added 2026-11-14, decisions 19–21). Phases 0 to 4 done on 2026-11-15 (results below). Next: Phase S or Phase 5, the maintainer picks.
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
 parked: the core only has to leave room for them (Later: Half-Life studio models).
@@ -194,6 +194,80 @@ Differences from the plan, and why:
 - **A zero-scale joint** in a rest pose has no inverse bind matrix: it gets the identity and the loader logs it in developer mode, rather than
   filling vertices with NaN.
 - **No tag code yet.** `sampleTag` and orthonormalization are Phase 5; `computePose(..., null)` is the call they will use.
+
+### Phase 4 results (2026-11-15)
+
+Shipped (this repository, **not committed yet**): `SkeletalModelRenderer` (`client/renderer/models/`, registered for `IQMModel` in
+`R.Init`), the `skeletal` program (`skeletal.vert`/`.frag`), `SkeletalAnimation.skinMeshInto`, `SkeletalMaterialLoader`, `PlayerColors`,
+`ModelLoadContext.textures`, `GL.CreateProgram` accepting `null` for an empty texture unit, and the "Drawing", "Textures" and "Texture
+units" sections of `docs/skeletal-models.md` (plus a README line and the `docs/shader-chunks.md` tables).
+
+- **Pipeline**: per visible entity the renderer picks the two frames from `lerp.frame` (plain `frame` when `r_interpolation` is off or
+  `EF_MUZZLEFLASH` is set, like the alias renderer), poses and skins on the CPU, and draws one range of triangles per material. Skinning is
+  cached per entity and pose (main pass and shadow passes share it; a culled entity is never skinned). GL objects belong to the model's mesh
+  data (shared by scoped views) and are freed when it is collected (`FinalizationRegistry`) or by `cleanupModel`. Shadows reuse
+  `shadow-brush`/`shadow-point`. Winding: IQM is counter-clockwise and the engine culls the front face, so the index buffer is turned round
+  like the OBJ path does; **confirmed by the browser pass** (the model draws solid, not inside out).
+- **Textures**: material `progs/player.mdl.0` is looked up as `.png`, then `.jpg`; when found, DarkPlaces' companions `_glow`, `_shirt` and
+  `_pants` are looked for in the same format. Player colors are **added** as DarkPlaces does (`base + shirt × color + pants × color`), with
+  the palette rows `PlayerColors` extracted from the alias renderer (the alias player uses it now too, with identical numbers).
+- **Cost measured in Node (warm)**: pose of the player 2.3 µs, skinning its 794 vertices 16 µs. Browser numbers (`r_speeds`, a horde) not taken.
+- **Tests**: `skeletal-model-renderer.test.ts` (24, a GL recording context), `skeletal-material-loader.test.ts` (8), `player-colors.test.ts`
+  (3), `skinMeshInto` cases in `skeletal-animation.test.ts` (now 24), one more in `shader-programs.test.ts`. Mutation checks (winding,
+  culling, cache keyed without the blend or without the mesh, byte offset of a range, `gl_nocolors`, uncleared colors, muzzle flash blending,
+  shadow draw count) each fail at least one test; one survivor (an entity getting another model in the same frame) got its own test.
+  Typecheck zero, ESLint clean, `npm test` green (3,219 tests).
+
+**Browser passes** (`browser-ui-verification`, headless Chromium on software GL, so nothing about frame time or a real GPU).
+
+*First pass* (`player.iqm` injected as a temporary entity next to `soldier.mdl` on `start`): load, animation across frames, textures, player
+colors, dynamic light and `r_speeds` counters were fine, and it found a bug. **A translucent skeletal entity turned the world black** (252
+`GL_INVALID_OPERATION: Mismatch between texture format and sampler type` in 4 seconds). Cause: a program's sampler gets the unit of its index,
+`skeletal` had `tShadowBlockerMap` on unit 8, and `brush` reads unit 8 as `tNormal` (a plain `sampler2D`) but binds it only for a world with
+a deluxemap. The shadow textures have a compare mode, so the dummy left on unit 8 failed the brush draw. Fix: the shadow samplers of
+`skeletal` sit on units 10 to 14 like `brush`'s own, units 4 to 9 stay empty (`null` in the texture list); a test pins them against `brush`'s.
+
+*Second pass, in the game* (a temporary local edit of id1, not committed and reverted: the player and `monster_army` use `progs/player.iqm`
+and `progs/soldier.iqm`, exported from LibreQuake with the Phase 1 exporter, with throwaway shirt and pants masks cut from the player's palette
+skin; e1m1, the default worker server, files served through Playwright context routes):
+- **Fix confirmed**: 0 GL errors and 0 warnings over 6 to 8 seconds with translucent ghost and real IQM entities, with and without dynamic
+  lights, shadows on. The world stays intact.
+- **In game, OK**: real soldiers draw as the IQM (solid, textured, lit, not inside out, not upside down), through stand, attack and death
+  frames; the IQM player in chase view runs (frames 12 to 16) and `color 4 13` against `color 13 4` swaps the shirt and pants tints; the IQMs
+  are lit by dynamic lights and cast top-down shadows (visible at `r_shadow_darkness 0.1`, almost invisible at the default, as for the MDLs) and
+  point-light shadows; with `r_interpolation 1` the uploaded vertices differ with the blend (30.8 units between blend 0 and 1 of one pair), with
+  it off they equal the second pose; `r_speeds` with three soldiers: 3294 alias polys (886 per soldier), 15 entities. No stretched limbs or flipped
+  normals. Companion probes: the expected 404s only (`_glow`, and `_shirt`/`_pants` of the soldier).
+- **Content, not renderer**: the LibreQuake soldier skin is a gray-armored, skull-faced soldier with red legs, not the brown pak0 one, and the
+  LibreQuake player holds a thin blade where pak0's holds a big axe.
+- **Existing bug found**: the `player` program (colored MDL players) had `tShadowBlockerMap` on unit 7, which is `brush`'s `tSpecular`, the same
+  trap. A colored MDL player entity made **every world draw fail (about 9,400 errors per 3 seconds) and the world stayed black after the entity
+  was gone**. The soldier and player IQMs with a colormap caused none. This is not new with the skeletal work (`ShaderPrograms.ts` had that
+  layout before), but it can hit multiplayer: remote players are colored. Fixed in the commit after Phase 4 by moving `tPlayer` behind the
+  shadow samplers, so the shadow units are the alias program's, and by a test for every program (no 2D shadow sampler on unit 7 or 8 outside
+  `brush`). **That fix is not confirmed in a browser.**
+
+Not checked, so open: the axe frames and the frames of other animations of the IQM player, shadows from a translucent entity (none are cast),
+pointer lock and mouse look (not possible in that harness), the glow layer (no asset has one), a pixel comparison of the alias player
+against `HEAD` (unit-tested only; the colored MDL player was only drawn to count errors), and frame time or a horde on a real GPU. The exit
+criteria "an IQM monster and the IQM player in id1 animate, light, shadow and show player colors like the MDL" is met with the swapped files;
+"`r_speeds` with a wave of IQM monsters" is not (counts only, no timing).
+
+Differences from the plan, and why:
+
+- **Textures are made by the loader, not the renderer**, through a new `ModelLoadContext.textures` (like `spriteImages`): they are ready when the
+  model is precached, so nothing flashes the checkerboard, and a test can hand the loader a fake source. `FromImageFile(name, true)` is silent
+  on a miss now (its other users call it for optional files, `gfx/conback.png`).
+- **No `.qsmat` per model and no `.skin` files** (decisions 12 and B): nothing in this phase needs them, and a per-model material file is one more
+  probe per model. They come with the first asset that needs an alpha flag, a normal map or a second skin (Phase 7 at the latest). `skinnum` is
+  ignored for now. The texture's alpha channel is ignored too (no alpha test); the `alias` convention that alpha means "fullbright" is not carried over.
+- **A `skeletal` program, not an extended `mesh`**: `mesh` serves OBJ models and has no layers to spare, and the new program adds nothing to the
+  alias, mesh or player programs, so no shared chunk moved and no before/after screenshots were needed. It uses the `entity-vertex` and
+  `entity-lighting` chunks as they are.
+- **`glow` is additive after lighting** (DarkPlaces) rather than the alias `luminance` mask that only feeds bloom.
+- **`R.PrepareModels` is unchanged**: GL objects are created on the first draw, so a model that is never visible costs none.
+- **The probing cost** (up to four small 404s per material and model, once per page load) is accepted for the DarkPlaces naming; an explicit
+  material file would avoid it.
 
 ### Decisions (2026-11-12, from the maintainer)
 

@@ -138,6 +138,7 @@ void describe('R.Init', () => {
       'renderer AliasModelRenderer',
       'renderer SpriteModelRenderer',
       'renderer MeshModelRenderer',
+      'renderer SkeletalModelRenderer',
       'postprocess',
       // the order effects are registered in is the order they resolve in
       'effect bloom',

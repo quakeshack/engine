@@ -209,7 +209,8 @@ void describe('IQMLoader', () => {
       assert.deepEqual(Array.from(model.meshData!.texcoords), [0, 0, 1, 0, 0, 1]);
       assert.deepEqual(Array.from(model.meshData!.blendIndexes), [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]);
       assert.deepEqual(Array.from(model.meshData!.triangles), [0, 1, 2]);
-      assert.deepEqual(model.materials, [{ name: 'progs/body' }]);
+      // Without a texture source in the realm's context the materials are only named.
+      assert.deepEqual(model.materials, [{ name: 'progs/body', diffuse: null, glow: null, shirt: null, pants: null }]);
       assert.deepEqual(model.meshes, [{ name: 'body', materialIndex: 0, firstVertex: 0, vertexCount: 3, firstTriangle: 0, triangleCount: 1 }]);
     });
 
@@ -228,7 +229,7 @@ void describe('IQMLoader', () => {
       });
       const model = await load(buildIqm(spec), { loadRenderData: true });
 
-      assert.deepEqual(model.materials, [{ name: 'progs/shared' }]);
+      assert.deepEqual(model.materials.map((material) => material.name), ['progs/shared']);
       assert.deepEqual(model.meshes.map((mesh) => [mesh.materialIndex, mesh.firstVertex]), [[0, 0], [0, 3]]);
     });
 
@@ -445,7 +446,7 @@ void describe('IQMLoader', () => {
 
       assert.equal(mesh.positions.length, 794 * 3);
       assert.equal(mesh.triangles.length, 1060 * 3);
-      assert.deepEqual(player.materials, [{ name: 'progs/player.mdl.0' }]);
+      assert.deepEqual(player.materials.map((material) => material.name), ['progs/player.mdl.0']);
       assert.ok(mesh.blendIndexes.every((index) => index < 25));
       assertAllNear(mesh.positions.subarray(300, 303), [1.11939, 6.52372, 21.97339], 1e-4);
       assertAllNear(mesh.blendIndexes.subarray(400, 404), [3, 6, 0, 0], 0);

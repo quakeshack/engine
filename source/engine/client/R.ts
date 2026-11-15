@@ -9,8 +9,10 @@ import { BrushModelRenderer } from './renderer/models/BrushModelRenderer.ts';
 import { AliasModelRenderer } from './renderer/models/AliasModelRenderer.ts';
 import { SpriteModelRenderer } from './renderer/models/SpriteModelRenderer.ts';
 import { MeshModelRenderer } from './renderer/models/MeshModelRenderer.ts';
+import { SkeletalModelRenderer } from './renderer/models/SkeletalModelRenderer.ts';
 import { BrushModel } from '../common/model/BSP.ts';
 import { MeshModel } from '../common/model/MeshModel.ts';
+import { IQMModel } from '../common/model/IQMModel.ts';
 import PostProcess from './renderer/postprocess/PostProcess.ts';
 import BloomEffect from './renderer/postprocess/BloomEffect.ts';
 import ColorGradeEffect from './renderer/postprocess/ColorGradeEffect.ts';
@@ -406,6 +408,7 @@ class R {
     modelRendererRegistry.register(new AliasModelRenderer());
     modelRendererRegistry.register(new SpriteModelRenderer());
     modelRendererRegistry.register(new MeshModelRenderer());
+    modelRendererRegistry.register(new SkeletalModelRenderer(IQMModel));
 
     // Initialize post-process infrastructure (scene FBO with depth texture)
     // and register screen-space effects that resolve from that capture.

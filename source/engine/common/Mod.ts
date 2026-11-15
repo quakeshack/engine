@@ -13,7 +13,7 @@ import { BSP38Loader } from './model/loaders/BSP38Loader.ts';
 import type { BaseModel } from './model/BaseModel.ts';
 import type { SpriteImageDecoding } from './model/sprite/SpriteImageDecoding.ts';
 import { BrushModel } from './model/BSP.ts';
-import { DEFAULT_MODEL_LOAD_OPTIONS, type ModelFiles, type ModelLoadContext, type ModelLoadOptions } from './model/ModelLoadContext.ts';
+import { DEFAULT_MODEL_LOAD_OPTIONS, type ModelFiles, type ModelLoadContext, type ModelLoadOptions, type ModelTextures } from './model/ModelLoadContext.ts';
 
 export enum ModelType {
   brush = 0,
@@ -58,6 +58,8 @@ export interface ModDependencies {
   readonly loadRenderData: boolean;
   /** Decodes the pixels of image sprites. Only a realm that draws has one. */
   readonly spriteImages?: SpriteImageDecoding | null;
+  /** Creates the textures of skeletal models. Only a realm that draws has one. */
+  readonly textures?: ModelTextures | null;
   /** Names of client models that outlive a clear of the client scope (the models effects spawn at runtime). */
   readonly keptClientModels?: () => string[];
 }
@@ -128,6 +130,7 @@ export class Mod {
       con: dependencies.con,
       loadRenderData: dependencies.loadRenderData,
       spriteImages: dependencies.spriteImages ?? null,
+      textures: dependencies.textures ?? null,
     };
 
     this.#files = dependencies.files;

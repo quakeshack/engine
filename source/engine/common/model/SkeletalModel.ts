@@ -1,3 +1,4 @@
+import type { GLTexture } from '../../client/GL.ts';
 import { BaseModel } from './BaseModel.ts';
 import { ModelType } from '../Mod.ts';
 
@@ -11,9 +12,20 @@ export interface SkeletalSequence {
   readonly loop: boolean;
 }
 
-/** A material of the model. Textures are resolved by the renderer, the loader only names them. */
+/**
+ * A material of the model: its name from the file and the textures `SkeletalMaterialLoader` found for it, which
+ * stay `null` in a realm that does not draw, and for a layer that has no file.
+ */
 export interface SkeletalMaterial {
   readonly name: string;
+  /** The base color. `null` when no file exists: the renderer draws its checkerboard. */
+  diffuse: GLTexture | null;
+  /** Glow, added to the lit color and fed to the bloom pass (`<material>_glow`). */
+  glow: GLTexture | null;
+  /** Greyscale mask of the parts the shirt color is added to (`<material>_shirt`). */
+  shirt: GLTexture | null;
+  /** Greyscale mask of the parts the pants color is added to (`<material>_pants`). */
+  pants: GLTexture | null;
 }
 
 /** A run of vertices and triangles of one material, indexes into the arrays of `SkeletalMeshData`. */

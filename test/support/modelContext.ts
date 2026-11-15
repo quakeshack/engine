@@ -59,6 +59,7 @@ export function createModelLoadContext(overrides: Partial<ModelLoadContext> = {}
     con: createSilentConsole(),
     loadRenderData: false,
     spriteImages: null,
+    textures: null,
     ...overrides,
   };
 }

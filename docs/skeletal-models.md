@@ -4,8 +4,10 @@ Models that are posed by a joint hierarchy, with a mesh skinned to it (a player,
 format is [Inter-Quake Model](https://sourceforge.net/projects/iqm/) (`.iqm`), version 2. The plan and the order of the work are in
 [plans/skeletal-models.md](../plans/skeletal-models.md).
 
-**What works today:** loading, on the client and on the server, including `setModel()` sizing and the `modelinfo` command.
-**What does not exist yet:** drawing a skeletal model, playing an animation, tags and attachments. Those are the next phases of the
+**What works today:** loading, on the client and on the server, including `setModel()` sizing and the `modelinfo` command; posing;
+drawing with lighting, shadows, a glow layer and player colors. A game uses an `.iqm` where it used an `.mdl`: `frame` picks the pose
+and the client blends neighboring frames like it does for alias models.
+**What does not exist yet:** named sequences, tags and attachments, view weapons, per-skin textures. Those are later phases of the
 plan; this page grows with each of them.
 
 ## Making a model
@@ -92,6 +94,56 @@ tags and the client for skinning, and it allocates nothing: the caller owns the 
 The rotations of an entity's `angles` meet this code through `Quaternion.fromModelAnglesInto`, which follows
 `Vector.toRotationMatrix()` (the convention every model renderer uses: pitch negated, the matrix holding the entity's axes as
 rows). `Vector.toQuaternion()` and `angleVectors()` use the view convention instead, with no pitch negation.
+
+## Drawing
+
+`SkeletalModelRenderer` (`source/engine/client/renderer/models/`) is registered for `IQMModel`; a later format registers its own
+class the same way. For every visible entity it picks the two frames to blend from `lerp.frame` (the plain `frame` while
+`r_interpolation` is off or during a muzzle flash, like alias models), poses and skins the mesh on the CPU
+(`SkeletalAnimation.skinMeshInto`) and draws it with the `skeletal` program, one range of triangles per material.
+
+- **Skinning is cached per entity and pose**: the main pass and the shadow passes of a frame share one skinning, and an entity that is
+  culled (the sphere of `boundingradius` around its origin against the view frustum) is never skinned. The skinned vertices are
+  uploaded for every draw into the model's one dynamic vertex buffer. Measured in Node after warm-up, the pose of the player
+  (25 joints) takes about 2 µs and skinning its 794 vertices about 16 µs, so a hundred skinned entities cost under 2 ms of CPU
+  a frame; the numbers in a browser are still to be taken, and GPU skinning waits for them (`r_speeds`, `r_bench`).
+- **Lighting and shadows** are those of the alias and mesh programs (`entity-lighting.glsl`): the entity's light, dynamic lights, the
+  top-down shadow and point-light shadows on it, and its own shadow through `shadow-brush` and `shadow-point`.
+- **Winding**: IQM triangles run counter-clockwise, and the engine culls the front face (`gl.cullFace(gl.FRONT)`), so the renderer
+  turns every triangle round when it uploads the index buffer.
+- **Translucent entities** (`alpha` between 0 and 1) draw in the blended pass and cast no shadow, as alias models do. The texture's own
+  alpha channel is ignored.
+- Counted with the alias models' polygons in `r_speeds`.
+
+### Textures
+
+A material is named by the file (`progs/player.mdl.0`, written by the exporter). `SkeletalMaterialLoader` looks the name up with `.png`
+and then `.jpg` added (a name that already ends in an image extension is used as it is) and, when that exists, looks for the
+companions that DarkPlaces defines and FTE reads too, in the same format:
+
+| File | Used for |
+|---|---|
+| `<name>.png` | base color |
+| `<name>_glow.png` | added to the lit color, so it stays visible in the dark, and sent to the bloom pass |
+| `<name>_shirt.png`, `<name>_pants.png` | greyscale masks of the parts a player's shirt and pants color goes on |
+
+The player colors are **added**: `base + shirt × shirtColor + pants × pantsColor`, so the base image must have those pixels blanked
+(this is DarkPlaces' rule; the exporter's `--colormap` option, planned in Phase 7 of the plan, will write textures that way). The colors are the rows of the Quake palette
+the `colors` byte of the player names, the same ones the alias player uses, for an entity with a `colormap` (and `gl_nocolors` 0).
+
+A missing base image draws the checkerboard and is reported once. A missing companion is simply absent. Each miss is one request
+for a file that is not there (a browser shows it as a 404 in its console): up to four per material and model, once per page load.
+
+**Not supported yet:** `skinnum` (a model shows its file's materials; DarkPlaces' `.skin` files come with the Hellwave work),
+`.qsmat.json` overrides per model, normal and specular maps, transparent textures.
+
+### Texture units
+
+Texture units are shared by all programs, and what a program leaves on a unit is what the next one finds there. The shadow textures
+have a compare mode that a plain `sampler2D` rejects, and `brush` binds its `tSpecular` (unit 7) and `tNormal` (unit 8) only for a
+world with a deluxemap, so a shadow texture left on one of them fails the next world draw (`GL_INVALID_OPERATION: Mismatch between
+texture format and sampler type`, and the world draws black). That is why the `skeletal` program lists `null` for the units 4 to 9
+and keeps its shadow samplers on the units 10 to 14, where `brush` has its own.
 
 ## `modelinfo <model>`
 

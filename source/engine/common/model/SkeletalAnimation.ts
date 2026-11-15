@@ -1,5 +1,5 @@
 import { Quaternion } from '../../../shared/Vector.ts';
-import { SkeletalModel } from './SkeletalModel.ts';
+import { SkeletalModel, type SkeletalMeshData } from './SkeletalModel.ts';
 
 /** The inverse bind matrices of a model, and how many joints could not be inverted. */
 export interface InverseBindResult {
@@ -94,6 +94,85 @@ export class SkeletalAnimation {
 
       if (outSkinningMatrices !== null) {
         SkeletalAnimation.multiplyMatrix3x4Into(outSkinningMatrices, matrixOffset, outJointMatrices, matrixOffset, inverseBindMatrices, matrixOffset);
+      }
+    }
+  }
+
+  /**
+   * Skins every vertex of a mesh on the CPU: each position and normal is moved by the skinning matrices of its (up to
+   * four) joints and blended by their weights. Normals are moved by the rotation part of the matrices and brought back
+   * to unit length, so a joint with scale does not leave them too long or too short (a normal that cancels out becomes +Z).
+   *
+   * The result goes into one interleaved array, so a renderer can upload it as it is: vertex `index` has its position
+   * at `index * stride + positionOffset` and its normal at `index * stride + normalOffset`. Nothing else in the array is
+   * touched (texture coordinates stay where the renderer put them).
+   * @param meshData The bind pose mesh.
+   * @param skinningMatrices The skinning matrices of one pose (`computePose`).
+   * @param out Receives the skinned vertices.
+   * @param stride Numbers per vertex in `out`.
+   * @param positionOffset Index of the position within a vertex.
+   * @param normalOffset Index of the normal within a vertex.
+   */
+  static skinMeshInto(
+    meshData: SkeletalMeshData,
+    skinningMatrices: Float32Array,
+    out: Float32Array,
+    stride: number,
+    positionOffset: number,
+    normalOffset: number,
+  ): void {
+    const { positions, normals, blendIndexes, blendWeights } = meshData;
+    const vertexCount = positions.length / 3;
+    console.assert(out.length >= vertexCount * stride, 'skinned vertex buffer too small');
+
+    for (let vertex = 0; vertex < vertexCount; vertex++) {
+      const x = positions[vertex * 3];
+      const y = positions[vertex * 3 + 1];
+      const z = positions[vertex * 3 + 2];
+      const nx = normals[vertex * 3];
+      const ny = normals[vertex * 3 + 1];
+      const nz = normals[vertex * 3 + 2];
+
+      let skinnedX = 0.0;
+      let skinnedY = 0.0;
+      let skinnedZ = 0.0;
+      let skinnedNormalX = 0.0;
+      let skinnedNormalY = 0.0;
+      let skinnedNormalZ = 0.0;
+
+      for (let influence = 0; influence < 4; influence++) {
+        const weight = blendWeights[vertex * 4 + influence];
+
+        if (weight === 0.0) {
+          continue;
+        }
+
+        const matrix = blendIndexes[vertex * 4 + influence] * SkeletalAnimation.MATRIX_FLOATS;
+        skinnedX += weight * (skinningMatrices[matrix] * x + skinningMatrices[matrix + 1] * y + skinningMatrices[matrix + 2] * z + skinningMatrices[matrix + 3]);
+        skinnedY += weight * (skinningMatrices[matrix + 4] * x + skinningMatrices[matrix + 5] * y + skinningMatrices[matrix + 6] * z + skinningMatrices[matrix + 7]);
+        skinnedZ += weight * (skinningMatrices[matrix + 8] * x + skinningMatrices[matrix + 9] * y + skinningMatrices[matrix + 10] * z + skinningMatrices[matrix + 11]);
+        skinnedNormalX += weight * (skinningMatrices[matrix] * nx + skinningMatrices[matrix + 1] * ny + skinningMatrices[matrix + 2] * nz);
+        skinnedNormalY += weight * (skinningMatrices[matrix + 4] * nx + skinningMatrices[matrix + 5] * ny + skinningMatrices[matrix + 6] * nz);
+        skinnedNormalZ += weight * (skinningMatrices[matrix + 8] * nx + skinningMatrices[matrix + 9] * ny + skinningMatrices[matrix + 10] * nz);
+      }
+
+      const length = Math.sqrt(skinnedNormalX * skinnedNormalX + skinnedNormalY * skinnedNormalY + skinnedNormalZ * skinnedNormalZ);
+      const position = vertex * stride + positionOffset;
+      const normal = vertex * stride + normalOffset;
+
+      out[position] = skinnedX;
+      out[position + 1] = skinnedY;
+      out[position + 2] = skinnedZ;
+
+      if (length > 1e-12) {
+        out[normal] = skinnedNormalX / length;
+        out[normal + 1] = skinnedNormalY / length;
+        out[normal + 2] = skinnedNormalZ / length;
+      } else {
+        // The weighted normals cancel out (or a joint has no scale): a shader cannot normalize nothing.
+        out[normal] = 0.0;
+        out[normal + 1] = 0.0;
+        out[normal + 2] = 1.0;
       }
     }
   }

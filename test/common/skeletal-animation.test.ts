@@ -270,6 +270,64 @@ void describe('SkeletalAnimation.computeInverseBindMatrices', () => {
   });
 });
 
+void describe('SkeletalAnimation.skinMeshInto', () => {
+  void test('skins positions and normals of the two-joint model to the hand-worked places', async () => {
+    // Frame 1 turns `child` 90 degrees about Z. See `createTwoJointSpec`: the vertex shared half-and-half by both
+    // joints ends at (7.5, -2.5, 0), the one on `child` at (9, 0, 0), the one on `root` stays.
+    const model = await new IQMLoader(createModelLoadContext({ loadRenderData: true })).load(buildIqm(createTwoJointSpec()), 'progs/two.iqm');
+    const { skinning } = pose(model, 1, 1, 0);
+    const out = new Float32Array(3 * 8).fill(-7);
+
+    SkeletalAnimation.skinMeshInto(model.meshData!, skinning, out, 8, 0, 5);
+
+    assertAllNear(out.subarray(0, 3), [9, 0, 0], 1e-5);
+    assertAllNear(out.subarray(8, 11), [0, 1, 0], 1e-5);
+    assertAllNear(out.subarray(16, 19), [7.5, -2.5, 0], 1e-5);
+    // The texture coordinates between position and normal belong to the renderer and are left alone.
+    assert.deepEqual(Array.from(out.subarray(3, 5)), [-7, -7]);
+    assertAllNear(out.subarray(5, 8), [0, 0, 1], 1e-6);
+  });
+
+  void test('turns a normal with its joint and keeps it unit length under scale', () => {
+    // A joint turned 90 degrees about Z and stretched 3 times: the normal (1, 0, 0) must come out (0, 1, 0), not
+    // (0, 3, 0), which would brighten or darken the lighting on stretched joints.
+    const model = createModel([-1], [poseOf([0, 0, 0])], [[poseOf([0, 0, 0], 90, [3, 3, 3])]]);
+    const meshData = {
+      positions: Float32Array.from([1, 0, 0]),
+      normals: Float32Array.from([1, 0, 0]),
+      texcoords: new Float32Array(2),
+      blendIndexes: Uint16Array.from([0, 0, 0, 0]),
+      blendWeights: Float32Array.from([1, 0, 0, 0]),
+      triangles: new Uint32Array(0),
+    };
+    const { skinning } = pose(model, 0, 0, 0);
+    const out = new Float32Array(6);
+
+    SkeletalAnimation.skinMeshInto(meshData, skinning, out, 6, 0, 3);
+
+    assertAllNear(out.subarray(0, 3), [0, 3, 0], 1e-5);
+    assertAllNear(out.subarray(3, 6), [0, 1, 0], 1e-6);
+  });
+
+  void test('gives a normal that cancels out between two joints a defined direction instead of NaN', () => {
+    const model = createModel([-1, -1], [poseOf([0, 0, 0]), poseOf([0, 0, 0])], [[poseOf([0, 0, 0]), poseOf([0, 0, 0], 180)]]);
+    const meshData = {
+      positions: Float32Array.from([0, 0, 0]),
+      normals: Float32Array.from([1, 0, 0]),
+      texcoords: new Float32Array(2),
+      blendIndexes: Uint16Array.from([0, 1, 0, 0]),
+      blendWeights: Float32Array.from([0.5, 0.5, 0, 0]),
+      triangles: new Uint32Array(0),
+    };
+    const { skinning } = pose(model, 0, 0, 0);
+    const out = new Float32Array(6);
+
+    SkeletalAnimation.skinMeshInto(meshData, skinning, out, 6, 0, 3);
+
+    assert.deepEqual(Array.from(out.subarray(3, 6)), [0, 0, 1]);
+  });
+});
+
 void describe('SkeletalAnimation on the LibreQuake player', () => {
   interface PoseCase {
     frameA: number;
@@ -289,6 +347,7 @@ void describe('SkeletalAnimation on the LibreQuake player', () => {
   // Poses and skinned vertices worked out by qs-tools' IQM reader, in float64 and with the interpolation written
   // again in Python: `make-player-pose-reference.py`. Nothing of the engine took part.
   const reference = JSON.parse(readFileSync(new URL('player-pose-reference.json', fixtures), 'utf8')) as PlayerReference;
+  const SKINNED_STRIDE = 6;
 
   /**
    * Loads the player fixture with its mesh, the way the client realm does.
@@ -299,16 +358,31 @@ void describe('SkeletalAnimation on the LibreQuake player', () => {
     return await new IQMLoader(createModelLoadContext({ loadRenderData: true })).load(file!, 'progs/player.iqm');
   }
 
+  /**
+   * Skins the whole mesh of the player in a pose.
+   * @param model The player.
+   * @param frameA First frame.
+   * @param frameB Second frame.
+   * @param blend Weight of the second frame.
+   * @returns Positions (`x, y, z`) and normals per vertex, `SKINNED_STRIDE` numbers each.
+   */
+  function skinPlayer(model: IQMModel, frameA: number, frameB: number, blend: number): Float32Array {
+    const { skinning } = pose(model, frameA, frameB, blend);
+    const out = new Float32Array(model._num_verts * SKINNED_STRIDE);
+    SkeletalAnimation.skinMeshInto(model.meshData!, skinning, out, SKINNED_STRIDE, 0, 3);
+    return out;
+  }
+
   void test('every pose of the reference gives its joint matrices and skinned vertices', async () => {
     const model = await loadPlayer();
-    const meshData = model.meshData!;
     assert.equal(model.jointCount, reference.jointCount);
 
     let worstJoint = 0;
     let worstVertex = 0;
 
     for (const { frameA, frameB, blend, jointMatrices, vertices } of reference.cases) {
-      const { joints, skinning } = pose(model, frameA, frameB, blend);
+      const { joints } = pose(model, frameA, frameB, blend);
+      const skinned = skinPlayer(model, frameA, frameB, blend);
 
       for (let joint = 0; joint < model.jointCount; joint++) {
         for (let index = 0; index < MATRIX_FLOATS; index++) {
@@ -318,19 +392,9 @@ void describe('SkeletalAnimation on the LibreQuake player', () => {
 
       for (let picked = 0; picked * 3 < vertices.length; picked++) {
         const vertex = picked * reference.vertexStride;
-        const position = Array.from(meshData.positions.subarray(vertex * 3, vertex * 3 + 3));
-        const skinned = [0, 0, 0];
-
-        for (let influence = 0; influence < 4; influence++) {
-          const weight = meshData.blendWeights[vertex * 4 + influence];
-          const moved = transformPoint(skinning, meshData.blendIndexes[vertex * 4 + influence], position);
-          for (let axis = 0; axis < 3; axis++) {
-            skinned[axis] += weight * moved[axis];
-          }
-        }
 
         for (let axis = 0; axis < 3; axis++) {
-          worstVertex = Math.max(worstVertex, Math.abs(skinned[axis] - vertices[picked * 3 + axis]));
+          worstVertex = Math.max(worstVertex, Math.abs(skinned[vertex * SKINNED_STRIDE + axis] - vertices[picked * 3 + axis]));
         }
       }
     }
@@ -345,26 +409,30 @@ void describe('SkeletalAnimation on the LibreQuake player', () => {
     // The bounds are the file's own claim about each whole frame (16-bit quantization allows a hair of slack), so
     // this pins the pose against data the engine did not compute.
     const model = await loadPlayer();
-    const meshData = model.meshData!;
 
     for (const frame of [0, 19, 59, 99, 142]) {
-      const { skinning } = pose(model, frame, frame, 0);
+      const skinned = skinPlayer(model, frame, frame, 0);
       const bounds = model.frameBounds.subarray(frame * SkeletalModel.BOUNDS_FLOATS, frame * SkeletalModel.BOUNDS_FLOATS + 6);
 
       for (let vertex = 0; vertex < model._num_verts; vertex += 5) {
-        const position = Array.from(meshData.positions.subarray(vertex * 3, vertex * 3 + 3));
-        const skinned = [0, 0, 0];
-        for (let influence = 0; influence < 4; influence++) {
-          const moved = transformPoint(skinning, meshData.blendIndexes[vertex * 4 + influence], position);
-          for (let axis = 0; axis < 3; axis++) {
-            skinned[axis] += meshData.blendWeights[vertex * 4 + influence] * moved[axis];
-          }
-        }
-
         for (let axis = 0; axis < 3; axis++) {
-          assert.ok(skinned[axis] >= bounds[axis] - 0.05 && skinned[axis] <= bounds[3 + axis] + 0.05,
-            `frame ${frame} vertex ${vertex} axis ${axis}: ${skinned[axis]} outside ${bounds[axis]}..${bounds[3 + axis]}`);
+          const value = skinned[vertex * SKINNED_STRIDE + axis];
+          assert.ok(value >= bounds[axis] - 0.05 && value <= bounds[3 + axis] + 0.05,
+            `frame ${frame} vertex ${vertex} axis ${axis}: ${value} outside ${bounds[axis]}..${bounds[3 + axis]}`);
         }
+      }
+    }
+  });
+
+  void test('skinned normals are unit length in every sampled pose', async () => {
+    const model = await loadPlayer();
+
+    for (const frame of [0, 59, 142]) {
+      const skinned = skinPlayer(model, frame, frame, 0);
+
+      for (let vertex = 0; vertex < model._num_verts; vertex++) {
+        const offset = vertex * SKINNED_STRIDE + 3;
+        assertNear(Math.hypot(skinned[offset], skinned[offset + 1], skinned[offset + 2]), 1, 1e-5);
       }
     }
   });
