@@ -69,14 +69,14 @@ file too (the scale decides the bounds). A broken file, a wrong value or a setti
 | `colorKey` | `{ "color": [r, g, b], "tolerance": 0 to 255 }` | none | Makes pixels of that color transparent, in every frame. The edge is hard (a pixel is in or out); for an image with a black background that should blend, `additive` is the soft solution. A GIF's "black" is often not quite black (a flame GIF measured `(4, 2, 4)`), and an additive sprite then shows a faint box; key that color out as well, for example `"blend": "additive", "colorKey": { "color": [0, 0, 0], "tolerance": 16 }`. |
 | `filter` | `linear`, `nearest` | follows `gl_texturemode` | `nearest` keeps hard pixels for pixel art, `linear` is smooth with mip levels. |
 | `orientation` | `parallel`, `parallelUpright`, `facingUpright`, `oriented`, `parallelOriented` | `parallel` | `parallel` faces the view plane. `parallelUpright` stays upright around the world's Z axis and keeps the view's right vector. `facingUpright` stays upright and faces the viewer's position. `oriented` uses the entity's own angles. `parallelOriented` faces the view and rolls with the entity's roll angle. |
-| `phase` | `spawn`, `global`, `random` | `spawn` | Which clock a sequence follows: `spawn` starts when the entity gets the model or a new `frame`, `global` is the same time for every instance, `random` starts each entity at its own random point of the loop (also for map decorations made static, like torches). |
+| `phase` | `spawn`, `global`, `random` | `spawn` | Which clock a sequence follows: `spawn` starts when the entity gets the model or a new `sequence` (or at the `animtime` the game sets), `global` is the same time for every instance, `random` starts each entity at its own random point of the loop (also for map decorations made static, like torches). |
 | `fps` | number above 0 | the file's timing | Frames per second for every image, replacing the delays of the file (also below the 10 ms limit). |
 | `repeat` | whole number, 0 = forever | the file's | How often the whole animation plays. A finished sequence holds its last image. |
 | `interpolate` | `true`, `false` | `false` | Crossfades from an image to the next. Needs `r_interpolation 1`, which is the default. |
 | `lit` | `true`, `false` | `false` | Shades the sprite with the light of the map at its origin plus the dynamic lights that reach it (a flat sprite has no surface direction, so this is its brightness only, never above the texture's own). Right for smoke, dust and puffs that should darken in a dark room; leave it off for fire, glow and sparks. A lit sprite is drawn on its own, it does not batch with its neighbors. |
 | `shadow` | `true`, `false` | `false` | Casts a shadow, in the top-down shadow (`r_shadows`) and from the dynamic lights that cast shadows. Light passes through transparent pixels: an `alphaTest` sprite casts the shape of the pixels it draws, an `alpha` (or `additive`) sprite casts by each pixel's alpha, so a half transparent pixel casts about half a shadow. The shadow is the sprite as the light sees it, see [Shadows](#shadows). Right for monsters, trees and props; leave it off for fire, glow and sparks. |
 | `regions` | `{ "name": [x, y, width, height] }`, pixels | none | Named rectangles of the image, counted from its top left corner, for drawing a part of a sprite sheet on the screen (`region` of `DrawSprite`). An Aseprite file's slices are regions as well; the settings file wins on a name clash. A region that reaches outside the image is left out with a console message. It does nothing for a sprite in the world. |
-| `sequences` | list of `{ name, from, to, direction, repeat, fps, rotations }` | one sequence over all images | Each entry becomes one `frame` of the entity, in order, so `this.frame = 1` plays the second. `from` and `to` (both included) default to the first and last image, `direction` to `forward` (`reverse`, `pingpong` and `pingpongReverse` exist), `repeat` and `fps` to the settings above. `rotations` (a whole number, default 1) makes the sequence look different from each side, see [Rotations](#rotations-doom-style-sprites). |
+| `sequences` | list of `{ name, from, to, direction, repeat, fps, rotations }` | one sequence over all images | Each entry becomes one `sequence` of the entity, in order, so `this.sequence = 1` plays the second. `from` and `to` (both included) default to the first and last image, `direction` to `forward` (`reverse`, `pingpong` and `pingpongReverse` exist), `repeat` and `fps` to the settings above. `rotations` (a whole number, default 1) makes the sequence look different from each side, see [Rotations](#rotations-doom-style-sprites). |
 
 How a sequence ends: `forward` holds its last image, `reverse` its first. A `pingpong` goes to the far end and back without
 showing either end image twice in a row, and holds the image it started with.
@@ -117,28 +117,40 @@ static precache(engine: ServerEngineAPI): void {
 
 explode(): void {
   this.setModel('gfx/explosion.apng');
-  this._scheduleThink(this.game.time + this.engine.GetSpriteSequenceDuration('gfx/explosion.apng', 0), function (this: ExplosionEntity) {
+  this._scheduleThink(this.game.time + this.engine.GetSequenceDuration('gfx/explosion.apng', 0), function (this: ExplosionEntity) {
     this.remove();
   });
 }
 ```
 
-Both engine APIs have the two queries. They need the model to be precached (and, on the server, to have finished loading, so
-ask while the map runs, not while it loads), and throw if it is not:
+Both engine APIs have the two queries, which answer for every model that has sequences (skeletal models too, see
+[Skeletal models](skeletal-models.md#sequences)). They need the model to be precached (and, on the server, to have finished
+loading, so ask while the map runs, not while it loads), and throw if it is not:
 
 | Query | Answer |
 | :--- | :--- |
-| `GetSpriteSequenceDuration(modelName, frame = 0)` | Seconds the sequence that `frame` selects plays, counting its repeats. `Infinity` for a sequence that repeats forever, 0 for a still image and for a model that is no sprite. A `frame` out of range selects the first, as drawing does. |
-| `GetSpriteSequenceIndex(modelName, name)` | The `frame` of the sequence the settings file named `name`, -1 for none, an empty name or a model that is no sprite. |
+| `GetSequenceDuration(modelName, sequence = 0)` | Seconds the sequence plays, counting its repeats. `Infinity` for a sequence that repeats forever, 0 for a still image and for a model that has no sequences. A number out of range selects the first, as drawing does. For a Quake `.spr` the number is its `frame`. |
+| `GetSequenceIndex(modelName, name)` | The `sequence` the settings file named `name`, -1 for none, an empty name, a `.spr` and a model that has no sequences. |
 
 Naming sequences keeps a game independent of their order in the file:
 
 ```ts
-this.frame = this.engine.GetSpriteSequenceIndex('gfx/imp.gif', 'burst');
+this.sequence = this.engine.GetSequenceIndex('gfx/imp.gif', 'burst');
 ```
 
-Changing `frame` restarts a sprite that follows its entity's own clock (`phase: spawn`); setting the frame it already has
-does not, so a server repeating it every update leaves a running animation alone.
+### Selecting and restarting a sequence
+
+An image sprite is played by three members of the entity, which every model with sequences shares:
+
+| Member | Meaning |
+| :--- | :--- |
+| `sequence` | Which sequence plays: the entry of the file's list, in order. -1, the default, plays the first. A Quake `.spr` keeps `frame` for this, which there is the number of an image or group, as in Quake. |
+| `animtime` | Server time at which the sequence started, for a sprite that follows its entity's own clock (`phase: spawn`). The engine stamps it when the model or the sequence changes, so a game that never looks at it keeps what it had: the sprite starts when it gets the model or a new sequence. A game that sets it has the value sent and used instead: `animtime = game.time` restarts the sequence, `game.time - elapsed` resumes it, which is also what a client that joins late sees. Declare it as `animtime: number | null = null` unless the game sets it on every change: `null` sends nothing, a declared 0 is a start at time 0. |
+| `framerate` | Speed multiplier, 1 by default; 0 holds the first image. |
+
+Selecting the sequence it already has does not restart a running animation, so a server repeating it every update leaves it
+alone. `frame` selects nothing for an image sprite any more (it did before protocol 44); a game that picked sequences with
+`this.frame = ...` uses `this.sequence = ...` now.
 
 ## Rotations: Doom-style sprites
 
@@ -171,8 +183,8 @@ yaw and the direction to the camera picks the view that is drawn:
   if the file times them differently), so the walk does not restart or skip when the camera moves around the
   monster. A crossfade (`interpolate`) stays within one view.
 - **Sequences with and without rotations mix**, like Doom's walk (8 rotations) and death (one picture for every side).
-- **The game does nothing new.** The entity's yaw (`angles[1]`) and `frame` choose what is drawn, so
-  `GetSpriteSequenceIndex` and `GetSpriteSequenceDuration` work as for any sequence.
+- **The game does nothing new.** The entity's yaw (`angles[1]`) and `sequence` choose what is drawn, so
+  `GetSequenceIndex` and `GetSequenceDuration` work as for any sequence.
 - **Use `parallelUpright` or `facingUpright`**, which keep the sprite upright like Doom's. The other orientations
   work too, but turn the quad in ways that do not suit a picture of a side.
 - **Every view is an image of its own.** The engine does not mirror one side to make the other: a picture that Doom
@@ -300,7 +312,7 @@ An `.aseprite` file is read as it is saved, no export step. What is taken from i
 - **Layers:** what the editor shows is what is drawn. Hidden layers, layers inside a hidden group and reference layers are
   left out. Layers are ordered as in the editor, including a cel's z-index. Layer opacity and cel opacity count. Indexed
   files use their palette; the transparent index is transparent in every layer but the background. Linked cels work.
-- **Tags become sequences,** in the order of the tag list, named like the tag, so `GetSpriteSequenceIndex(model, 'walk')`
+- **Tags become sequences,** in the order of the tag list, named like the tag, so `GetSequenceIndex(model, 'walk')`
   finds the tag "walk". A tag keeps its direction (forward, reverse, ping-pong, ping-pong reverse) and its repeat count
   (0 plays forever). Aseprite counts the legs of a ping-pong ("repeat 2" is forward once and back once), a sequence
   counts its cycles, so the count is halved there. A `sequences` list in the settings file replaces the tags, and its

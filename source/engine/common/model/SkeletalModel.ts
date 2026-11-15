@@ -131,6 +131,32 @@ export abstract class SkeletalModel extends BaseModel {
   }
 
   /**
+   * Finds a named sequence of the file.
+   * @param name The name from the file's animation list.
+   * @returns The entity's `sequence` that selects it, -1 when there is none of that name.
+   */
+  override sequenceIndex(name: string): number {
+    return name === '' ? -1 : this.sequences.findIndex((sequence) => sequence.name === name);
+  }
+
+  /**
+   * How long a sequence plays: every frame is shown for one period of the sequence's frame rate, so the last one has
+   * been on screen for its time when the sequence is over.
+   * @param sequence The entity's `sequence`.
+   * @returns Seconds, `Infinity` for a sequence that loops, 0 for one that holds a single pose (a frame rate of 0 or a
+   * single frame) and for a number that selects none.
+   */
+  override sequenceDuration(sequence: number): number {
+    const entry = this.sequences[sequence];
+
+    if (entry === undefined || entry.frameCount < 2 || entry.framerate <= 0) {
+      return 0;
+    }
+
+    return entry.loop ? Infinity : entry.frameCount / entry.framerate;
+  }
+
+  /**
    * Number of frames. A model without frames of its own has one: its rest pose.
    * @returns The frame count.
    */

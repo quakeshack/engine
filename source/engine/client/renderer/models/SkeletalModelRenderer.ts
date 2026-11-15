@@ -96,6 +96,9 @@ export class SkeletalModelRenderer extends ModelRenderer {
   /** Skinning matrices of the pose being made. */
   static #skinningMatrices = new Float32Array(0);
 
+  /** The frames a sequence selects, written by `SkeletalAnimation.samplePlayback`. */
+  static readonly #sequencePose: [number, number, number] = [0, 0, 0];
+
   static readonly #cullMins = new Vector();
   static readonly #cullMaxs = new Vector();
   static readonly #shirtColor = new Float32Array(3);
@@ -287,13 +290,26 @@ export class SkeletalModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Picks the two frames to blend and the weight of the second, the way alias models do: the entity's interpolated
-   * frame, or its plain frame while interpolation is off or a muzzle flash makes the pose jump.
+   * Picks the two frames to blend and the weight of the second. An entity that selects a sequence the model has plays
+   * it from its `animtime`, blending a frame into the next while interpolation is on. Any other follows its `frame`
+   * the way alias models do: the interpolated frame, or the plain one while interpolation is off or a muzzle flash
+   * makes the pose jump.
+   * @param model The skeletal model.
    * @param entity The entity.
-   * @returns Frame A, frame B and the blend.
+   * @returns Frame A, frame B and the blend. A sequence's result is a scratch array, valid until the next call.
    */
-  static #selectPose(entity: ClientEdict): [number, number, number] {
-    if (rendererCvars.interpolation.value && (entity.effects & effect.EF_MUZZLEFLASH) === 0) {
+  static #selectPose(model: SkeletalModel, entity: ClientEdict): [number, number, number] {
+    const interpolate = Boolean(rendererCvars.interpolation.value);
+
+    if (entity.sequence >= 0) {
+      const elapsed = clientRuntimeState.clientMessages.renderTime - entity.animtime;
+
+      if (SkeletalAnimation.samplePlayback(model, entity.sequence, elapsed, entity.framerate, interpolate, SkeletalModelRenderer.#sequencePose)) {
+        return SkeletalModelRenderer.#sequencePose;
+      }
+    }
+
+    if (interpolate && (entity.effects & effect.EF_MUZZLEFLASH) === 0) {
       return entity.lerp.frame;
     }
 
@@ -309,7 +325,7 @@ export class SkeletalModelRenderer extends ModelRenderer {
    * @returns Interleaved vertices (`VERTEX_FLOATS` numbers each), owned by the cache: valid until the next call for this entity.
    */
   static #skinnedPose(model: SkeletalModel, meshData: SkeletalMeshData, entity: ClientEdict): Float32Array {
-    const [frameA, frameB, blend] = SkeletalModelRenderer.#selectPose(entity);
+    const [frameA, frameB, blend] = SkeletalModelRenderer.#selectPose(model, entity);
     let pose = SkeletalModelRenderer.#skinnedPoses.get(entity);
 
     if (pose === undefined || pose.meshData !== meshData) {

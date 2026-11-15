@@ -297,13 +297,13 @@ export class SpriteModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Picks the image an entity shows now into {@link SpriteModelRenderer.#sample}: its `frame` selects a frame, a
-   * sequence animates on the clock the model's phase names, and a sequence with rotations shows the view the viewer
-   * sees it from.
+   * Picks the image an entity shows now into {@link SpriteModelRenderer.#sample}: its `sequence` (its `frame` for a
+   * `.spr`) selects a frame, a sequence animates on the clock the model's phase names at the speed its `framerate`
+   * scales, and a sequence with rotations shows the view the viewer sees it from.
    */
   static #selectImage(spriteModel: SpriteModel, entity: ClientEdict): void {
     const frames = spriteModel.frames;
-    const frame = frames[entity.frame >= 0 && entity.frame < frames.length ? entity.frame : 0];
+    const frame = frames[spriteModel.selectedFrame(entity.frame, entity.sequence)];
     let time = clientRuntimeState.time;
     let view = 0;
 
@@ -319,11 +319,13 @@ export class SpriteModelRenderer extends ModelRenderer {
         time += 'images' in frame ? entity.syncbase * SpriteAnimator.cycleDuration(frame) : 0.0;
         break;
       case SpritePhase.spawn:
-        time -= entity.animationStartTime;
+        time -= entity.animtime;
         break;
       default:
         break;
     }
+
+    time *= entity.framerate;
 
     SpriteAnimator.sample(frame, time, spriteModel.asset!.interpolate && rendererCvars.interpolation.value !== 0, SpriteModelRenderer.#sample, view);
   }

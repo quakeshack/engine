@@ -203,6 +203,26 @@ export class BaseModel {
     this.reset();
   }
 
+  /**
+   * Finds a named sequence, so a game does not depend on their order. A model without named sequences has none.
+   * What the number selects depends on the format: see `SpriteModel` and `SkeletalModel`.
+   * @param _name The name of the sequence.
+   * @returns The number that selects it, -1 when there is none of that name.
+   */
+  sequenceIndex(_name: string): number {
+    return -1;
+  }
+
+  /**
+   * How long a sequence plays, for effects that remove themselves when it is over.
+   * @param _sequence The sequence number.
+   * @returns Seconds, `Infinity` for a sequence that repeats forever, 0 for a model without sequences and for one that
+   * holds a single pose or picture.
+   */
+  sequenceDuration(_sequence: number): number {
+    return 0;
+  }
+
   reset(): void {
     // Private variables used while loading.
     this._num_frames = 0;

@@ -37,6 +37,19 @@ export interface BaseEntity extends SerializableEntity {
   effects: number;
   flags: number;
   frame: number;
+  /**
+   * The sequence a sequenced model plays (image sprites, skeletal models), -1 for none, which is also what an entity
+   * that does not declare it has: the model then follows `frame`. See `docs/skeletal-models.md`.
+   */
+  sequence?: number;
+  /**
+   * Server time at which the sequence started. Setting it to `now` restarts it, to `now - elapsed` resumes it.
+   * `null` or `undefined`, the default, says the game sets none: the client then stamps its own when the model or the
+   * sequence changes. A game that declares it with a number sends that number, 0 included.
+   */
+  animtime?: number | null;
+  /** Playback speed multiplier of the sequence, 1 when not declared. */
+  framerate?: number;
   free(): void;
   goalentity?: BaseEntity | ServerEdict | null;
   gravity?: number | null;
@@ -704,6 +717,40 @@ export class ServerEdict {
     message.writeByte(entity.effects || 0);
     message.writeByte(Math.floor(entity.alpha * 255.0));
     message.writeByte(entity.solid || 0);
+
+    // Most decorations play no sequence, so the block only names the fields that were set.
+    const sequence = entity.sequence ?? -1;
+    const framerate = entity.framerate ?? 1.0;
+    let fields = 0;
+
+    if (sequence !== -1) {
+      fields |= Protocol.sequenceField.sequence;
+    }
+
+    const animtime = entity.animtime ?? null;
+
+    if (animtime !== null) {
+      fields |= Protocol.sequenceField.animtime;
+    }
+
+    if (framerate !== 1.0) {
+      fields |= Protocol.sequenceField.framerate;
+    }
+
+    message.writeByte(fields);
+
+    if (fields & Protocol.sequenceField.sequence) {
+      message.writeShort(sequence);
+    }
+
+    if (fields & Protocol.sequenceField.animtime) {
+      message.writeFloat(animtime!);
+    }
+
+    if (fields & Protocol.sequenceField.framerate) {
+      message.writeFloat(framerate);
+    }
+
     message.writeAngleVector(entity.angles);
     message.writeCoordVector(entity.origin);
     this.freeEdict();

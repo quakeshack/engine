@@ -3,7 +3,7 @@
 ## Status
 
 📝 Draft, nothing implemented, no open questions left (all settled 2026-11-13; quaternion handling
-added 2026-11-14, decisions 19–21). Phases 0 to 4 done on 2026-11-15 (results below). Next: Phase S or Phase 5, the maintainer picks.
+added 2026-11-14, decisions 19–21). Phases 0 to 4 and S done on 2026-11-15 (results below). Next: Phase 5.
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
 parked: the core only has to leave room for them (Later: Half-Life studio models).
@@ -272,6 +272,67 @@ Differences from the plan, and why:
 - **`R.PrepareModels` is unchanged**: GL objects are created on the first draw, so a model that is never visible costs none.
 - **The probing cost** (up to four small 404s per material and model, once per page load) is accepted for the DarkPlaces naming; an explicit
   material file would avoid it.
+
+### Phase S results (2026-11-15)
+
+Shipped: protocol 44, `ClientEdict.sequence`/`animtime`/`framerate` (`animationStartTime` is gone), the
+sequence block on the wire and in static entities, `GetSequenceIndex`/`GetSequenceDuration` on both engine APIs (the sprite queries are gone, no
+aliases), image sprites played by `sequence`, skeletal models played by `sequence`, saves of client-only entities, docs.
+
+- **Wire**: the entity update flag word is 32 bits (`writeUint32`/`readUint32`), `u.sequence` is bit 16, and the block after it is a byte of
+  `Protocol.sequenceField` bits followed by only the fields it names (`sequence` as a signed short, `animtime` and `framerate` as floats).
+  `svc_spawnstatic` carries the same block after `solid`, with an empty mask for the usual decoration. A game that declares none of the members
+  sends nothing extra (the defaults are -1, `null`, 1). Player entities are sent by the ordinary entity deltas too, so they carry it as well.
+- **Queries**: `BaseModel.sequenceIndex(name)`/`sequenceDuration(sequence)` (-1 and 0 by default), overridden by `SpriteModel` and `SkeletalModel`; the APIs
+  just call them, so a future format plugs in without a branch. A `.spr` keeps `frame` (`SpriteModel.selectsBySequence` is false for it), its
+  `GetSequenceDuration(n)` answers for the frame `n`.
+- **Skeletal playback** (`SkeletalAnimation.samplePlayback`, GL-free): `(renderTime - animtime) * framerate * rate` frames in; a loop wraps and
+  blends across the seam, another sequence stops on its last frame, `framerate` 0 holds the first, a clock a hair before the start holds the first,
+  `r_interpolation 0` shows the current frame, an unknown sequence falls back to `frame`. Duration: `Infinity` for a loop, `frames / rate` otherwise.
+- **Tests**: 51 more (3,220 to 3,271) and several rewritten, across `protocol`, `server-messages`, `server-edict` (`makeStatic`), `client-server-command-handlers` (writer to parser
+  round trips, static entities), `client-edict-animation`, `client-entities-savegame`, `sprite-model-renderer`, `sequence queries`, `skeletal-animation`
+  and `skeletal-model-renderer`. Mutation checks (framerate missing from the delta, animtime and framerate read swapped, a loop that does not wrap, an
+  unguarded negative clock, the sprite ignoring `sequence`, `framerate` ignored) each fail a test.
+
+**Browser pass** (`browser-ui-verification`, headless Chromium on software GL, built from the working tree; the temporary id1 edits described below
+in place; e1m1, e1m2 for statics; once with the server in the page's worker and once with a client connected to a scratch dedicated server):
+- **Boot and protocol**: no protocol, load or GL errors (`getError` after every draw: 0 in about 1.95 million draws on the worker page, 0 in about
+  546,000 on the dedicated-connected page). Only the expected 404s of companion textures and three files id1 never had.
+- **Server-driven IQM sequence**: standing soldiers read `sequence` 9 (`prowl`, 24 frames at 10 fps, looping), `animtime` 1 (the server game time the hack
+  set, the same over minutes, not the client clock) and `framerate` 1. The uploaded skinned vertices repeat every 2.38 to 2.40 s, expected 24 / 10 = 2.4 s.
+  The pose follows the sequence position (correlation 0.746) and not the server `frame`, which kept cycling with its own 0.8 s period (correlation 0.004).
+- **Frame-driven entities unchanged**: dogs (frames 69 to 77, lerp pairs and the wrap), soldiers that are not standing and the IQM player run on `frame`
+  with `sequence` -1.
+- **Quake `.spr` by `frame`**: the rocket explosion showed frames 0 to 4 with `sequence` -1 and ended (about 4 samples per second, so a frame may have
+  been missed).
+- **Image sprites by `sequence`**, read from the streamed quad (`explosion1.gif`, phase `spawn`, two sequences): -1 and 0 identical; 1 plays the second;
+  `frame` alone changes nothing; `animtime = time` restarts at the first image; a start 0.3 s back is a finished one-shot; `framerate` 0 holds, 2 is twice as
+  fast, 0.5 half. `army.gif` (phase `random`): -1, 0 and an out-of-range number identical, `frame` ignored.
+- **Client stamp rule**: a client-only entity stamps on a new model or sequence and not on the same one; a soldier whose sequence changed was stamped and then
+  took the server's `animtime`.
+- **Late join**: a second client that joined 10 minutes later read the same soldier with `sequence` 9 and `animtime` 1, and its poses matched the first
+  client's at equal sequence phases (rms 0.016 median, 0.052 at most, against 2.5 median for unrelated phases). Never two clients on screen at once.
+- **Statics**: e1m2's 24 statics (torches and flames) parse with the right models, frame, skin and alpha, none at the origin.
+- **Cost**: the soldier's pass `SKELETAL MODELS` took 0.22 ms of CPU for one soldier in view (software GL, so no frame-time claim).
+
+Not checked: two clients on screen at once, pointer lock and mouse look, real-GPU timing. Seen on the side and not part of this work: id1's player does not
+leave its standing animation when moving exactly along one axis (`_stateAssertStanding` in `Player.ts` tests `velocity[0] !== 0 && velocity[1] !== 0`), and
+`cmd noclip` from a page that has both a local worker server and a dedicated connection is forwarded as the literal text `cmd noclip`.
+
+Differences from the plan, and why:
+
+- **`animtime` is optional on the wire, and the client stamps it for every entity.** The plan said a server entity takes `animtime` from the server only
+  and the client stamps client-only entities. That would have broken the explosion example of `docs/sprites.md` (a sprite that plays once from the
+  moment the game gives it a model, in a game that never heard of `animtime`): it would start at time 0 and hold its last image. So `animtime` is sent
+  only when the game sets one (a field mask, and `null` means "not set"), the client stamps it when the model or the sequence changes as
+  `animationStartTime` did, and a value from the server replaces the stamp. A game that sets `animtime` gets the exact late-join and resume behavior; one
+  that does not keeps what it had (a late joiner restarts the sprite, as before).
+- **Server savegames are the game's**: the engine saves no entity members, a game's `@serializable` fields are. Client-only entities save `sequence`,
+  `animtime` and `framerate` (old saves load with the defaults).
+- **Games have to declare the members to use them.** id1 and Hellwave do not yet: nothing in them selects an image-sprite sequence (Hellwave's flames set
+  a model only), so no game code had to change for sprites. For IQM sequences id1's `BaseEntity` needs `sequence`, `animtime: number | null = null`,
+  `framerate`; that edit is in the working tree of the id1 submodule (with a temporary soldier hack and the model swaps), not committed.
+- **`ViewmodelConfig` is Phase 8's**, not here.
 
 ### Decisions (2026-11-12, from the maintainer)
 

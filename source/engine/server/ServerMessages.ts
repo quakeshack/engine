@@ -493,6 +493,29 @@ export class ServerMessages {
   }
 
   /**
+   * Which fields of the sequence block differ between two states. A start time the game never set is never sent, so
+   * the client's own stamp stays: a game that does not know `animtime` keeps what it had.
+   * @returns A combination of `Protocol.sequenceField` bits, 0 when nothing differs.
+   */
+  static #changedSequenceFields(from: ServerEntityState, to: ServerEntityState): number {
+    let fields = 0;
+
+    if (from.sequence !== to.sequence) {
+      fields |= Protocol.sequenceField.sequence;
+    }
+
+    if (to.animtime !== null && from.animtime !== to.animtime) {
+      fields |= Protocol.sequenceField.animtime;
+    }
+
+    if (from.framerate !== to.framerate) {
+      fields |= Protocol.sequenceField.framerate;
+    }
+
+    return fields;
+  }
+
+  /**
    * Writes delta between two entity states to the message.
    * @returns True when any entity state data was written.
    */
@@ -559,6 +582,12 @@ export class ServerMessages {
       bits |= Protocol.u.size;
     }
 
+    const sequenceFields = ServerMessages.#changedSequenceFields(from, to);
+
+    if (sequenceFields !== 0) {
+      bits |= Protocol.u.sequence;
+    }
+
     if (bits === 0) {
       return false;
     }
@@ -566,7 +595,7 @@ export class ServerMessages {
     console.assert(to.num !== null && to.num > 0, 'valid entity num', to.num);
 
     msg.writeUint16(to.num!);
-    msg.writeUint16(bits);
+    msg.writeUint32(bits >>> 0);
 
     if (bits & Protocol.u.classname) {
       msg.writeString(to.classname!);
@@ -615,6 +644,22 @@ export class ServerMessages {
     if (bits & Protocol.u.size) {
       msg.writeCoordVector(to.maxs);
       msg.writeCoordVector(to.mins);
+    }
+
+    if (bits & Protocol.u.sequence) {
+      msg.writeByte(sequenceFields);
+
+      if (sequenceFields & Protocol.sequenceField.sequence) {
+        msg.writeShort(to.sequence);
+      }
+
+      if (sequenceFields & Protocol.sequenceField.animtime) {
+        msg.writeFloat(to.animtime!);
+      }
+
+      if (sequenceFields & Protocol.sequenceField.framerate) {
+        msg.writeFloat(to.framerate);
+      }
     }
 
     if (bits & Protocol.u.nextthink) {
@@ -683,6 +728,9 @@ export class ServerMessages {
       toState.velocity.set(entity.velocity);
       toState.effects = entity.effects;
       toState.alpha = entity.alpha;
+      toState.sequence = entity.sequence ?? -1;
+      toState.animtime = entity.animtime ?? null;
+      toState.framerate = entity.framerate ?? 1.0;
       toState.free = false;
       toState.maxs.set(entity.maxs);
       toState.mins.set(entity.mins);

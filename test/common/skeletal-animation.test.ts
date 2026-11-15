@@ -199,6 +199,129 @@ void describe('SkeletalAnimation.computePose', () => {
   });
 });
 
+void describe('sequences of a skeletal model', () => {
+  /**
+   * @returns A model of ten frames with a looping sequence of four (10 fps), one of three that stops (5 fps) and one
+   * that holds a single pose.
+   */
+  function createSequencedModel(): IQMModel {
+    const model = createModel([-1], [poseOf([0, 0, 0])], Array.from({ length: 10 }, () => [poseOf([0, 0, 0])]));
+
+    model.sequences = [
+      { name: 'run', firstFrame: 2, frameCount: 4, framerate: 10, loop: true },
+      { name: 'die', firstFrame: 6, frameCount: 3, framerate: 5, loop: false },
+      { name: 'still', firstFrame: 9, frameCount: 1, framerate: 0, loop: false },
+    ];
+
+    return model;
+  }
+
+  /**
+   * @param model The model.
+   * @param sequence The sequence.
+   * @param elapsed Seconds since it started.
+   * @param framerate The entity's speed multiplier.
+   * @param blend Whether to blend frames.
+   * @returns Frame A, frame B and the weight of B, `null` when the model has no such sequence.
+   */
+  function sample(model: IQMModel, sequence: number, elapsed: number, framerate = 1, blend = true): number[] | null {
+    const out = [-1, -1, -1];
+
+    return SkeletalAnimation.samplePlayback(model, sequence, elapsed, framerate, blend, out) ? out : null;
+  }
+
+  void describe('SkeletalAnimation.samplePlayback', () => {
+    void test('plays a sequence at its frame rate from the first frame of the sequence, not of the model', () => {
+      const model = createSequencedModel();
+
+      assert.deepEqual(sample(model, 0, 0), [2, 3, 0]);
+      assert.deepEqual(sample(model, 0, 0.25), [4, 5, 0.5], '2.5 frames in, halfway between the third and the fourth');
+    });
+
+    void test('a loop wraps from its last frame to its first, blending across the seam', () => {
+      const model = createSequencedModel();
+
+      assert.deepEqual(sample(model, 0, 0.35), [5, 2, 0.5], 'the last frame of the sequence blends into its first');
+      assert.deepEqual(sample(model, 0, 10.25), [4, 5, 0.5], 'a long time later it is where it would be');
+    });
+
+    void test('a sequence that does not loop stops on its last frame', () => {
+      const model = createSequencedModel();
+
+      assert.deepEqual(sample(model, 1, 0.3), [7, 8, 0.5]);
+      assert.deepEqual(sample(model, 1, 0.4), [8, 8, 0], 'the last frame, nothing left to blend to');
+      assert.deepEqual(sample(model, 1, 100), [8, 8, 0]);
+    });
+
+    void test('the entity\'s framerate scales the speed, and 0 holds the first frame', () => {
+      const model = createSequencedModel();
+
+      assert.deepEqual(sample(model, 0, 0.125, 2), [4, 5, 0.5]);
+      assert.deepEqual(sample(model, 0, 50, 0), [2, 3, 0]);
+    });
+
+    void test('a clock a hair behind the start holds the first frame instead of running backwards', () => {
+      // The client's clock runs a little behind or ahead of the server's: elapsed may come out slightly negative.
+      assert.deepEqual(sample(createSequencedModel(), 0, -0.03), [2, 3, 0]);
+    });
+
+    void test('without blending shows the frame that is current, as r_interpolation 0 does', () => {
+      const model = createSequencedModel();
+
+      assert.deepEqual(sample(model, 0, 0.25, 1, false), [4, 4, 0]);
+      assert.deepEqual(sample(model, 0, 0.35, 1, false), [5, 5, 0], 'the seam of a loop too');
+    });
+
+    void test('a sequence of one pose holds it', () => {
+      assert.deepEqual(sample(createSequencedModel(), 2, 3), [9, 9, 0]);
+    });
+
+    void test('says no for a sequence the model does not have and leaves the result alone, so the entity follows its frame', () => {
+      const model = createSequencedModel();
+      const out = [7, 8, 9];
+
+      assert.equal(SkeletalAnimation.samplePlayback(model, 3, 1, 1, true, out), false);
+      assert.equal(SkeletalAnimation.samplePlayback(model, -1, 1, 1, true, out), false);
+      assert.deepEqual(out, [7, 8, 9]);
+    });
+  });
+
+  void describe('SkeletalModel.sequenceIndex and sequenceDuration', () => {
+    void test('find a sequence by the name of the file\'s animation list', () => {
+      const model = createSequencedModel();
+
+      assert.equal(model.sequenceIndex('run'), 0);
+      assert.equal(model.sequenceIndex('die'), 1);
+      assert.equal(model.sequenceIndex('fly'), -1);
+      assert.equal(model.sequenceIndex(''), -1);
+    });
+
+    void test('a loop plays forever, any other sequence shows each frame for one period', () => {
+      const model = createSequencedModel();
+
+      assert.equal(model.sequenceDuration(0), Infinity);
+      assertNear(model.sequenceDuration(1), 0.6, 1e-9);
+    });
+
+    void test('a pose that holds, and a number that selects nothing, have nothing to wait for', () => {
+      const model = createSequencedModel();
+
+      assert.equal(model.sequenceDuration(2), 0);
+      assert.equal(model.sequenceDuration(-1), 0);
+      assert.equal(model.sequenceDuration(7), 0);
+    });
+
+    void test('answer the same for the real player: stand loops, a death plays its frames once', async () => {
+      const file = await createDirectoryFiles(new URL('../fixtures/skeletal/', import.meta.url)).LoadFile('player.iqm');
+      const player = await new IQMLoader(createModelLoadContext({ loadRenderData: false })).load(file!, 'progs/player.iqm');
+
+      assert.equal(player.sequenceDuration(player.sequenceIndex('stand')), Infinity);
+      // deatha is frames 50 to 60 at 10 fps: eleven frames of a tenth each
+      assertNear(player.sequenceDuration(player.sequenceIndex('deatha')), 1.1, 1e-6);
+    });
+  });
+});
+
 void describe('SkeletalAnimation matrix helpers', () => {
   // An affine matrix with a rotation, uneven scale and a shear: nothing about it is orthonormal.
   const general = [2, 1, 0.5, 4, -1, 3, 1, -2, 0.5, 0, 2, 7];

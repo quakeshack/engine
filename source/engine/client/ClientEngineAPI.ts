@@ -24,7 +24,6 @@ import type { ClientGameEventMap, GameEventBus } from '../common/EventBus.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { HostError } from '../common/Errors.ts';
-import { SpriteModel } from '../common/model/SpriteModel.ts';
 import W from '../common/W.ts';
 import PostProcess from './renderer/postprocess/PostProcess.ts';
 import type { PostProcessPulseDescriptor, PostProcessPulseOptions, PostProcessStack, PostProcessStackOptions, ViewInput, ViewResult } from '../../shared/GameInterfaces.ts';
@@ -492,28 +491,25 @@ export class ClientEngineAPI extends CommonEngineAPI {
   }
 
   /**
-   * How long a sprite's sequence plays, for effects that remove themselves when it is over.
+   * How long a sequence of a model plays, for effects that remove themselves when it is over.
    * @param modelName A model the server precached.
-   * @param frame The `frame` that selects the sequence, 0 for a sprite with a single one.
-   * @returns Seconds, `Infinity` when the sequence repeats forever, 0 when the model is no sprite or the frame is a
-   * single picture. See [Sprites](docs/sprites.md).
+   * @param sequence The `sequence` of an entity that plays it (the `frame` for a Quake `.spr`, which has no
+   * sequences), 0 for a model with a single one.
+   * @returns Seconds, `Infinity` when the sequence repeats forever, 0 when it holds a single picture or pose and for a
+   * model that has no sequences. See [Sprites](docs/sprites.md) and [Skeletal models](docs/skeletal-models.md).
    */
-  GetSpriteSequenceDuration(modelName: string, frame = 0): number {
-    const model = this.ModForName(modelName);
-
-    return model instanceof SpriteModel ? model.sequenceDuration(frame) : 0;
+  GetSequenceDuration(modelName: string, sequence = 0): number {
+    return this.ModForName(modelName).sequenceDuration(sequence);
   }
 
   /**
-   * Finds a named sequence of a sprite, so a game does not depend on their order.
+   * Finds a named sequence of a model, so a game does not depend on their order.
    * @param modelName A model the server precached.
-   * @param name The name of the sequence in the sprite's settings file.
-   * @returns The `frame` that selects it, -1 when the model is no sprite or has no sequence of that name.
+   * @param name The name of the sequence in the model's file or settings file.
+   * @returns The `sequence` that selects it, -1 when the model has no sequence of that name.
    */
-  GetSpriteSequenceIndex(modelName: string, name: string): number {
-    const model = this.ModForName(modelName);
-
-    return model instanceof SpriteModel ? model.sequenceIndex(name) : -1;
+  GetSequenceIndex(modelName: string, name: string): number {
+    return this.ModForName(modelName).sequenceIndex(name);
   }
 
   /**

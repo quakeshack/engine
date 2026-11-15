@@ -99,6 +99,62 @@ export class SkeletalAnimation {
   }
 
   /**
+   * Picks the frames to blend for an entity that plays a sequence: the point `elapsed * framerate` periods into it, a
+   * loop wrapping from its last frame to its first and any other sequence stopping on its last frame.
+   * @param model The model.
+   * @param sequence The entity's `sequence`.
+   * @param elapsed Seconds since the sequence started (`time - animtime`). The entity's clock may be a hair behind the
+   * start, which holds the first frame.
+   * @param framerate The entity's `framerate`: a multiplier of the sequence's own speed. 0 or less holds the first frame.
+   * @param blend Whether to blend a frame into the next. `false` gives the frame that is current, as `r_interpolation 0`
+   * does for frame-driven entities.
+   * @param out Receives frame A, frame B and the weight of frame B.
+   * @returns `false` when the model has no such sequence, and `out` untouched: the entity follows its `frame` then.
+   */
+  static samplePlayback(
+    model: SkeletalModel,
+    sequence: number,
+    elapsed: number,
+    framerate: number,
+    blend: boolean,
+    out: number[],
+  ): boolean {
+    const entry = model.sequences[sequence];
+
+    if (entry === undefined) {
+      return false;
+    }
+
+    const count = entry.frameCount;
+    const rate = entry.framerate * framerate;
+    const position = rate > 0.0 && elapsed > 0.0 ? elapsed * rate : 0.0;
+
+    let current: number;
+    let next: number;
+    let weight: number;
+
+    if (entry.loop) {
+      const wrapped = position % count;
+      current = Math.floor(wrapped);
+      next = (current + 1) % count;
+      weight = wrapped - current;
+    } else if (position >= count - 1) {
+      current = count - 1;
+      next = current;
+      weight = 0.0;
+    } else {
+      current = Math.floor(position);
+      next = current + 1;
+      weight = position - current;
+    }
+
+    out[0] = entry.firstFrame + current;
+    out[1] = entry.firstFrame + (blend ? next : current);
+    out[2] = blend ? weight : 0.0;
+    return true;
+  }
+
+  /**
    * Skins every vertex of a mesh on the CPU: each position and normal is moved by the skinning matrices of its (up to
    * four) joints and blended by their weights. Normals are moved by the rotation part of the matrices and brought back
    * to unit length, so a joint with scale does not leave them too long or too short (a normal that cancels out becomes +Z).

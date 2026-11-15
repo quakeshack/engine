@@ -5,8 +5,25 @@ import * as Protocol from '../../source/engine/network/Protocol.ts';
 
 void describe('Protocol', () => {
   // A version change breaks every connected peer, so it has to be a deliberate edit here too.
-  void test('stays at protocol version 43', () => {
-    assert.equal(Protocol.version, 43);
+  void test('stays at protocol version 44', () => {
+    assert.equal(Protocol.version, 44);
+  });
+
+  // The entity update flag word was 16 bits wide until protocol 44 and every bit of it was in use: `u.sequence` is the
+  // first that does not fit, which is why the word is written as 32 bits (`writeUint32`, `readUint32`).
+  void test('has an entity update bit that does not fit in 16 bits, and no two bits are the same', () => {
+    const bits = Object.values(Protocol.u).filter((value): value is number => typeof value === 'number');
+
+    assert.ok(bits.every((bit) => bit > 0) && Math.max(...bits) > 0xffff);
+    assert.equal(new Set(bits).size, bits.length);
+    assert.equal(bits.reduce((all, bit) => all | bit, 0) >>> 0, 0x1ffff);
+  });
+
+  void test('names the fields of the sequence block by distinct bits that fit in the byte the block starts with', () => {
+    const fields = Object.values(Protocol.sequenceField).filter((value): value is number => typeof value === 'number');
+
+    assert.equal(new Set(fields).size, fields.length);
+    assert.ok(fields.every((field) => field > 0 && field <= 0xff && (field & (field - 1)) === 0));
   });
 
   void test('copies and resets user commands without aliasing vectors', () => {

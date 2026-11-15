@@ -5,9 +5,9 @@ format is [Inter-Quake Model](https://sourceforge.net/projects/iqm/) (`.iqm`), v
 [plans/skeletal-models.md](../plans/skeletal-models.md).
 
 **What works today:** loading, on the client and on the server, including `setModel()` sizing and the `modelinfo` command; posing;
-drawing with lighting, shadows, a glow layer and player colors. A game uses an `.iqm` where it used an `.mdl`: `frame` picks the pose
-and the client blends neighboring frames like it does for alias models.
-**What does not exist yet:** named sequences, tags and attachments, view weapons, per-skin textures. Those are later phases of the
+drawing with lighting, shadows, a glow layer and player colors; named sequences. A game uses an `.iqm` where it used an `.mdl`: `frame`
+picks the pose and the client blends neighboring frames like it does for alias models, or the game plays a sequence by name.
+**What does not exist yet:** tags and attachments, view weapons, per-skin textures. Those are later phases of the
 plan; this page grows with each of them.
 
 ## Making a model
@@ -95,10 +95,35 @@ The rotations of an entity's `angles` meet this code through `Quaternion.fromMod
 `Vector.toRotationMatrix()` (the convention every model renderer uses: pitch negated, the matrix holding the entity's axes as
 rows). `Vector.toQuaternion()` and `angleVectors()` use the view convention instead, with no pitch negation.
 
+## Sequences
+
+The animations of the file (`modelinfo` lists them with their frame ranges, rates and loop flags; the exporter names them from the
+`$frame` lines of a QuakeC source). An entity plays one through three members that every model with sequences shares (image
+sprites use them too, see [Sprites](sprites.md#selecting-and-restarting-a-sequence)):
+
+```ts
+// the game's entity declares them like any other field
+this.sequence = this.engine.GetSequenceIndex('progs/soldier.iqm', 'run'); // -1, the default, means: follow `frame`
+this.animtime = this.game.time;                                           // restart; `this.game.time - 0.3` resumes
+this.framerate = 1.5;                                                     // optional, 1.5 times the file's speed
+```
+
+- **Which pose**: the point `(time - animtime) * framerate * rate` frames into the sequence, `rate` being the sequence's own frame
+  rate. A loop wraps from its last frame to its first (blended, while `r_interpolation` is on), any other sequence stops on its last
+  frame; a `framerate` of 0 or less holds the first. The time is the client's extrapolated server time, the one `lerp.frame` uses.
+- **Which wins**: an entity with `sequence` 0 or more plays it, one with -1 follows `frame` as before. A `sequence` the model does not
+  have falls back to `frame` as well, so a wrong number shows a pose instead of nothing.
+- **Restart and resume**: `animtime = now` starts the sequence over (even the one that already plays), `now - elapsed` resumes it
+  partway, which is also what a client that joins late sees. A game that never sets `animtime` gets the client's stamp from the
+  moment the sequence changes. Declare it as `animtime: number | null = null` unless the game sets it on every change: `null` sends nothing, a declared 0 is a start at time 0.
+- **`GetSequenceDuration(model, sequence)`** is `Infinity` for a loop and `frames / rate` seconds for any other sequence (every frame is
+  shown for one period), 0 for one that holds a pose. A level change resets the server clock to 1.0, so a game that carries an
+  animating entity across levels sets `animtime` again.
+
 ## Drawing
 
 `SkeletalModelRenderer` (`source/engine/client/renderer/models/`) is registered for `IQMModel`; a later format registers its own
-class the same way. For every visible entity it picks the two frames to blend from `lerp.frame` (the plain `frame` while
+class the same way. For every visible entity it picks the two frames to blend from its sequence (see above) or from `lerp.frame` (the plain `frame` while
 `r_interpolation` is off or during a muzzle flash, like alias models), poses and skins the mesh on the CPU
 (`SkeletalAnimation.skinMeshInto`) and draws it with the `skeletal` program, one range of triangles per material.
 

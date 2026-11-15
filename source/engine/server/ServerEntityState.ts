@@ -16,6 +16,10 @@ export class ServerEntityState {
   skin: number;
   effects: number;
   alpha: number;
+  sequence: number;
+  /** The start time the game set, `null` when it sets none: the client then stamps its own. */
+  animtime: number | null;
+  framerate: number;
   solid: number;
   free: boolean;
   classname: string | null;
@@ -36,6 +40,9 @@ export class ServerEntityState {
     this.skin = 0;
     this.effects = 0;
     this.alpha = 1.0;
+    this.sequence = -1;
+    this.animtime = null;
+    this.framerate = 1.0;
     this.solid = 0;
     this.free = false;
     this.classname = null;
@@ -61,6 +68,9 @@ export class ServerEntityState {
     this.skin = other.skin;
     this.effects = other.effects;
     this.alpha = other.alpha;
+    this.sequence = other.sequence;
+    this.animtime = other.animtime;
+    this.framerate = other.framerate;
     this.solid = other.solid;
     this.free = other.free;
     this.classname = other.classname;
@@ -89,6 +99,9 @@ export class ServerEntityState {
     this.skin = 0;
     this.effects = 0;
     this.alpha = 1.0;
+    this.sequence = -1;
+    this.animtime = null;
+    this.framerate = 1.0;
     this.solid = 0;
     this.classname = null;
   }

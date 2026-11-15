@@ -56,6 +56,13 @@ export interface SerializedClientEntity {
   readonly avelocity: readonly [number, number, number];
   readonly gravity: number;
   readonly onGround: boolean;
+  /**
+   * The sequence state, so that a saved animation resumes where it was (`animtime` is a point of the clock the save
+   * restores). Missing from saves made before it existed, which restore the defaults.
+   */
+  readonly sequence?: number;
+  readonly animtime?: number;
+  readonly framerate?: number;
   /** The owning handler's own `serialize()` result, or `null` when it saved nothing. */
   readonly handlerData: SerializedData | null;
 }
@@ -152,12 +159,18 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   classname: string | null;
   readonly num: number;
   #model: BaseModel | null = null;
-  #frame = 0;
+  #sequence = -1;
+  /** The frame to draw. A model that follows `sequence` ignores it while one is selected. */
+  frame = 0;
   /**
-   * Time (`clientRuntimeState.time`) at which `model` or `frame` last changed. Sprites that follow
-   * their entity's own clock restart their sequence from here.
+   * Server time at which the sequence started: a model that plays a sequence shows the point `(time - animtime) *
+   * framerate` seconds into it. The client stamps it with its clock when `model` or `sequence` changes, which is all a
+   * game needs that never looks at it. A game that sets `animtime` itself (`now` restarts the sequence, `now - elapsed`
+   * resumes it) has it sent, and the server's value replaces the stamp, so a client that joins late sees the same point.
    */
-  animationStartTime = 0.0;
+  animtime = 0.0;
+  /** Playback speed multiplier of the sequence, 1 for the speed the model gives it. */
+  framerate = 1.0;
   modelindex: number;
   framePrevious: number | null;
   frameTime: number;
@@ -322,8 +335,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   }
 
   /**
-   * The model to draw. Setting a different model restarts the entity's animation clock
-   * ({@link ClientEdict.animationStartTime}).
+   * The model to draw. Setting a different model restarts its animation ({@link ClientEdict.animtime}).
    * @returns The model, `null` when the entity is not drawn.
    */
   get model(): BaseModel | null {
@@ -332,28 +344,28 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
 
   set model(model: BaseModel | null) {
     if (model !== this.#model) {
-      this.animationStartTime = clientRuntimeState.time;
+      this.animtime = clientRuntimeState.time;
     }
 
     this.#model = model;
   }
 
   /**
-   * The frame to draw, for a sprite the sequence to play. Setting a different value restarts the
-   * entity's animation clock ({@link ClientEdict.animationStartTime}); writing the value it already
-   * has does not, so the server's repeated `frame` updates leave a running sequence alone.
-   * @returns The frame number.
+   * The sequence a sequenced model plays (image sprites, skeletal models), -1 for none, when the model follows `frame`.
+   * Selecting another one restarts its animation ({@link ClientEdict.animtime}); writing the value it already has does
+   * not, so the server repeating a `sequence` leaves a running animation alone.
+   * @returns The sequence number.
    */
-  get frame(): number {
-    return this.#frame;
+  get sequence(): number {
+    return this.#sequence;
   }
 
-  set frame(frame: number) {
-    if (frame !== this.#frame) {
-      this.animationStartTime = clientRuntimeState.time;
+  set sequence(sequence: number) {
+    if (sequence !== this.#sequence) {
+      this.animtime = clientRuntimeState.time;
     }
 
-    this.#frame = frame;
+    this.#sequence = sequence;
   }
 
   /**
@@ -393,6 +405,9 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.framePrevious = null;
     this.frameTime = 0.0;
     this.frame = 0;
+    this.sequence = -1;
+    this.animtime = 0.0;
+    this.framerate = 1.0;
     this.modelindex = 0;
     this.skinnum = 0;
     this.colormap = 0;
@@ -937,6 +952,9 @@ export default class ClientEntities {
         avelocity: [clent.avelocity[0], clent.avelocity[1], clent.avelocity[2]],
         gravity: clent.gravity,
         onGround: clent.onGround,
+        sequence: clent.sequence,
+        animtime: clent.animtime,
+        framerate: clent.framerate,
         handlerData: clent.serialize(),
       });
     }
@@ -973,6 +991,9 @@ export default class ClientEntities {
       clent.avelocity.setTo(entry.avelocity[0], entry.avelocity[1], entry.avelocity[2]);
       clent.gravity = entry.gravity;
       clent.onGround = entry.onGround;
+      clent.sequence = entry.sequence ?? -1;
+      clent.animtime = entry.animtime ?? 0.0;
+      clent.framerate = entry.framerate ?? 1.0;
 
       if (entry.handlerData !== null) {
         clent.deserialize(entry.handlerData);

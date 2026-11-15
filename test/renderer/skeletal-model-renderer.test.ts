@@ -134,6 +134,9 @@ void describe('SkeletalModelRenderer', () => {
       origin: new Vector(10, 20, 30),
       lerp: { origin: new Vector(10, 20, 30), angles: new Vector(), frame: entityPose.lerpFrame },
       frame: entityPose.frame,
+      sequence: -1,
+      animtime: 0,
+      framerate: 1,
       effects: 0,
       alpha: 1,
       colormap: 0,
@@ -274,6 +277,84 @@ void describe('SkeletalModelRenderer', () => {
       renderer.render(model, createEntity({ lerpFrame: [0, 1, 0.5], frame: 1 }, { effects: effect.EF_MUZZLEFLASH }), 0);
 
       positionOf(lastUploadedVertices(), 0).forEach((value, axis) => { assertNear(value, [9, 0, 0][axis], 1e-5); });
+    });
+
+    void describe('playing a sequence', () => {
+      // The two-joint model has one sequence, `turn`: frames 0 and 1 at 10 fps, looping. Frame 1 turns `child` 90
+      // degrees, so 0.05 s in (half a period) the vertex on `child` is 45 degrees round, see the blend test above.
+      let restoreRenderTime: () => void = () => {};
+
+      beforeEach(() => {
+        restoreRenderTime = patchMembers(clientRuntimeState.clientMessages, { renderTime: 5.05 });
+      });
+
+      afterEach(() => {
+        restoreRenderTime();
+      });
+
+      /**
+       * Draws the first vertex of the two-joint model for an entity.
+       * @param overrides The entity's sequence state.
+       * @returns Where the vertex on `child` ended up.
+       */
+      async function drawnVertex(overrides: Record<string, unknown>): Promise<number[]> {
+        const model = await loadModel();
+
+        // the frame it would follow without the sequence is 1, the turned one, so a result of any other proves the sequence
+        renderer.render(model, createEntity({ lerpFrame: [1, 1, 0], frame: 1 }, overrides), 0);
+
+        return positionOf(lastUploadedVertices(), 0);
+      }
+
+      void test('shows the pose the sequence is at, from the entity\'s animtime, blending towards the next frame', async () => {
+        const [x, y] = await drawnVertex({ sequence: 0, animtime: 5 });
+
+        assertNear(x, 10 - SQRT_HALF, 1e-4);
+        assertNear(y, SQRT_HALF, 1e-4);
+      });
+
+      void test('restarting it, a new animtime, is the first frame again', async () => {
+        const [x, y] = await drawnVertex({ sequence: 0, animtime: 5.05 });
+
+        assertNear(x, 10, 1e-5);
+        assertNear(y, 1, 1e-5);
+      });
+
+      void test('plays at the entity\'s framerate times the sequence\'s own', async () => {
+        const [x, y] = await drawnVertex({ sequence: 0, animtime: 5.025, framerate: 2 });
+
+        assertNear(x, 10 - SQRT_HALF, 1e-4);
+        assertNear(y, SQRT_HALF, 1e-4);
+      });
+
+      void test('blends no frames while interpolation is off, but still plays', async () => {
+        rendererCvars.interpolation = { value: 0 } as unknown as Cvar;
+
+        const [x, y] = await drawnVertex({ sequence: 0, animtime: 5 });
+
+        assertNear(x, 10, 1e-5);
+        assertNear(y, 1, 1e-5);
+      });
+
+      void test('does not stop blending for a muzzle flash, which only hides the jump of a frame-driven pose', async () => {
+        const [x] = await drawnVertex({ sequence: 0, animtime: 5, effects: effect.EF_MUZZLEFLASH });
+
+        assertNear(x, 10 - SQRT_HALF, 1e-4);
+      });
+
+      void test('follows the frame when the entity selects none', async () => {
+        const [x, y] = await drawnVertex({ sequence: -1, animtime: 5 });
+
+        assertNear(x, 9, 1e-5);
+        assertNear(y, 0, 1e-5);
+      });
+
+      void test('follows the frame when the model has no such sequence', async () => {
+        const [x, y] = await drawnVertex({ sequence: 4, animtime: 5 });
+
+        assertNear(x, 9, 1e-5);
+        assertNear(y, 0, 1e-5);
+      });
     });
 
     void test('does not skin or draw an entity that is outside the view', async () => {
