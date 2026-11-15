@@ -2,10 +2,82 @@
 
 ## Status
 
-📝 Draft, nothing implemented, no open questions left (all settled 2026-11-13). Next: Phase 0.
+📝 Draft, nothing implemented, no open questions left (all settled 2026-11-13; quaternion handling
+added 2026-11-14, decisions 19–21). Phase 0 done on 2026-11-15 (results below). Next: Phase 1.
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
 parked: the core only has to leave room for them (Later: Half-Life studio models).
+
+### Phase 0 results (2026-11-15)
+
+Done (no FTE needed):
+
+- **Gun on the back, confirmed.** Frame 1 of `player.mdl.blend` rendered from the side (headless
+  Blender 5.3, workbench): the player holds the axe and the built-in gun is slung diagonally across the
+  back. `playergun` sits at about (−4, 7, 19) and `playeraxe` at about (9.5, −1, 3) in frame 1. Hellwave's
+  "last gun on the back" comes from the rig, no `tag_holster` needed (K). Frame 60 is a lying pose
+  (death), the groups are far from their frame-1 places there, as expected.
+- **Palette ranges.** Quake's shirt is palette row 1 (indices 16–31) and pants is row 6 (96–111): the
+  engine's skin translation ([AliasMDLLoader.ts:469-492](../source/engine/common/model/loaders/AliasMDLLoader.ts#L469-L492))
+  writes `(index & 15) * 17` into a mask channel for each. The `--colormap` exporter option (J) splits on
+  those two rows.
+- **DarkPlaces masks** (`gl_rmain.c` `R_SkinFrame_LoadExternal`, `shader_glsl.h`, `cl_main.c`, read from
+  `DarkPlacesEngine/darkplaces` master): the companion textures are `<skin basename>_pants` and
+  `<skin basename>_shirt`, loaded beside the base texture, greyscale. The shader **adds** them:
+  `color.rgb += pants.rgb * Color_Pants + shirt.rgb * Color_Shirt`, so the base texture must have the
+  colorable pixels removed (DarkPlaces' own comment: "original texture without pants/shirt/glow").
+  Colors come from 16-entry tables indexed by the nibbles of the colors byte: shirt = high nibble, pants
+  = low nibble (`CL_SetEntityColormapColors`). Table entry `i` is palette row `i` at column `0x0C`
+  (`0x04` for rows 8–13), scaled by 1/255. This differs from our `player.frag`, which **mixes** by mask
+  and scales by intensity, so the IQM path needs its own composition (Phase 4), not a copy of
+  `player.frag`. The `--colormap` exporter option must therefore write a base texture with those pixels
+  blanked, not just two extra masks.
+- **DarkPlaces `.skin` files** (`Mod_LoadSkinFiles`): `<model name with extension>_<n>.skin`, for example
+  `models/x.iqm_0.skin`, n from 0 up to 255, stops at the first missing number, and the number of files
+  becomes the skin count. One mapping per line, `meshname,texture` (the comma is its own token), plus
+  `replace meshname texture`. Lines starting with `tag_` are accepted and ignored. Parsed with the
+  QuakeC tokenizer, so `//` comments work. FTE also tries the name without the extension (B).
+- **DarkPlaces `setattachment`** (`cl_main.c` `CL_UpdateNetworkEntity`): the child's matrix is
+  `parentMatrix × tagMatrix × childLocalMatrix`. `tagindex` is **1-based** on the wire, 0 means "attach to
+  the entity origin"; an invalid index falls back to the parent's origin. The parent is updated first
+  (recursion limit), so chains work. The child **inherits the parent's exterior-model and view-model
+  flags**, and it is skipped when the parent is missing or inactive: the same visibility rule as decision
+  15. The parent matrix is the render matrix, which already holds interpolation and the predicted
+  origin. Pitch is negated for alias-type models only (IQM is one in DarkPlaces), per entity on its own
+  angles, which is the per-renderer convention H already asks for.
+
+- **Throwaway IQM export, checked without FTE** (decided 2026-11-15: no FTE binary on this machine, and
+  a GPU run was not worth it). A spike exporter wrote `player.iqm` (v2, 25 joints, 143 frames, 10 channels
+  quantized to `ushort`) and an independent Python reader decoded it the way FTE's
+  `Mod_ParseIQMMeshModel` does, skinned all vertices on the CPU and compared them with Blender's evaluated
+  mesh at frames 1, 20, 60, 100 and 143: **max error 0.012 units** (16-bit quantization), mean 0.001. The
+  union of the per-frame bounds equals the `player.mdl` header's min and max exactly
+  (−44.176, −34.474, −35.065 to 39.220, 30.344, 48.474), so **the IQM needs no axis or unit conversion**
+  and uses the MDL's coordinate system. This is the acceptance check Phase 3 repeats in TypeScript.
+  FTE's own parser (2026-07-13 build, dedicated server) also accepts the file: with `player.iqm` overlaid
+  on twelve item models in `lq_e1m1` the server logs no load error, while a truncated copy logs
+  `size (156252 != 100000)` and `Unable to load`. That is an acceptance check only, the server prints no
+  bounds or counts. The look (winding, shading) is checked in FTE's GL client at the Phase 1 exit.
+  The scripts are throwaway and not committed; Phase 1 writes the real exporter and its tests.
+- **The `$frame` lines of `qcsrc/player.qc` name exactly 143 frames** and group into 20 prefixes
+  (`axrun`, `stand`, `deathc`, …), which matches the scene range, so `--frames` (J) works on them.
+- **Traps the spike found** (all go into Phase 1):
+  - The mesh object has a non-uniform **world scale of 1.2702 on X**. The exporter must bake the mesh's
+    world matrix into positions, and use its inverse transpose for normals, or the model is 27% too thin.
+  - The mesh is flat-shaded in Blender (`use_smooth` false), so one vertex per corner gives 2,133 IQM
+    vertices for 539 source vertices, against 801 in the MDL (which carries one normal per vertex, so it
+    looks smooth). The exporter needs a normals mode (smooth by default for these models) and the
+    comparison with the MDL's look is a Phase 4 screenshot check.
+  - Top-4 weight pruning dropped nothing for the player (3 influences at most), as the survey said.
+  - **Winding is unverified.** FTE copies IQM triangle indices verbatim and the exporter wrote Blender's
+    counter-clockwise order, which agrees with the exported normals for 99.9% of triangles, but only a
+    render shows whether the format's front face is counter-clockwise. Phase 2/4 pins it with the first
+    drawn model.
+  - IQM tools store rotations with `w <= 0`; FTE's v2 path reads `w` explicitly and does not depend on
+    it, and neither must our loader (the shortest-path `slerpInto` handles either sign).
+  - `ofs_adjacency` can be 0. Our loader must not require it.
+
+Phase 0 is complete apart from this plan's go-ahead to start Phase 1.
 
 ### Decisions (2026-11-12, from the maintainer)
 
@@ -46,6 +118,19 @@ parked: the core only has to leave room for them (Later: Half-Life studio models
 17. **The exporter supports what the LibreQuake files need now**: Blender 5.x (the survey used 5.3),
     and only the rig features those files use (J).
 18. **Focus on IQM.** Half-Life studio models stay in mind but get no work in this pass.
+
+### Decisions (2026-11-14, from the maintainer)
+
+19. **Rotations stay quaternions internally.** Poses, tags and attachment chains interpolate and
+    compose as quaternions. Euler angles appear only where they already are the interface: an
+    entity's own `angles`, and the game API (`GetEntityTag`'s `outAngles`). No Euler round trip
+    inside the animation, tag or attachment code (C, G, H).
+20. **One home for quaternion maths**: allocation-free static helpers on `Quaternion` in
+    `source/shared/Vector.ts`, working on flat arrays with offsets. The existing object methods
+    (`Quaternion.slerp`, …) delegate to them, so there is one implementation (C).
+21. **One quaternion layout: `[w, x, y, z]`**, the order `Quaternion` already uses. Every flat array
+    that holds rotations uses it too. Formats that store another order (IQM: `x, y, z, w`) are
+    reordered once, in their loader (B, C).
 
 ### Decisions carried over from the Half-Life plan (2026-10-03 and 2026-10-23)
 
@@ -93,7 +178,7 @@ Blender 5.3. Every monster and the player is rigged, and every rig blends severa
 ### The LibreQuake player rig (measured 2026-11-12)
 
 - One armature (`Armature`) with 25 bones, one mesh (`player`, 539 vertices, 775 faces), one
-  action over 144 frames, skin `player.mdl.0.png`. No timeline markers, so frame names come from
+  action keyed over 0–144 and a scene range of 1–143 (143 frames, the same count as `player.mdl`), skin `player.mdl.0.png`. No timeline markers, so frame names come from
   elsewhere (the `$frame` lines in LibreQuake's `qcsrc`, see J).
 - Three bones exist for equipment only: `playergun` and `playeraxe` are **root bones** keyed per
   frame, and `flash` is a child of `playergun`. They have no constraints.
@@ -246,7 +331,11 @@ New `source/engine/common/model/loaders/IQMLoader.ts`, extension `.iqm`, magic `
   Failures throw `CorruptedResourceError`. Fuzz-style tests: truncated file, offset past the end,
   joint parent after child or a cycle, huge counts, blend index past the joint count.
 - **Frames** are decoded once into local joint poses (translation, rotation quaternion, scale) per
-  frame, as a flat `Float32Array`. Player: 25 joints × 144 frames × 10 floats = 36,000 floats.
+  frame, as a flat `Float32Array`. Player: 25 joints × 143 frames × 10 floats = 35,750 floats.
+  Layout per joint: translation `x, y, z`, rotation `w, x, y, z`, scale `x, y, z` (decision 21).
+  IQM stores rotations as `x, y, z, w` (w is channel 6, FTE `com_mesh.c:8702-8705`), so the loader
+  reorders them and normalizes them here, once. A fixture with a known non-symmetric rotation pins
+  the order: a swapped w still decodes to a valid rotation, only the wrong one.
 - **Server realm** (`loadRenderData === false`): keep joints, decoded frames, sequences and bounds
   (needed for tags and `setModel()` bounds), drop vertex arrays and materials.
 - **Materials**: a mesh's material string resolves to a texture the way OBJ/`MeshModel` materials do
@@ -267,12 +356,37 @@ New `source/engine/common/model/SkeletalAnimation.ts`, a static class. Input: th
 selection `{frameA, frameB, blend}` (from `lerp.frame` or from sequence playback). Output: model-space
 joint matrices (3×4) and skinning matrices (joint × inverse bind) in caller-owned `Float32Array`s.
 
-- interpolation: translation and scale lerp, rotation nlerp or slerp (shortest path);
-- parent-before-child composition in one pass;
+- interpolation: translation and scale lerp, rotation through `Quaternion.slerpInto` (below);
+- parent-before-child composition in one pass, as 3×4 matrices: IQM joints may carry non-uniform
+  scale, which translation-plus-quaternion composition cannot represent;
 - no allocation per call: scratch buffers per model.
 
 It lives in `common/model/` (it is format code, and the server uses it for tags). If games ever need
 pose maths themselves, it moves to `source/shared/`.
+
+**Quaternion helpers** (decisions 19–21). `Quaternion` in
+[Vector.ts:37-202](../source/shared/Vector.ts#L37-L202) already has a tested shortest-path `slerp`
+with an nlerp fallback above a dot of 0.9995, `normalize`, `multiply`, and conversions to and from
+Euler angles. Every one of them allocates or works on `Quaternion` objects (an `Array` subclass), and
+`slerp` creates three objects per call. At 25–468 joints per entity per frame that is too much
+garbage. Phase 3 adds static helpers that read and write flat arrays at an offset, all `[w, x, y, z]`:
+
+- `slerpInto(out, outOffset, from, fromOffset, to, toOffset, t)`: shortest path, nlerp fallback;
+  expects normalized input (the loader normalizes once) and does not normalize its inputs again;
+- `multiplyInto(...)`, `normalizeAt(...)`, `toMatrix3x4Into(...)` (rotation, translation and scale
+  into a 3×4 matrix);
+- `fromModelAnglesInto(out, outOffset, angles)`: an entity's angles in the convention its renderer
+  uses. `Vector.toRotationMatrix()` (which every model renderer uses) negates pitch, Quake's model
+  convention, while `Vector.toQuaternion()` does not (it matches `angleVectors`, the view
+  convention). The helper follows `toRotationMatrix()`, and a test pins that both give the same
+  matrix for a pitched, yawed and rolled entity.
+
+The object methods (`Quaternion.slerp`, `multiply`, `normalize`) become thin wrappers over these,
+so there is one implementation and the existing tests in `test/common/vector.test.ts` keep covering
+it. While there, `toRotationMatrix()`'s JSDoc says "[roll, pitch, yaw]" but the code reads
+`[pitch, yaw, roll]`; the JSDoc gets fixed.
+
+Skinning and tags use the same `slerpInto`, so tags and vertices interpolate identically (Risks).
 
 ### D. Rendering: `SkeletalModelRenderer`
 
@@ -337,21 +451,24 @@ skeletal model.
 
 ### G. Tags
 
-A tag is a named, rigid transform (origin and orthonormal axes) per frame, in model space.
+A tag is a named, rigid transform (origin and rotation quaternion) per frame, in model space.
 
 - `BaseModel.getTagIndex(name): number` (−1 when missing) and
-  `BaseModel.sampleTag(index, frameA, frameB, blend, out): boolean` (writes origin and 3 axes into a
-  caller-owned 12-float array). The base class has no tags. `SkeletalModel` answers from its joints
-  (each joint is a tag; translation lerps, rotation nlerps). Alias models have none.
+  `BaseModel.sampleTag(index, frameA, frameB, blend, out): boolean` (writes origin `x, y, z` and
+  rotation `w, x, y, z` into a caller-owned 7-float array). The base class has no tags.
+  `SkeletalModel` answers from its joints (each joint is a tag; translation lerps, rotation through
+  `Quaternion.slerpInto`, the same call skinning uses). Alias models have none.
 - **Available on both realms**, since the server keeps joints and frames (B). The server does not
   need tags yet; the API is there for later (projectile origins, hit effects).
-- **Rigid**: the loader orthonormalizes tag axes and drops scale. Scale belongs in the attached model
+- **Rigid**: tags carry no scale; the model-space rotation is a normalized quaternion, so there are
+  no axes to orthonormalize. Scale belongs in the attached model
   (the 0.8 on `playergun` is baked into the `p_*` weapon models by the exporter, J).
 - **Engine use**: the `EF_MUZZLEFLASH` light moves to `tag_flash` when the entity, or a child attached
   to it, has one, and keeps today's fixed offset otherwise.
 - **Game API**: `GetTagIndex(modelName, tagName)` on both engine APIs. The client API also gets
   `GetEntityTag(entity, tagName, outOrigin, outAngles): boolean`, which answers for the current render
-  time with interpolation and attachment chains applied. Effects need this (L).
+  time with interpolation and attachment chains applied. Effects need this (L). `outAngles` is the
+  one place a tag rotation becomes Euler angles, because game code works in angles (decision 19).
 
 ### H. Attachments
 
@@ -375,12 +492,22 @@ An entity can be attached to a tag of another entity, the way DarkPlaces' `setat
   developer mode). It is sent whenever its parent is sent, whatever its own origin, so PVS and
   culling follow the parent. Freeing the parent detaches the child, and its last world position is
   kept, so a dropped weapon stays where it was.
-- **Client resolution**: after `emit()` collects `visedicts`, one pass resolves attached entities,
-  parents first: parent's interpolated origin and angles (the predicted origin for the local player),
-  times the parent's tag sampled with the parent's `lerp.frame`, times the child's local offset. The
-  result is stored on the child for the frame, and `lerp.origin`/`lerp.angles` return it, so every
-  renderer, the shadow passes and reflections work without changes. Chains are allowed (a flash
-  sprite on a weapon on a player), with a depth limit and cycle detection.
+- **Client resolution**, in quaternions (decision 19): after `emit()` collects `visedicts`, one pass
+  resolves attached entities, parents first: the parent's interpolated origin and rotation (the
+  predicted origin for the local player; the rotation from `Quaternion.fromModelAnglesInto`, or the
+  parent's own resolved rotation when the parent is itself attached), times the parent's tag sampled
+  with the parent's `lerp.frame`, times the child's local offset (its `origin`, and its `angles`
+  converted once). The resolved origin and rotation quaternion are stored on the child for the
+  frame. Chains are allowed (a flash sprite on a weapon on a player), with a depth limit and cycle
+  detection.
+- **Renderers read a rotation, not angles.** Today every model renderer builds its orientation with
+  `entity.lerp.angles.toRotationMatrix()` (alias, mesh, brush), and the sprite renderer uses
+  `entity.angles.angleVectors()`. A new `ClientEdict.lerp.rotationMatrix` returns that 3×3 matrix:
+  from `lerp.angles` for a free entity, from the resolved quaternion for an attached one. The
+  renderers, the shadow passes and reflections switch to it, so an attached child's rotation is never
+  turned back into angles. `lerp.angles` of an attached child is not used for drawing; the two
+  "is it rotated at all" checks (`ShadowMap.computeTopDownFootprint`,
+  `BrushModelRenderer.getEntityScreenBounds`) get an attached-entity case.
 - **Visibility always follows the parent** (decided 2026-11-13, as FTE does by giving the child the
   parent's key for visibility checks): a child is drawn only if its parent is, with no PVS check of
   its own. In particular, a child of the view entity is hidden in first person and shown with the
@@ -414,7 +541,8 @@ exported half-way.
 - **Export**: deforming bones plus named tag bones; vertices with the 4 strongest weights rescaled to
   sum to 1 (reports how many vertices lost weight and the largest weight dropped); one frame per scene
   frame, in the MDL's order; materials from the mesh's material slots with the image written next to
-  the model.
+  the model. Rotations are written as the IQM format demands (`x, y, z, w`), reordered from
+  Blender's `w, x, y, z`; the Python reader test checks a known rotation.
 - **Sequence names**: from a frame-name list (`--frames <file>`), for example the `$frame` lines of a
   QuakeC source, grouped by name prefix into anims (`axrun1`…`axrun6` → `axrun`). Without a list,
   one anim for the whole range.
@@ -512,7 +640,9 @@ the dedicated server precaches an IQM and `setModel()` sizes it.*
 
 **Phase 3: animation core.** `SkeletalAnimation`. *Tests against hand-computed 2–3 joint fixtures
 (rest pose, one rotation, halfway interpolation, shortest-path rotation, parent chain) and one
-LibreQuake frame against FTE's pose.* *Exit: poses match.*
+LibreQuake frame against FTE's pose.* Also the `Quaternion` flat-array helpers with the object methods
+delegating to them, the `fromModelAnglesInto` versus `toRotationMatrix()` test, and the
+`toRotationMatrix()` JSDoc fix (C). *Exit: poses match, `vector.test.ts` still passes.*
 
 **Phase 4: rendering.** `SkeletalModelRenderer`, CPU skinning, shader chunks, colormap masks,
 shadows, culling, frame interpolation. *Real browser pass (`browser-ui-verification`): an IQM
@@ -534,7 +664,8 @@ at a fraction matches the joint pose at that fraction; missing tags; server real
 command can print a moving tag.*
 
 **Phase 6: attachments.** State, wire bit and protocol bump, server API and
-rules, client resolution pass, client-only attachments, chains, visibility and prediction rules.
+rules, client resolution pass in quaternions, `lerp.rotationMatrix` and the renderers moved to it,
+client-only attachments, chains, visibility and prediction rules.
 *Tests: protocol round trip, chain order and cycles, parent freed, child hidden with the view entity,
 interpolated child matches parent tag.* *Browser: an entity attached to a monster's tag stays on it
 while it animates, with shadows, in third person.* *Exit: general attachments work.*
@@ -570,6 +701,7 @@ Half-Life studio models are not a phase of this plan (Later: Half-Life studio mo
 | `qs-tools` README | Exporter usage, options, the LibreQuake player and weapon recipes | 1, 7 |
 | Hellwave `docs/` | Player-held weapons, how to add a weapon model | 7 |
 | JSDoc | `SkeletalModel`, `IQMLoader` (byte layout and FTE references), `SkeletalAnimation`, tag and attachment APIs, `ViewmodelConfig` | with each phase |
+| JSDoc | `Quaternion`: the `[w, x, y, z]` layout as the engine-wide rule, the flat-array helpers, model versus view angle convention | 3 |
 
 ## Testing
 
@@ -603,7 +735,16 @@ out not to fit, that comes back here as a question.
   dropped. LibreQuake's worst case is 13 influences (oldone), 8 for most monsters.
 - **Weapon fit** is art work per weapon. Long weapons may cut into the body in some frames. The
   fitting scene makes this visible before export.
-- **Tag and vertex interpolation must match.** One `lerp.frame` feeds both; a test pins it.
+- **Tag and vertex interpolation must match.** One `lerp.frame` and one `Quaternion.slerpInto` feed
+  both; a test pins it.
+- **Quaternion component order.** A rotation read as `x, y, z, w` where `w, x, y, z` is meant still
+  decodes to a valid rotation, so nothing fails loudly: bones just bend wrong. The order is
+  `[w, x, y, z]` everywhere (decision 21), the IQM loader is the only place that reorders, and a
+  fixture with a known rotation pins it. The exporter has the same trap in reverse (Blender's
+  `mathutils.Quaternion` is `w, x, y, z`, the IQM file is `x, y, z, w`).
+- **Moving renderers to `lerp.rotationMatrix`** touches every model renderer and the shadow passes.
+  For free entities it must give exactly today's `toRotationMatrix()` result; a test pins that, and
+  Phase 6's browser pass covers alias, brush and mesh entities.
 - **CPU skinning cost** with large hordes: measured in Phase 4, GPU skinning is the way out.
 - **Shared shader chunks**: moving a routine out of `alias.frag` changes the alias program too and
   needs the before/after screenshots.
