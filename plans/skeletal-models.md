@@ -1183,6 +1183,12 @@ at the barrel.* *Exit: Hellwave players carry their weapons.*
 **Phase 9: polish, as measured.** GPU skinning if Phase 4's numbers ask for it; skipping pose updates
 for far entities.
 
+**Open items kept from Phase 7 (2026-11-16), both decided to wait:**
+- **Look pitch precision.** The entity pitch is one byte on the wire (1.4 degrees, so 4.2 degrees of look pitch, interpolated); the bend of the spine looks smooth at slow sweeps and the maintainer is happy with it. If it ever
+  bothers (fast looking, a remote player's head), the fix is the full view pitch on the wire for player entities (a wire change and a protocol bump), or a client-side smoothing of the joint angles. Watch for it in multiplayer.
+- **Muzzle flash sprite.** The light sits at the gun's `tag_flash`; the additive sprite of Phase 7's plan is not made because there is no asset yet (the maintainer is looking for one). Once there is one:
+  `ClientEngineAPI.AllocEntity` plus `setAttachment(gun, 'tag_flash')` in Hellwave's client code, shown for the time of the `EF_MUZZLEFLASH` light, with a random roll.
+
 Half-Life studio models are not a phase of this plan (Later: Half-Life studio models).
 
 ## Documentation
