@@ -668,6 +668,75 @@ void describe('WebRTCDriver out-of-band (probe) connections', () => {
   });
 });
 
+/**
+ * Sets up a joined (non-host) `WebRTCDriver` whose connection to the host peer `hostpeer` is
+ * established: the master server only ever relays the host's offer, so that is all it takes.
+ * @param callback
+ */
+async function withJoinedClientScenario(callback: (scenario: { driver: WebRTCDriver, ws: MockSignalingWebSocket, sock: QSocket, hostConnection: MockRTCPeerConnection }) => Promise<void>) {
+  const net = createTestNetwork();
+  const createdWebSockets: MockSignalingWebSocket[] = [];
+  const createdPeerConnections: MockRTCPeerConnection[] = [];
+  const restoreGlobals = installGlobals({
+    WebSocket: class extends MockSignalingWebSocket {
+      constructor(url: string) {
+        super(url, createdWebSockets);
+      }
+    },
+    RTCPeerConnection: class extends MockRTCPeerConnection {
+      constructor(config: unknown) {
+        super(config, createdPeerConnections);
+      }
+    },
+    RTCSessionDescription: MockRTCSessionDescription,
+    RTCIceCandidate: MockRTCIceCandidate,
+    location: { protocol: 'http:', hostname: 'localhost' },
+    window: { addEventListener() {}, removeEventListener() {} },
+  });
+
+  try {
+    const driver = new WebRTCDriver(net);
+    driver.Init();
+    const sock = driver.Connect('webrtc://lobby')!;
+    const ws = createdWebSockets.at(-1)!;
+    ws.readyState = 1;
+    ws.onopen!();
+
+    await deliverSignalingMessage(ws, { type: 'offer', fromPeerId: 'hostpeer', offer: { type: 'offer', sdp: 'mock-offer-sdp' } });
+    await flushMicrotasks();
+
+    await callback({ driver, ws, sock, hostConnection: createdPeerConnections.at(-1)! });
+  } finally {
+    restoreGlobals();
+  }
+}
+
+void describe('WebRTCDriver joined client and peer-left', () => {
+  // The master server relays every `peer-left` of a session to all of its peers, so a joined
+  // client hears about each ping probe (the lobby list opens one per session) that goes away.
+  void test('a peer-left of an unrelated peer keeps the connection to the host', async () => {
+    await withJoinedClientScenario(async ({ ws, sock, hostConnection }) => {
+      sock.state = QSocket.STATE_CONNECTED;
+
+      await deliverSignalingMessage(ws, { type: 'peer-left', peerId: 'prober1', peerCount: 2 });
+
+      assert.equal(sock.state, QSocket.STATE_CONNECTED);
+      assert.equal(hostConnection.closed, false);
+    });
+  });
+
+  void test('a peer-left of the host drops the connection', async () => {
+    await withJoinedClientScenario(async ({ ws, sock, hostConnection }) => {
+      sock.state = QSocket.STATE_CONNECTED;
+
+      await deliverSignalingMessage(ws, { type: 'peer-left', peerId: 'hostpeer', peerCount: 1 });
+
+      assert.equal(sock.state, QSocket.STATE_DISCONNECTED);
+      assert.equal(hostConnection.closed, true);
+    });
+  });
+});
+
 // Coverage for plans/session-ping-latency.md Phase 3: the viewer/browsing side of an out-of-band
 // ping probe. The viewer is always the *answerer* (the host is always the initiator, matching
 // #OnPeerJoined's convention for a real peer), and each probed session gets its own dedicated
