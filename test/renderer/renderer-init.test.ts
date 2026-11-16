@@ -191,6 +191,7 @@ void describe('R.RenderScene', () => {
     mock.method(PostProcess, 'getEffect', () => null);
     mock.method(SkyBox, 'Draw', () => {});
     mock.method(R, 'DrawViewModel', () => {});
+    mock.method(R, 'DrawViewModelBlended', () => {});
     mock.method(R, 'RenderWorld', () => {});
 
     R.RenderScene();

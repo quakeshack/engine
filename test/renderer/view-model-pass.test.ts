@@ -110,10 +110,11 @@ void describe('R.DrawViewModel', () => {
     GL.gl = {
       depthRange: (near: number, far: number) => { steps.push(`depthRange ${near} ${far}`); },
       depthMask: (on: boolean) => { steps.push(`depthMask ${on}`); },
-      enable: (capability: number) => { steps.push(`enable ${capability === 3042 ? 'BLEND' : capability}`); },
-      disable: (capability: number) => { steps.push(`disable ${capability === 3042 ? 'BLEND' : capability}`); },
+      enable: (capability: number) => { steps.push(`enable ${{ 3042: 'BLEND', 2884: 'CULL_FACE' }[capability] ?? capability}`); },
+      disable: (capability: number) => { steps.push(`disable ${{ 3042: 'BLEND', 2884: 'CULL_FACE' }[capability] ?? capability}`); },
       blendFunc: (source: number, destination: number) => { steps.push(`blendFunc ${source} ${destination}`); },
       BLEND: 3042,
+      CULL_FACE: 2884,
       ONE: 1,
       SRC_ALPHA: 770,
       ONE_MINUS_SRC_ALPHA: 771,
@@ -253,23 +254,41 @@ void describe('R.DrawViewModel', () => {
       }
     });
 
-    void test('draws them after the weapon and before the projection goes back, solid ones first and blended ones with the depth mask off', () => {
+    const narrow = (): string => `projection ${verticalScale(100 * 0.82)}`;
+    const wide = (): string => `projection ${verticalScale(70)}`;
+
+    void test('draws the solid ones with the weapon, before the world, and leaves the blended ones for after it', () => {
       attach(new GlassModel('glass'), 0.5);
       attach(new SolidModel('solid'));
+      attach(new SpriteModel('flash'));
 
       R.DrawViewModel();
 
-      const narrow = `projection ${verticalScale(100 * 0.82)}`;
-      const wide = `projection ${verticalScale(70)}`;
-
-      assert.deepEqual(steps.slice(steps.indexOf(narrow)), [
-        narrow,
+      assert.deepEqual(steps.slice(steps.indexOf(narrow())), [
+        narrow(),
         'setup 0',
         'render 0 at 7',
         'cleanup 0',
         'SolidModel setup 0',
         'SolidModel render 0',
         'SolidModel cleanup 0',
+        wide(),
+        'depthRange 0 1',
+      ]);
+    });
+
+    // The weapon is drawn before the world so the world fails the depth test behind it. A blended flash writes no depth, so the world
+    // would draw over it wherever the weapon is not: it has to come after the world.
+    void test('draws the blended ones after the world in the weapon\'s projection and depth range, with the depth mask off, and gives both back', () => {
+      attach(new GlassModel('glass'), 0.5);
+      attach(new SolidModel('solid'));
+
+      R.DrawViewModelBlended();
+
+      assert.deepEqual(steps, [
+        'depthRange 0 0.3',
+        narrow(),
+        'enable CULL_FACE',
         'depthMask false',
         'enable BLEND',
         'blendFunc 770 771',
@@ -279,7 +298,8 @@ void describe('R.DrawViewModel', () => {
         'flush',
         'disable BLEND',
         'depthMask true',
-        wide,
+        'disable CULL_FACE',
+        wide(),
         'depthRange 0 1',
       ]);
     });
@@ -287,9 +307,9 @@ void describe('R.DrawViewModel', () => {
     void test('draws a sprite blended, with the premultiplied blend function, and flushes what it streamed', () => {
       attach(new SpriteModel('flash'));
 
-      R.DrawViewModel();
+      R.DrawViewModelBlended();
 
-      assert.deepEqual(steps.slice(steps.indexOf('cleanup 0') + 1, steps.indexOf('disable BLEND')), [
+      assert.deepEqual(steps.slice(steps.indexOf('depthMask false'), steps.indexOf('disable BLEND') + 1), [
         'depthMask false',
         'enable BLEND',
         'blendFunc 1 771',
@@ -297,25 +317,42 @@ void describe('R.DrawViewModel', () => {
         'sprite render 1',
         'sprite cleanup 1',
         'flush',
+        'disable BLEND',
       ]);
     });
 
-    void test('touches no blend state when everything on the weapon is solid, and skips what is invisible or has no model', () => {
+    void test('the blended pass changes nothing when only solid entities hang on the weapon, or nothing does', () => {
+      attach(new SolidModel('solid'));
+      R.DrawViewModelBlended();
+      assert.deepEqual(steps.filter((step) => step.includes('BLEND') || step.startsWith('depthMask') || step.includes('render')), []);
+
+      steps.length = 0;
+      attachments.length = 0;
+      R.DrawViewModelBlended();
+      assert.deepEqual(steps, []);
+    });
+
+    void test('skips what is invisible or has no renderer, and a solid pass touches no blend state', () => {
       attach(new SolidModel('solid'));
       attach(new SolidModel('hidden'), 0.0);
       attach(new BaseModel('no renderer'));
+      attach(new GlassModel('glass'), 0.0);
 
       R.DrawViewModel();
+      R.DrawViewModelBlended();
 
       assert.equal(steps.filter((step) => step.startsWith('SolidModel render')).length, 1);
-      assert.equal(steps.some((step) => step.startsWith('enable') || step.startsWith('depthMask')), false);
+      assert.equal(steps.some((step) => step.startsWith('GlassModel')), false);
+      assert.equal(steps.some((step) => step.includes('BLEND') || step.startsWith('depthMask')), false);
     });
 
     void test('draws nothing on the weapon when the weapon itself is not drawn', () => {
       attach(new SolidModel('solid'));
+      attach(new GlassModel('glass'), 0.5);
       Chase.active = createCvarStub(1);
 
       R.DrawViewModel();
+      R.DrawViewModelBlended();
 
       assert.deepEqual(steps, []);
     });

@@ -228,8 +228,10 @@ keeps running, and a game restarts a shot's animation by setting `animtime` to t
   that the answer is the previous frame's. `GetMuzzleFlashOrigin` and `SetEntityJointAngles` take it as well.
 - **Entities attached to it are drawn with it**: `ClientEdict.setAttachment(viewmodelEntity, 'tag_flash')` on a client-only entity
   (a muzzle flash sprite) draws it in the view model's projection and depth range, so it sits on the barrel on the screen and not where the
-  barrel would be in the world's field of view. Solid entities draw first, blended ones and sprites over them, unsorted. They are
-  drawn exactly when the weapon is (not in a chase view, not with `r_drawviewmodel 0`, not while `viewmodel.visible` is false) and never with the world.
+  barrel would be in the world's field of view. Solid ones are drawn with the weapon, before the world. **Blended ones and sprites are drawn
+  after the world and everything blended in it**, in the weapon's depth range and unsorted: the weapon is drawn first so that the world fails the depth
+  test behind it, and a blended entity writes no depth, so drawn in the same pass the world would paint over it wherever the weapon is not.
+  They are drawn exactly when the weapon is (not in a chase view, not with `r_drawviewmodel 0`, not while `viewmodel.visible` is false) and never with the world.
   A chain works (a flash on a gun part on the weapon). They get no shadows and no dynamic light of their own.
 - **Making one**: a LibreQuake view model without a rig (`v_shot`) is animated with shape keys, which IQM cannot store. When the key that moves the gun is a rigid motion,
   the `qs-tools` script `bake_shape_keys.py` turns it into the animation of one bone (and refuses a file where it is not); the model keeps the frames of the `.mdl`.

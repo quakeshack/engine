@@ -617,7 +617,7 @@ Shipped: `FrameUniforms.UploadPerspective`, `R.DrawViewModel` for every renderer
   barrel and projected with the world's field of view lands somewhere else on the screen. The entity list is built *before* the view is calculated
   (`ClientHost` runs `emit()`, then `ScreenFrame.Update()` calls `CalcRefdef`), so a child of the weapon is only collected at emit time (handler run, kept out of
   `visedicts`) and placed when `DrawViewModel` asks, with the weapon in its place for the frame: no frame of lag, no jitter against the bob. Chains work.
-  Solid children draw first, then blended ones and sprites with the depth mask off and the sprite blend function; the sprite quads are streamed, so the pass flushes
+  Solid children draw with the weapon; blended ones and sprites draw **after the world and the transparent pass** (`R.DrawViewModelBlended`) with the depth mask off and the sprite blend function (the first version drew them with the weapon, before the world, and the first browser test with a real flash found that the world painted over them: a blended entity writes no depth); the sprite quads are streamed, so the pass flushes
   before the projection goes back (found while writing the test: a flush per child, solid ones included, was wasted, and a child without a renderer switched the
   blend state on).
 - **Tests**: 16 more (3,462 to 3,478): `view-model-pass.test.ts` (7: the order of projection, renderer, flush and restore; a missing renderer;

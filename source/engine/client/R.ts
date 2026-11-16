@@ -109,52 +109,47 @@ class R {
   }
 
   /**
-   * Draws the weapon model in front of the world, in a depth range of its own and with its own field of view.
+   * @returns The entity the first-person weapon is drawn with, `null` when nothing is to be drawn: the player or the game
+   * switched it off, the camera is in chase view, or the game has no model for it.
    */
-  static DrawViewModel() {
-    if (rendererCvars.drawviewmodel.value === 0) {
-      return;
-    }
-    if (Chase.active.value !== 0) {
-      return;
-    }
-    if (rendererCvars.drawentities.value === 0) {
-      return;
+  static #drawableViewModel(): ClientEdict | null {
+    if (rendererCvars.drawviewmodel.value === 0 || Chase.active.value !== 0 || rendererCvars.drawentities.value === 0) {
+      return null;
     }
 
     const viewmodel = clientRuntimeState.gameAPI?.viewmodel ?? null;
 
-    if (viewmodel === null) {
-      return;
+    // the game says whether to draw the view model, and with what
+    if (viewmodel === null || !viewmodel.visible || !viewmodel.model) {
+      return null;
     }
 
-    if (!viewmodel.visible) {
-      return; // game says to not draw the view model
-    }
+    const viewent = clientRuntimeState.viewent;
 
-    if (!viewmodel.model) {
-      return; // no model to draw
-    }
+    return viewent !== null && viewent.model !== null ? viewent : null;
+  }
 
+  /**
+   * Switches to what the view model is drawn with: a depth range of its own and a narrower field of view than the world, for
+   * every program whatever model it draws.
+   * @returns The aspect ratio, for `#endViewModelPass`.
+   */
+  static #beginViewModelPass(): number {
     gl.depthRange(0.0, 0.3);
 
-    // the weapon is drawn with a narrower field of view than the world, whatever program its model is drawn with
     const aspect = Camera.refdef.vrect.width / Camera.refdef.vrect.height;
+
     Camera.UpdateProjection(viewCvars.fov.value * 0.82, aspect);
     FrameUniforms.UploadPerspective();
 
-    const viewent = clientRuntimeState.viewent;
-    if (viewent !== null && viewent.model !== null) {
-      const renderer = modelRendererRegistry.getRendererForModel(viewent.model);
-      console.assert(renderer !== null, `renderer required for ${viewent.model.constructor.name}`);
-      if (renderer !== null) {
-        renderer.setupRenderState(0);
-        renderer.render(viewent.model, viewent, 0);
-        renderer.cleanupRenderState(0);
-        R.#drawViewModelAttachments();
-      }
-    }
+    return aspect;
+  }
 
+  /**
+   * Gives the frame its depth range and projection back.
+   * @param aspect What `#beginViewModelPass` returned.
+   */
+  static #endViewModelPass(aspect: number): void {
     Camera.UpdateProjection(Camera.refdef.fov_y, aspect);
     FrameUniforms.UploadPerspective();
 
@@ -162,49 +157,60 @@ class R {
   }
 
   /**
-   * Draws what hangs on the view model (a muzzle flash on its `tag_flash`) with the view model's projection and depth
-   * range, which are set already: opaque entities first, then the blended ones and sprites over them, in the order they were
-   * staged (there are few, so they are not sorted by distance).
+   * Draws the weapon model in front of the world, in a depth range of its own and with its own field of view, with what hangs
+   * on it that is solid. It runs before the world, which then fails the depth test wherever the weapon is. What is blended
+   * (a muzzle flash sprite) has to be drawn after the world: `DrawViewModelBlended`.
    */
-  static #drawViewModelAttachments(): void {
-    const attachments = clientRuntimeState.clientEntities.resolveViewmodelAttachments();
+  static DrawViewModel() {
+    const viewent = R.#drawableViewModel();
 
-    if (attachments.length === 0) {
+    if (viewent === null) {
       return;
     }
 
-    const spriteRenderer = modelRendererRegistry.getRendererForModelClass(SpriteModel);
-    let hasBlended = false;
+    const renderer = modelRendererRegistry.getRendererForModel(viewent.model!);
+    console.assert(renderer !== null, `renderer required for ${viewent.model!.constructor.name}`);
 
-    for (const entity of attachments) {
-      const model = entity.model;
+    const aspect = R.#beginViewModelPass();
 
-      if (model === null || entity.alpha === 0.0) {
-        continue;
-      }
-
-      const renderer = modelRendererRegistry.getRendererForModel(model);
-
-      if (renderer === null) {
-        continue;
-      }
-
-      if (renderer === spriteRenderer || !renderer.rendersOpaquePass(model, entity)) {
-        hasBlended = true;
-        continue;
-      }
-
+    if (renderer !== null) {
       renderer.setupRenderState(0);
-      renderer.render(model, entity, 0);
+      renderer.render(viewent.model!, viewent, 0);
       renderer.cleanupRenderState(0);
+      R.#drawViewModelAttachments(false);
     }
 
-    if (!hasBlended) {
+    R.#endViewModelPass(aspect);
+  }
+
+  /**
+   * Draws what hangs on the view model and is blended, over the finished scene: the blended pass of the weapon. It sits in the
+   * weapon's depth range, so it is in front of the world and behind the parts of the weapon that cover it, and it writes no depth.
+   * Drawn before the world, the world would cover it wherever the weapon is not.
+   */
+  static DrawViewModelBlended() {
+    if (R.#drawableViewModel() === null || clientRuntimeState.clientEntities.resolveViewmodelAttachments().length === 0) {
       return;
     }
 
-    gl.depthMask(false);
-    gl.enable(gl.BLEND);
+    const aspect = R.#beginViewModelPass();
+
+    gl.enable(gl.CULL_FACE);
+    R.#drawViewModelAttachments(true);
+    gl.disable(gl.CULL_FACE);
+
+    R.#endViewModelPass(aspect);
+  }
+
+  /**
+   * Draws what hangs on the view model (a muzzle flash on its `tag_flash`) with the view model's projection and depth
+   * range, which are set already, in the order they were staged (there are few, so they are not sorted by distance).
+   * @param blended `false` for the solid entities, `true` for the ones that are blended and the sprites.
+   */
+  static #drawViewModelAttachments(blended: boolean): void {
+    const attachments = clientRuntimeState.clientEntities.resolveViewmodelAttachments();
+    const spriteRenderer = modelRendererRegistry.getRendererForModelClass(SpriteModel);
+    let blendSet = false;
 
     for (const entity of attachments) {
       const model = entity.model;
@@ -219,27 +225,50 @@ class R {
         continue;
       }
 
-      if (renderer === spriteRenderer) {
+      const isSprite = renderer === spriteRenderer;
+
+      if ((isSprite || !renderer.rendersOpaquePass(model, entity)) !== blended) {
+        continue;
+      }
+
+      if (!blended) {
+        renderer.setupRenderState(0);
+        renderer.render(model, entity, 0);
+        renderer.cleanupRenderState(0);
+        continue;
+      }
+
+      if (!isSprite && !renderer.rendersTransparentPass(model, entity)) {
+        continue;
+      }
+
+      if (!blendSet) {
+        gl.depthMask(false);
+        gl.enable(gl.BLEND);
+        blendSet = true;
+      }
+
+      if (isSprite) {
         // sprite textures and the sprite shader's output are premultiplied
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         renderer.setupRenderState(1);
         renderer.render(model, entity, 1);
         renderer.cleanupRenderState(1);
-      } else if (renderer.rendersTransparentPass(model, entity)) {
+      } else {
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         renderer.setupRenderState(2);
         renderer.render(model, entity, 2);
         renderer.cleanupRenderState(2);
-      } else {
-        continue;
       }
 
       // sprites are streamed: they are drawn at the flush, which has to happen before the projection changes back
       GL.StreamFlush();
     }
 
-    gl.disable(gl.BLEND);
-    gl.depthMask(true);
+    if (blendSet) {
+      gl.disable(gl.BLEND);
+      gl.depthMask(true);
+    }
   }
 
   /**
@@ -410,7 +439,7 @@ class R {
   /**
    * Renders the 3D scene of the frame into the current target, in pass order: visibility, shadow maps, the dynamic
    * lightmap, the frame's GL and uniform setup, the turbulent boundary depth, sky, view model, then world and
-   * entities.
+   * entities, and last what hangs on the view model and is blended.
    */
   static RenderScene() {
     Camera.SetFrustum();
@@ -452,6 +481,10 @@ class R {
     FrameProfiler.end();
 
     R.RenderWorld();
+
+    FrameProfiler.begin('view model blended');
+    R.DrawViewModelBlended();
+    FrameProfiler.end();
   }
 
   /**
