@@ -2,8 +2,9 @@
 
 ## Status
 
-📝 Draft, nothing implemented, no open questions left (all settled 2026-11-13; quaternion handling
-added 2026-11-14, decisions 19–21). Phases 0 to 4 and S done on 2026-11-15 (results below). Phases 5 and 6 done the same day. Phase 7 done on 2026-11-16 (exporter half and Hellwave half, results below); next: Phase 8.
+✅ Phases 0 to 7d are done (2026-11-15 and 2026-11-16, results below), and the branch `skeletal-models` is ready to merge into `main` apart from the checks under
+"Before the merge". The protocol is at 45. Not started: Phase 8 (IQM view weapons) and Phase 9 (polish, only as measured). All questions were settled on 2026-11-13; quaternion handling
+was added on 2026-11-14 (decisions 19–21).
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
 parked: the core only has to leave room for them (Later: Half-Life studio models).
@@ -596,6 +597,13 @@ for the three cone families, which no weapon uses yet), `ClientEdict.setAttachme
   client entity placed at the tag with the tag's angles, since an attached `oriented` sprite does not turn with its parent) are not wired.
 - Not checked: a real GPU and 60 frames per second (the freshness bug is only visible below 5 frames per second there, so it is a hitch and slow device bug), a second human player, the production build.
 
+### Phase 7d: beams start at the muzzle (2026-11-16)
+
+Shipped (`56901be6`, documented in "Beams" of `docs/skeletal-models.md`): a lightning beam (`te.lightning1` to `te.lightning3`) starts on the `tag_flash` of the entity that fired it (its own, or
+its weapon's), the same place the muzzle flash uses, and follows it every frame while the beam lasts; the end stays where the server's trace hit. A shooter without a muzzle keeps the server's start
+(its origin plus 16 up). The local player in first person still starts at the player's origin, since the player model is not drawn there; a chase view uses the muzzle. Test: `test/client/beam-start.test.ts`.
+Not checked in a browser.
+
 ### Decisions (2026-11-12, from the maintainer)
 
 1. **IQM first.** It is the first skeletal format. Half-Life `IDST` v10 follows later as a second
@@ -656,7 +664,7 @@ for the three cone families, which no weapon uses yet), `ClientEdict.setAttachme
 
 ### Decisions carried over from the Half-Life plan (2026-10-03 and 2026-10-23)
 
-- **The protocol may be bumped** (see decision 16). It is still at 43 (`Protocol.ts:3`).
+- **The protocol may be bumped** (see decision 16). Phase S took it to 44 and Phase 6 to 45 (`Protocol.ts:3`).
 - **Collision: entity AABBs.** No hitbox or triangle collision in this plan (F).
 - **Restart and resume.** A game must be able to restart a sequence and resume it partway through
   (after a savegame load, for a late joiner). `animtime` is an absolute server time (E).
@@ -717,7 +725,7 @@ World models (`g_shot`, `g_nail`, `g_rock`, …) have no rig. The barrel lies al
 units long, floating at z 23–37 (the pickup pose, since pickups rotate around their origin). Each
 weapon needs a grip transform before it can be held (J).
 
-### What exists today (verified in source 2026-11-12)
+### What exists today (verified in source 2026-11-12, before Phase 0; the phase results above say what changed)
 
 - **Loaders** are picked by extension plus magic
   ([ModelLoader.ts](../source/engine/common/model/ModelLoader.ts)) and registered in
@@ -1192,24 +1200,33 @@ client-only attachments, chains, visibility and prediction rules.
 interpolated child matches parent tag.* *Browser: an entity attached to a monster's tag stays on it
 while it animates, with shadows, in third person.* *Exit: general attachments work.* **Done 2026-11-15, see Phase 6 results.**
 
-**Phase 7: exporter features for attachments, Hellwave integration.** **Done 2026-11-16, see the Phase 7 results.** Cutting out parts, tag
+**Phase 7: exporter features for attachments, Hellwave integration.** **Done 2026-11-16, see the Phase 7 results (and 7b to 7d for the follow-ups).** Cutting out parts, tag
 renaming, colormap masks, `export_attachment.py` with grip files; Hellwave player and weapons, gun
 and melee slots, muzzle flash sprites. Hellwave is its own repository (`submodule-aware-commit`).
 *Browser: co-op with two players in chase cam, weapon switches, axe with the gun on the back, flashes
 at the barrel.* *Exit: Hellwave players carry their weapons.*
 
-**Phase 8: IQM view weapons.** `R.DrawViewModel` renderer-agnostic (can ship earlier on its own),
+**Phase 8: IQM view weapons.** **Not started; not needed for the merge (decision 3).** `R.DrawViewModel` renderer-agnostic (can ship earlier on its own),
 `ViewmodelConfig` sequence fields, view model tags and attached entities in the view model pass.
 `v_axe` and `v_nail2` are rigged; the shape-key view weapons stay MDL until reworked in Blender.
 
-**Phase 9: polish, as measured.** GPU skinning if Phase 4's numbers ask for it; skipping pose updates
+**Phase 9: polish, as measured.** **Not started; waits for real-GPU numbers (see "Before the merge").** GPU skinning if Phase 4's numbers ask for it; skipping pose updates
 for far entities.
 
-**Open items kept from Phase 7 (2026-11-16), both decided to wait:**
+**Open items kept from Phase 7 (2026-11-16), decided to wait:**
 - **Look pitch precision.** The entity pitch is one byte on the wire (1.4 degrees, so 4.2 degrees of look pitch, interpolated); the bend of the spine looks smooth at slow sweeps and the maintainer is happy with it. If it ever
   bothers (fast looking, a remote player's head), the fix is the full view pitch on the wire for player entities (a wire change and a protocol bump), or a client-side smoothing of the joint angles. Watch for it in multiplayer.
-- **Muzzle flash sprite.** The light sits at the gun's `tag_flash`; the additive sprite of Phase 7's plan is not made because there is no asset yet (the maintainer is looking for one). Once there is one:
-  `ClientEngineAPI.AllocEntity` plus `setAttachment(gun, 'tag_flash')` in Hellwave's client code, shown for the time of the `EF_MUZZLEFLASH` light, with a random roll.
+- **Muzzle flash sprite scales and cone flashes.** The sprite itself shipped in Phase 7c; what is left is the scale per weapon family (one number in each `.gif.json`, chosen blind) and the three cone families, which no
+  weapon uses yet and which need a client entity placed at the tag with the tag's angles. The nailgun is counted 7 to 10% short in the in-page server's slow frames (Phase 7c).
+
+**Before the merge (checks the plan owes, none of them a known bug):**
+1. **A colored MDL player in a browser.** The Phase 4 fix (`tPlayer` behind the shadow samplers) is only unit tested; the bug it fixes blacked out the whole world and remote players in multiplayer are colored.
+2. **A real GPU.** Every browser pass ran on software GL. Phase 4's exit item "`r_speeds` with a wave of IQM monsters" is met as counts only; take frame times (`r_speeds`, `r_bench`, `docs/frame-profiling.md`)
+   with a Hellwave wave and record them here. They decide Phase 9.
+3. **Two human players** (what a remote client sees: held weapons, flash sprite, spine bend), once with the in-page server and once with a dedicated server. Phase 7's exit criterion named co-op with two players in chase cam.
+4. `npm run build:production` (the build that ships), a beam in a chase view (Phase 7d), and the shadow of an attached entity.
+
+Known and accepted: pointer lock and mouse look were never exercised in the headless harness.
 
 Half-Life studio models are not a phase of this plan (Later: Half-Life studio models).
 
@@ -1238,9 +1255,8 @@ Half-Life studio models are not a phase of this plan (Later: Half-Life studio mo
   `entity-attachments.test.ts`, protocol round trips in the existing protocol tests) and
   `test/renderer/` (`skeletal-model-renderer.test.ts` with the GL mocks).
 - A typed synthetic IQM builder in `test/support/` for the unit tests. In addition, a small
-  IQM made from LibreQuake assets is committed to `data/` for an end-to-end test (decided
-  2026-11-13: loader, animation and tags on a real export). That triggers `dockerfile-fixture-sync`
-  (Dockerfile `COPY`, `.dockerignore`), and the BSD-3 attribution goes next to the file.
+  IQM made from LibreQuake assets is committed for an end-to-end test (decided
+  2026-11-13: loader, animation and tags on a real export; it lives in `test/fixtures/skeletal/`, which the Dockerfile already copies, see Phase 2 results). The BSD-3 attribution is next to the file.
 - Shaders: `test/renderer/shader-library.test.ts` compiles and links every program; browser passes
   are the gate for how things look (Phases 4, 6, 7, 8).
 - Exporter: Python tests in `qs-tools` that build a scene in Blender, export it and read the result
