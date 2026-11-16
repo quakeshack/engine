@@ -154,6 +154,10 @@ if (engine.GetEntityTag(entity, 'tag_flash', origin, angles)) {
   works out where an attached child is only when its parent is freed).
 - **The muzzle flash**: an entity with `EF_MUZZLEFLASH` puts its dynamic light on the model's `tag_flash` when it has one (the pose
   does not blend during a flash, like for alias models), and 20 units ahead and 16 up from the origin, as always, when it has not.
+- **Beams** (the lightning gun, `te.lightning1` to `te.lightning3`): a beam starts at the muzzle of the entity that fired it, the same place the muzzle flash
+  uses, and follows it every frame while the beam lasts (the end stays where the server's trace hit). A shooter without a muzzle starts it where the server sent it
+  (its origin plus 16 up). The local player's own beam starts at the player's origin in first person (the player's model is not drawn, the viewmodel is, so
+  its muzzle is not on the screen) and at the muzzle in a chase view (`chase_active 1`).
 - **`entitytag <entity number> [tag]`** prints where a tag of an entity is in the world (and without a tag name lists the tags of its
   model). Run it again while the entity animates or moves and the numbers move with it; `entities` lists the numbers.
 

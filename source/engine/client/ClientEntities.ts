@@ -26,6 +26,7 @@ import Host from '../common/Host.ts';
 import S from './Sound.ts';
 import Camera from './renderer/scene/Camera.ts';
 import { EntityAttachments } from './EntityAttachments.ts';
+import { EntityTags } from './EntityTags.ts';
 import { MAX_ATTACHMENT_DEPTH } from '../common/AttachmentTransform.ts';
 
 interface ClientEntityLerpState {
@@ -850,6 +851,9 @@ export default class ClientEntities {
   /** current beams */
   beams: ClientBeam[] = [];
 
+  /** Scratch for where a beam's shooter has its muzzle. */
+  readonly #beamMuzzle = new Vector();
+
   num_temp_entities = 0;
   num_visedicts = 0;
 
@@ -1193,6 +1197,36 @@ export default class ClientEntities {
     return this.entities[num]!;
   }
 
+  /**
+   * Where a beam starts this frame. The server sends the shooter's origin; a shooter whose model has a muzzle (its own
+   * `tag_flash`, or that of the weapon it holds) gets the beam there instead, every frame, so it leaves the weapon and
+   * follows it. The same tag places the muzzle flash. Without a muzzle the beam starts where the server said.
+   *
+   * The local player in first person is the exception: the player's model is not drawn, so its muzzle is not on the
+   * screen (the viewmodel is), and the beam starts at the player's origin, as it always did. In a chase view the model is
+   * drawn and the muzzle is used.
+   * @returns The start, `null` when the beam is the local player's and the player entity is not there.
+   */
+  #beamStart(beam: ClientBeam): Vector | null {
+    const isFirstPerson = beam.entity === clientRuntimeState.viewentity && !Chase.active.value;
+
+    if (isFirstPerson) {
+      return clientRuntimeState.playerentity?.origin ?? null;
+    }
+
+    const shooter = beam.entity > 0 ? this.entities[beam.entity] : undefined;
+
+    if (shooter !== undefined && !shooter.free && EntityTags.resolveMuzzleFlash(shooter, this.#beamMuzzle)) {
+      return this.#beamMuzzle;
+    }
+
+    if (beam.entity === clientRuntimeState.viewentity) {
+      return clientRuntimeState.playerentity?.origin ?? null;
+    }
+
+    return beam.start;
+  }
+
   #thinkTempEntities(): void {
     // TODO: rework
     this.num_temp_entities = 0;
@@ -1203,14 +1237,11 @@ export default class ClientEntities {
       if (b.model === null || b.endtime < clientRuntimeState.time) {
         continue;
       }
-      if (b.entity === clientRuntimeState.viewentity) {
-        if (clientRuntimeState.playerentity === null) {
-          continue;
-        }
-
-        b.start = clientRuntimeState.playerentity.origin.copy();
+      const start = this.#beamStart(b);
+      if (start === null) {
+        continue;
       }
-      const dist = b.end.copy().subtract(b.start);
+      const dist = b.end.copy().subtract(start);
       if ((dist[0] === 0.0) && (dist[1] === 0.0)) {
         yaw = 0;
         pitch = dist[2] > 0.0 ? 90 : 270;
@@ -1224,7 +1255,7 @@ export default class ClientEntities {
           pitch += 360;
         }
       }
-      const org = b.start.copy();
+      const org = start.copy();
 
       let d = dist.len();
 
