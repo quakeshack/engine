@@ -2042,6 +2042,13 @@ export class WebRTCDriver extends BaseDriver {
       return;
     }
 
+    // A joined client's socket is looked up by session, not by peer, and the master server relays
+    // every `peer-left` of the session to it: only the peer it actually has a connection to counts.
+    if (!this.isHost && !socketData.peerConnections.has(peerId)) {
+      this.net.con.DPrint(`WebRTCDriver._ClosePeerConnection: Ignoring ${peerId}, not the peer this client is connected to\n`);
+      return;
+    }
+
     sock.state = QSocket.STATE_DISCONNECTING;
 
     const peerConnection = socketData.peerConnections.get(peerId);
