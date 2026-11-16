@@ -7,7 +7,6 @@ import Vector from '../../shared/Vector.ts';
 import { effect, modelFlags } from '../../shared/Defs.ts';
 import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
 
-import type { ClientEdict } from './ClientEntities.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import { EntityTags } from './EntityTags.ts';
 import Particles from './renderer/effects/Particles.ts';
@@ -19,27 +18,6 @@ import Particles from './renderer/effects/Particles.ts';
  * no specific game implementation is provided.
  */
 export class DefaultClientEdictHandler extends BaseClientEdictHandler {
-  /**
-   * Where the muzzle flash of an entity is when a model has a place for it: the entity's own `tag_flash`, else that of
-   * an entity attached to it (the weapon a player holds).
-   * @param clent The entity with `EF_MUZZLEFLASH`.
-   * @param out Receives the position.
-   * @returns `false` when neither has one, and the flash goes where it always did.
-   */
-  static #resolveFlashTag(clent: ClientEdict, out: Vector): boolean {
-    if (EntityTags.resolve(clent, 'tag_flash', out)) {
-      return true;
-    }
-
-    for (const child of clientRuntimeState.clientEntities.getEntities()) {
-      if (child.attachmentParent === clent && EntityTags.resolve(child, 'tag_flash', out)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
   emit(): void {
     const clent = this.clientEdict;
     // an attached entity's own origin, and the one before it, are offsets in tag space: lights and trails go where it
@@ -58,7 +36,7 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
       const dl = clientRuntimeState.clientEntities.allocateDynamicLight(clent.num);
       const flashOrigin = new Vector();
 
-      if (DefaultClientEdictHandler.#resolveFlashTag(clent, flashOrigin)) {
+      if (EntityTags.resolveMuzzleFlash(clent, flashOrigin)) {
         // a model with a tag at its muzzle, or a weapon attached to the entity that has one: the light sits there, whatever the pose
         dl.origin = flashOrigin;
       } else {

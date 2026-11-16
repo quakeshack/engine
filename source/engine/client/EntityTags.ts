@@ -3,6 +3,7 @@ import type Vector from '../../shared/Vector.ts';
 import { TRANSFORM_SIZE } from '../common/AttachmentTransform.ts';
 import { SkeletalModel } from '../common/model/SkeletalModel.ts';
 import type { ClientEdict } from './ClientEntities.ts';
+import { clientRuntimeState } from './ClientState.ts';
 import { EntityAttachments } from './EntityAttachments.ts';
 import { SkeletalPoseSelection } from './renderer/models/SkeletalPoseSelection.ts';
 
@@ -28,6 +29,27 @@ export class EntityTags {
 
   static readonly #noOffset = new Float32Array(3);
   static readonly #noScale = new Float32Array([1, 1, 1]);
+
+  /**
+   * Where the muzzle flash of an entity goes when a model has a place for it: the entity's own `tag_flash`, else that of
+   * an entity attached to it (the weapon a player holds).
+   * @param entity The entity with `EF_MUZZLEFLASH`.
+   * @param outOrigin Receives the world position.
+   * @returns `false` when neither has one, and the output is untouched: the flash goes where it always did.
+   */
+  static resolveMuzzleFlash(entity: ClientEdict, outOrigin: Vector): boolean {
+    if (EntityTags.resolve(entity, 'tag_flash', outOrigin)) {
+      return true;
+    }
+
+    for (const child of clientRuntimeState.clientEntities.getEntities()) {
+      if (child.attachmentParent === entity && EntityTags.resolve(child, 'tag_flash', outOrigin)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 
   /**
    * Finds where a tag is in the world right now: the entity's smoothed origin and angles (or, for an entity attached to

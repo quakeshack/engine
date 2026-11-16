@@ -539,6 +539,18 @@ export class ClientEngineAPI extends CommonEngineAPI {
   }
 
   /**
+   * Where the muzzle flash of an entity that has `EF_MUZZLEFLASH` goes, as the engine puts it: the entity's own `tag_flash`, else
+   * the `tag_flash` of an entity attached to it (the weapon a player holds), as drawn this frame. A game that makes its own flash
+   * light asks here, so that it sits at the barrel and not at a fixed offset.
+   * @param entity The entity.
+   * @param outOrigin Receives the world position.
+   * @returns `false` when neither the entity nor anything attached to it has a `tag_flash`, and the output is untouched.
+   */
+  GetMuzzleFlashOrigin(entity: ClientEdict, outOrigin: Vector): boolean {
+    return EntityTags.resolveMuzzleFlash(entity, outOrigin);
+  }
+
+  /**
    * Get a model by id.
    * @returns The model.
    */

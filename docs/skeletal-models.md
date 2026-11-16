@@ -192,7 +192,7 @@ flashSprite.setAttachment(weaponEntity, 'tag_flash');
 - **Renderers draw with `lerp.rotationMatrix`**, not `lerp.angles`: for an entity that stands free it is the matrix of its angles, for an
   attached one the rotation the attachment resolved, which never becomes angles on the way. An oriented sprite (`angles` selects its
   facing) takes the place of its parent but not the parent's turn; a flash sprite that faces the camera is not affected.
-- **The muzzle flash** of an entity with `EF_MUZZLEFLASH` goes to its own `tag_flash`, else to the `tag_flash` of an entity attached to it
+- **The muzzle flash** of an entity with `EF_MUZZLEFLASH` (the engine's default handler; a game that makes its own light asks `ClientEngineAPI.GetMuzzleFlashOrigin(entity, out)`, which answers the same way) goes to its own `tag_flash`, else to the `tag_flash` of an entity attached to it
   (the weapon it holds), else to the fixed place. Whichever place the game picks, the light of a server entity is pulled back out of a wall it ended up in (the fixed place is 20 units ahead,
   a player's hull is 16 wide), to 4 units before the wall on the line from the entity, so a flash against a wall still lights the room. The entity a dynamic light belongs to, and what is attached to it, does not cast into that light's cube shadow: the light sits at its weapon,
   where an arm or the weapon covers part of it in some poses.

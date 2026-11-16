@@ -3,8 +3,7 @@
 ## Status
 
 📝 Draft, nothing implemented, no open questions left (all settled 2026-11-13; quaternion handling
-added 2026-11-14, decisions 19–21). Phases 0 to 4 and S done on 2026-11-15 (results below). Phases 5 and 6 done the same day. Phase 7's exporter half done on 2026-11-16 (results below); next: Phase 7's
-Hellwave half.
+added 2026-11-14, decisions 19–21). Phases 0 to 4 and S done on 2026-11-15 (results below). Phases 5 and 6 done the same day. Phase 7 done on 2026-11-16 (exporter half and Hellwave half, results below); next: Phase 8.
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
 parked: the core only has to leave room for them (Later: Half-Life studio models).
@@ -481,6 +480,54 @@ Differences from the plan, and why:
 
 Not done: the Hellwave half of Phase 7 (assets exported into Hellwave, weapon table, gun and melee slots, muzzle flash sprites) and its browser pass. The exported player has not been
 drawn in the engine yet (the loader and tags are checked, the picture is not), and a weapon grip for any real weapon is still to be fitted by hand.
+
+### Phase 7 results, Hellwave half (2026-11-16)
+
+Shipped, in five repositories (none pushed): **qs-tools** `9aa5f47` (`fit_grip.py`, `export_attachment.py --tag-muzzle`, tests, README); **id1** `b18e731`
+(`PlayerEntity._modelPlayer`, `WeaponConfigEntry.playerModel`, the player client handler's muzzle flash); **Hellwave game** `39d5bcc` (`HeldWeaponEntity`, `HellwavePlayer`
+changes, `docs/held-weapons.md`); **Hellwave data** `f7eb668` (`progs/player.iqm`, `progs/p_*.iqm`, textures, `progs/src/build-models.sh`, `progs/src/grips/*.json`); **this
+repository** (`EntityTags.resolveMuzzleFlash`, `ClientEngineAPI.GetMuzzleFlashOrigin`, docs).
+
+- **Player**: `progs/player.iqm` (24 joints, 143 frames) with the tags `tag_weapon` and `tag_axe`, colormap masks, and **no `tag_flash`**: the engine prefers the
+  entity's own `tag_flash` over a held weapon's, so the rig's `flash` bone would have kept every flash at the built-in gun's place. Each weapon model has its own muzzle
+  (`export_attachment.py --tag-muzzle`, the middle of the face at the largest X, 22 to 27 units ahead of the player).
+- **Weapons**: eight models (`p_shot1`, `p_shot`, `p_nail`, `p_nail2`, `p_rock`, `p_rock2`, `p_light`, `p_axe`) from the LibreQuake world models with grips from `fit_grip.py`:
+  the world model's barrel onto the long axis of the gun that is built into the LibreQuake player, its center onto that gun's center, at scale 1. The axe needed `--axis pca` on
+  both steps (the first guess, with the front picked by a "forward" direction that means nothing for an axe, had the blade at the hand; the head is now the wider end).
+- **Game side**: each player owns a gun entity on `tag_weapon` (the last gun, always drawn, on the back while the axe is out) and an axe entity on `tag_axe` (drawn while it is
+  the weapon in use, `EF_NODRAW` otherwise); `_syncHeldWeapons()` is idempotent and runs on weapon change, every `playerPostThink`, death, spectate and return; dead, spectating
+  and invisible players carry nothing. Tests: 8 for the held weapons (a stand-in player and engine, so the logic is checked, not the declarations), 3 for the id1 handler, 1 for
+  the swappable model.
+- **Engine**: the id1 player handler allocated the flash with the fixed offset, so the engine's tag rule (it lives in `ClientLegacy`) never ran for players. The rule is now
+  `EntityTags.resolveMuzzleFlash`, shared by `ClientLegacy` and `ClientEngineAPI.GetMuzzleFlashOrigin`, and id1's handler asks it. `npm test` 3,395 pass, typecheck zero.
+
+**Browser passes** (`browser-ui-verification`, software GL, hw_e1m2, in-page worker server, `sv_cheats 1` set after the map loaded, `impulse 9`, `chase_active 1`, camera
+override for the views):
+- *First*: the player draws solid and textured; `color 4 13` against `color 13 4` swaps the shirt and pants tints. At start only the axe is on `tag_axe` (tag 22 is `tag_weapon`
+  once a gun is picked); switching to a gun hides the axe (`EF_NODRAW`) and shows the gun in the hand; with the axe out the last gun hangs diagonally on the back. All seven guns
+  were judged from four views each: shotgun, super shotgun and nailgun good; super nailgun, grenade launcher and rocket launcher acceptable (big, they cover part of the torso or stick
+  out behind); thunderbolt the weakest (prongs stick out sideways, one passes through the shoulder in the side view). Axe upside down (fixed, below). After `kill` the held entities are
+  gone and the corpse model is `h_player.mdl`; after the restart the player comes back with the axe. No GL errors, no page errors, only 404s of optional files. It found the flash bug.
+- *Second*: with the fix the dynamic flash light equals `GetEntityTag(gun, 'tag_flash')` to 0.000 units, polled every render frame, for all seven guns (forced `EF_MUZZLEFLASH`, 20 to
+  24 samples each) and for real firing of the nailgun (13 samples), rocket launcher (1) and shotgun (2); it is 13.7 to 21 units from the old fixed place. Flush against a wall the
+  `tag_flash` is inside solid for every weapon and the light sits 4 units before the wall, in empty space. First person still gets its own flash (exactly view origin + 20 forward
+  + 32 up) and nothing throws. The refitted axe: haft through the hand, head at the top and front, the right way up, no clipping in the back and left views; the blade looks large
+  (about a third of the figure's height), a judgment call. The gun on the back sits flush against it.
+
+Not checked: pointer lock and mouse look; real-GPU rendering and frame time; **a second human player** (what a remote client sees; only the local player's entity was driven), the
+dedicated-server variant, other maps; spectating, invisibility and disconnect in a browser (unit-tested only); a screenshot of the first-person flash (data only); `r_speeds`. The grips are
+first guesses for **a human to adjust**; the thunderbolt in particular. A flash light keeps the origin it was given for its 0.2 s, so after a rocket's knockback it lags the gun by
+up to about 45 units (the fixed offset did the same). The colormap change seemed to take several seconds to show up in the first pass (not looked into).
+
+Differences from the plan, and why:
+
+- **No muzzle flash sprite.** The plan's Hellwave flash was an additive sprite on the gun's `tag_flash`; what exists now is the light at the barrel (which was the part that was wrong).
+  A sprite needs an asset, which does not exist yet, and a client-side trigger; `ClientEngineAPI.AllocEntity` with `setAttachment(gun, 'tag_flash')` is ready for it.
+- **No `tag_holster`.** The gun on the back comes from the rig, as Phase 0 found.
+- **Weapons are freed, not dropped, when the player dies.** The backpack already carries them in a deathmatch; a corpse holds nothing.
+- **A weapon is one entity, hidden by `EF_NODRAW` for the axe, freed for a player who cannot carry it**, not a fresh entity per switch: switching is frequent in a fight.
+- **The weapon table is filled by the game when the module loads** (`weaponConfig` is a mutable shared map), since `WeaponConfigEntry` is read-only per entry and id1 has no per-game hook.
+- **`PlayerEntity._modelPlayer`** is a new id1 static, the minimum for a game to swap the model; id1's own behavior is unchanged.
 
 ### Decisions (2026-11-12, from the maintainer)
 
@@ -1078,7 +1125,7 @@ client-only attachments, chains, visibility and prediction rules.
 interpolated child matches parent tag.* *Browser: an entity attached to a monster's tag stays on it
 while it animates, with shadows, in third person.* *Exit: general attachments work.* **Done 2026-11-15, see Phase 6 results.**
 
-**Phase 7: exporter features for attachments, Hellwave integration.** *(Exporter half done 2026-11-16, see Phase 7 results.)* Cutting out parts, tag
+**Phase 7: exporter features for attachments, Hellwave integration.** **Done 2026-11-16, see the Phase 7 results.** Cutting out parts, tag
 renaming, colormap masks, `export_attachment.py` with grip files; Hellwave player and weapons, gun
 and melee slots, muzzle flash sprites. Hellwave is its own repository (`submodule-aware-commit`).
 *Browser: co-op with two players in chase cam, weapon switches, axe with the gun on the back, flashes
