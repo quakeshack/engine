@@ -3,7 +3,8 @@
 ## Status
 
 📝 Draft, nothing implemented, no open questions left (all settled 2026-11-13; quaternion handling
-added 2026-11-14, decisions 19–21). Phases 0 to 4 and S done on 2026-11-15 (results below). Phases 5 and 6 done the same day. Next: Phase 7.
+added 2026-11-14, decisions 19–21). Phases 0 to 4 and S done on 2026-11-15 (results below). Phases 5 and 6 done the same day. Phase 7's exporter half done on 2026-11-16 (results below); next: Phase 7's
+Hellwave half.
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
 parked: the core only has to leave room for them (Later: Half-Life studio models).
@@ -81,7 +82,7 @@ Phase 0 is complete apart from this plan's go-ahead to start Phase 1.
 
 ### Phase 1 results (2026-11-15)
 
-Shipped in `qs-tools/blender/` (the `qs-tools` repository, **not committed yet**): `export_iqm.py`,
+Shipped in `qs-tools/blender/` (the `qs-tools` repository, commit `8c489f3`): `export_iqm.py`,
 `iqm_format.py` (a complete IQM v2 reader and writer with no Blender dependency, in numpy),
 `tests/test_iqm_format.py` (32 tests), `tests/test_export_iqm.py` (35 tests, scenes built in headless
 Blender and compared frame by frame with Blender's own evaluated mesh), `run-tests.sh`, `README.md`.
@@ -119,7 +120,7 @@ Blender and compared frame by frame with Blender's own evaluated mesh), `run-tes
 
 ### Phase 2 results (2026-11-15)
 
-Shipped (this repository, **not committed yet**): `ModelType.skeletal = 4`; `SkeletalModel` (abstract) and `IQMModel`
+Shipped: `ModelType.skeletal = 4`; `SkeletalModel` (abstract) and `IQMModel`
 (`common/model/`); `IQMLoader` (`common/model/loaders/`), registered in `Mod.Init`; `modelinfo <model>`
 (`common/model/ModelInfoCommand.ts`, registered in `Host.InitCommands`, so the client and the dedicated server both have it);
 `docs/skeletal-models.md` and its entry in `docs/README.md`; the unused `MeshModel` stubs (`animations`, `bones`, `submeshes`,
@@ -154,7 +155,7 @@ Differences from the plan, and why:
 
 ### Phase 3 results (2026-11-15)
 
-Shipped (this repository, **not committed yet**): `SkeletalAnimation` (`common/model/SkeletalAnimation.ts`);
+Shipped: `SkeletalAnimation` (`common/model/SkeletalAnimation.ts`);
 `SkeletalModel.inverseBindMatrices`, filled by `IQMLoader` at load; the flat-array helpers on `Quaternion` in `source/shared/Vector.ts`;
 the "Posing a model" section of `docs/skeletal-models.md`.
 
@@ -197,7 +198,7 @@ Differences from the plan, and why:
 
 ### Phase 4 results (2026-11-15)
 
-Shipped (this repository, **not committed yet**): `SkeletalModelRenderer` (`client/renderer/models/`, registered for `IQMModel` in
+Shipped: `SkeletalModelRenderer` (`client/renderer/models/`, registered for `IQMModel` in
 `R.Init`), the `skeletal` program (`skeletal.vert`/`.frag`), `SkeletalAnimation.skinMeshInto`, `SkeletalMaterialLoader`, `PlayerColors`,
 `ModelLoadContext.textures`, `GL.CreateProgram` accepting `null` for an empty texture unit, and the "Drawing", "Textures" and "Texture
 units" sections of `docs/skeletal-models.md` (plus a README line and the `docs/shader-chunks.md` tables).
@@ -392,7 +393,7 @@ Differences from the plan, and why:
 
 ### Phase 6 results (2026-11-15)
 
-Shipped (**not committed yet**): protocol 45 with `u.attachment` (bit 17: parent `uint16`, tag index signed short), `ServerEdict.setAttachment`/`clearAttachment`
+Shipped: protocol 45 with `u.attachment` (bit 17: parent `uint16`, tag index signed short), `ServerEdict.setAttachment`/`clearAttachment`
 and their rules, `ClientEdict.setAttachment`/`clearAttachment`, `AttachmentTransform` (the one composition, used by both realms), `ServerAttachments`,
 `EntityAttachments` (client resolution), `lerp.rotationMatrix`/`lerp.localOrigin`/`worldOrigin`, the renderers moved to them, savegame records, the muzzle flash on a
 child's `tag_flash`, docs ("Attachments" in `docs/skeletal-models.md`, `game-module-contract.md`, `client-entities.md`, README).
@@ -446,6 +447,40 @@ Differences from the plan, and why:
   2 units), it is covered, not enclosed. The owner of a light, and what is attached to it, no longer casts into that light (`ShadowMap.pointLightOwners`); the same
   frames then match the hidden-player reference. A first measurement with a standing pose showed no effect and the change was reverted for a while; the pose was the variable.
 - **`ServerEdict` has no `#private` members** and the new state is symbol-keyed, for the reason above.
+
+### Phase 7 results, exporter half (2026-11-16)
+
+Shipped in `qs-tools/blender/` (commit `5fd64e6`): `export_iqm.py` gained `--strip-groups`, `--tag BONE=NAME` (repeatable) and `--colormap PALETTE.lmp`; the new
+`export_attachment.py` writes attachable models (`--grip FILE` or `--fit-to-bone BONE`, `--tag-empty OBJECT=NAME`); README, `run-tests.sh`. Tests: 57 scene tests for
+`export_iqm` (22 new), 28 for `export_attachment`, 32 pure ones; mutation checks (grip applied in the wrong order, no rigid frame in the fit, triangles of stripped
+vertices kept, mask ramp, shirt row, PNG row order, Euler order, tag not renamed, tag bone dropped, fit frame ignored) each fail a test; the last one survived at first
+(a weapon parented to the bone gives the same grip at any frame) and got a test with an unparented weapon.
+
+- **The player export**, with the README recipe (`--strip-groups playergun,playeraxe,flash --tag playergun=tag_weapon --tag playeraxe=tag_axe --tag flash=tag_flash
+  --colormap lq1/gfx/palette.lmp`): 25 joints, 143 frames, 603 vertices and 840 triangles, 93 KB. **117 vertices cut, the 59 + 29 + 29 of the survey.** The tags are
+  `tag_weapon` (22), `tag_flash` (23, child of `tag_weapon`) and `tag_axe` (24); no vertex is skinned to any of them. The engine's `IQMLoader` and the Python reader agree on
+  every tag at frames 0 and 60 (0.01 units): frame 0 has `tag_weapon` at (−4.08, 7.40, 19.01) and `tag_axe` at (9.53, −1.15, 2.96), the gun on the back and the axe in the
+  hand of Phase 0. Sequence names and loop flags survive (`axrun` 0, `stand` 2).
+- **The skin split**: 7,473 shirt pixels (row 1) and 20,089 pants pixels (row 6) with a non-zero mask (index 16 and 96, the darkest of a row, get mask 0 and a black
+  base), every pixel of the LibreQuake skin is an exact palette match. Looked at: the base keeps the armor edges and legs without the colorable fills, the shirt mask is the
+  chest armor, the pants mask the leg plates. Two palette colors are shared between a colorable row and another row (indices 16 and 175, 111 and 192); lowest index wins, so
+  they count as colorable, and the exporter says so.
+- **A fitted weapon**: `g_nail` appended into the player's file and parented to `playergun` came out 0.8 times the size of the original on every axis (33.5 long gives
+  26.8, 13.4 wide gives 10.75, 12.8 high gives 10.24): the bone's scale is baked into the model, as the engine needs. The fitting scene was a script, not hand work, so the
+  grip itself (where the weapon sits in the hand) is still art work.
+
+Differences from the plan, and why:
+
+- **The exporter does not orthonormalize tags.** The engine already does when it samples one (`SkeletalAnimation.#orthonormalizeInto`), and doing it in the file as well would
+  distort any vertex still weighted to a tag bone (the pivot of a scaled joint is not its origin). A tag bone with a world scale is reported instead, and the attachable
+  model carries the scale (the grip of `--fit-to-bone` includes it).
+- **`--colormap` takes the palette file** (`palette.lmp`), because the skins are truecolor PNG and the palette index is the only thing that says shirt or pants. Masks are
+  `(index & 15) * 17`, the engine's own alias translation, not DarkPlaces' brightness ratios: the same ramp as the MDL player, so the look is the same.
+- **Grip transforms are JSON files or a fitting scene, tags of an attachable model are empties** (not a second JSON section); one way each, and an empty can be placed by eye.
+- **Deform bones whose group is stripped are not exported** unless tagged; this is what keeps the player's `playergun` family from becoming joints nobody asked for.
+
+Not done: the Hellwave half of Phase 7 (assets exported into Hellwave, weapon table, gun and melee slots, muzzle flash sprites) and its browser pass. The exported player has not been
+drawn in the engine yet (the loader and tags are checked, the picture is not), and a weapon grip for any real weapon is still to be fitted by hand.
 
 ### Decisions (2026-11-12, from the maintainer)
 
@@ -1043,7 +1078,7 @@ client-only attachments, chains, visibility and prediction rules.
 interpolated child matches parent tag.* *Browser: an entity attached to a monster's tag stays on it
 while it animates, with shadows, in third person.* *Exit: general attachments work.* **Done 2026-11-15, see Phase 6 results.**
 
-**Phase 7: exporter features for attachments, Hellwave integration.** Cutting out parts, tag
+**Phase 7: exporter features for attachments, Hellwave integration.** *(Exporter half done 2026-11-16, see Phase 7 results.)* Cutting out parts, tag
 renaming, colormap masks, `export_attachment.py` with grip files; Hellwave player and weapons, gun
 and melee slots, muzzle flash sprites. Hellwave is its own repository (`submodule-aware-commit`).
 *Browser: co-op with two players in chase cam, weapon switches, axe with the gun on the back, flashes
