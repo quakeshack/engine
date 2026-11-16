@@ -634,6 +634,22 @@ Not done, and why:
   offset, and the weapon table's view model names. All of it is game content and Blender work.
 - **No shadow of, and no dynamic light from, what hangs on the weapon** (documented). The flash light keeps using `GetMuzzleFlashOrigin(GetViewmodelEntity(), out)`.
 
+### Phase 8 results, Hellwave half: the shotgun (2026-11-16)
+
+The first IQM view weapon, with its muzzle flash, checked by the maintainer in a real browser ("works").
+
+- **`v_shot` has no rig**: two shape keys, `flame` (a 24-vertex mesh flash) and `kick` (the recoil). The recoil is a rigid motion of all the other vertices (best fit off by 0.008 units
+  at the worst frame, 4 degrees at most), so `qs-tools/blender/bake_shape_keys.py` (new, 12 tests) fits one bone per frame, refuses a file whose keys bend the mesh, and saves a copy
+  that `export_iqm.py` exports: 2 joints (`gun`, `tag_flash` at the front of the barrel), 8 frames, the MDL's. `progs/v_shot.iqm` matches Blender's shape-key mesh in every frame to 0.0083.
+  `build-models.sh` has a `shapekey_viewmodel` line; the other models it builds came out byte-identical.
+- **Game**: `viewModels` in Hellwave's `HeldWeapons.ts` swaps the shotgun's `viewModel` in the weapon table (id1's `weaponframe` drives it unchanged); `FirstPersonMuzzleFlash` puts the flash
+  sprite on the view model's `tag_flash` when the engine counts a shot of the local player.
+- **Found by a browser run**: the flash was spawned, attached, resolved onto the tag and given a draw call, and still invisible: it was drawn in the weapon's pass before the world, and a blended
+  sprite writes no depth, so the world painted over it. Blended attachments now have their own pass after the world (`R.DrawViewModelBlended`, see Phase 8 results, engine half).
+- **Open**: the flash light of id1's first-person handler is still 20 units ahead of the eye, not at the barrel (`GetMuzzleFlashOrigin(GetViewmodelEntity())` is ready); the flash scale is per
+  GIF family and shared with third person (`star_shotgun` is 0.15 now); the other view models (`v_shot2` has five shape keys and needs a look; `v_axe` and `v_nail2` are rigged and go through
+  `export_iqm.py`); the "MDL first-person weapon still looks as before" check of the merge list was not done on its own, though the other weapons were drawn in the same runs.
+
 ### Decisions (2026-11-12, from the maintainer)
 
 1. **IQM first.** It is the first skeletal format. Half-Life `IDST` v10 follows later as a second
