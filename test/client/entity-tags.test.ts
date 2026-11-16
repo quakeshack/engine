@@ -262,6 +262,23 @@ void describe('joint angles of an entity', () => {
     api.SetEntityPitchesBody(entity, true);
     assert.equal(entity.lerp.bodyAngles[0], 20);
   });
+
+  void test('GetViewmodelEntity is the entity the weapon is drawn with, so its tags and joints can be asked for', () => {
+    const api = createClientEngineApi();
+    const weapon = createEntity(createFlashModel());
+    const restore = patchMembers(clientRuntimeState, { viewent: weapon });
+
+    try {
+      assert.equal(api.GetViewmodelEntity(), weapon);
+
+      const origin = new Vector(0, 0, 0);
+
+      assert.equal(api.GetEntityTag(api.GetViewmodelEntity()!, 'tag_flash', origin, new Vector(0, 0, 0)), true);
+      assertNear(origin[0], 110);
+    } finally {
+      restore();
+    }
+  });
 });
 
 void describe('entitytag command', () => {

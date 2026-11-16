@@ -117,7 +117,7 @@ Every `serverdata` message starts this sequence, on connect and after every `cha
 | `ServerGameInterface.force_retouch` | game sets, engine decrements | engine | While non-zero, every entity is re-linked each frame. |
 | `ServerGameInterface.serverflags` | game | engine | Game-defined bits that survive a changelevel (for example Quake's episode runes). Passed to `init`. |
 | `ClientGameInterface.clientdata` | engine writes its contents | game | Must be non-null before the first server update arrives. |
-| `ClientGameInterface.viewmodel` | game | engine | A `null` model draws nothing. |
+| `ClientGameInterface.viewmodel` | game | engine | A `null` model draws nothing. `sequence`, `animtime` and `framerate` are optional and play a sequence of a skeletal model; see [The first-person weapon](skeletal-models.md#the-first-person-weapon). |
 | `ClientGameInterface.calcView(input, result)` | game | engine | Optional. Calculates the first-person view in place of the engine's: the eye and the weapon go into `result`. `ClientEngineAPI.View.calculateDefault(input, result)` is the engine's own, for a game that adjusts it. The engine does the pitch drift before, and the weapon's model and frame, `updateRefDef` and the chase camera after. |
 | `ClientGameInterface.hudReservedHeight(viewsize)` | game | engine | Optional. Pixels at the bottom of the screen that the HUD keeps, so the 3D view is drawn above them. Without it the view has the whole height. |
 

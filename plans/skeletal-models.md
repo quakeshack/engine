@@ -3,7 +3,7 @@
 ## Status
 
 ✅ Phases 0 to 7d are done (2026-11-15 and 2026-11-16, results below), and the branch `skeletal-models` is ready to merge into `main` apart from the checks under
-"Before the merge". The protocol is at 45. Not started: Phase 8 (IQM view weapons) and Phase 9 (polish, only as measured). All questions were settled on 2026-11-13; quaternion handling
+"Before the merge". The protocol is at 45. Phase 8 (IQM view weapons) has its engine half; its assets, the games' side and a browser pass are open. Not started: Phase 9 (polish, only as measured). All questions were settled on 2026-11-13; quaternion handling
 was added on 2026-11-14 (decisions 19–21).
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
@@ -603,6 +603,36 @@ Shipped (`56901be6`, documented in "Beams" of `docs/skeletal-models.md`): a ligh
 its weapon's), the same place the muzzle flash uses, and follows it every frame while the beam lasts; the end stays where the server's trace hit. A shooter without a muzzle keeps the server's start
 (its origin plus 16 up). The local player in first person still starts at the player's origin, since the player model is not drawn there; a chase view uses the muzzle. Test: `test/client/beam-start.test.ts`.
 Not checked in a browser.
+
+### Phase 8 results, engine half (2026-11-16)
+
+Shipped: `FrameUniforms.UploadPerspective`, `R.DrawViewModel` for every renderer, `sequence`/`animtime`/`framerate` on `ViewmodelConfig`,
+`ClientEngineAPI.GetViewmodelEntity`, entities attached to the view model drawn with it (`ClientEntities.resolveViewmodelAttachments`,
+`R.#drawViewModelAttachments`), docs ("The first-person weapon" in `docs/skeletal-models.md`, `game-module-contract.md`, `setAttachment` JSDoc).
+
+- **`DrawViewModel` was alias-only**: it wrote the narrow projection to the `alias` program and drew the weapon with whatever renderer its model had, so a
+  skeletal weapon would have been drawn with the world's field of view, and so would anything attached. The projection now goes to every program that has one
+  (`UploadPerspective`, about forty programs, twice a frame and only while a weapon is drawn), and the frame's own is written back afterwards.
+- **Attachments to the view model are drawn in its pass**, not in the world's: the weapon sits in front of the camera in world units, but a flash placed at its
+  barrel and projected with the world's field of view lands somewhere else on the screen. The entity list is built *before* the view is calculated
+  (`ClientHost` runs `emit()`, then `ScreenFrame.Update()` calls `CalcRefdef`), so a child of the weapon is only collected at emit time (handler run, kept out of
+  `visedicts`) and placed when `DrawViewModel` asks, with the weapon in its place for the frame: no frame of lag, no jitter against the bob. Chains work.
+  Solid children draw first, then blended ones and sprites with the depth mask off and the sprite blend function; the sprite quads are streamed, so the pass flushes
+  before the projection goes back (found while writing the test: a flush per child, solid ones included, was wasted, and a child without a renderer switched the
+  blend state on).
+- **Tests**: 16 more (3,462 to 3,478): `view-model-pass.test.ts` (7: the order of projection, renderer, flush and restore; a missing renderer;
+  everything that hides the weapon; solid, blended and sprite children), 4 emit tests for the collection (late placement, chain, unplaceable, next pass and world-pass
+  attachments untouched), 3 for the sequence fields in `view-refdef.test.ts` (given, stamped by the engine, forgotten), one for `UploadPerspective`, one for the API.
+  Typecheck zero, ESLint clean, `npm test` green.
+
+Not done, and why:
+
+- **No browser pass.** Nothing in this half has been drawn: no game has an IQM view weapon yet, so a pass needs a temporary one (an exported `v_axe`), and the
+  projection and flush order are covered by recorded GL calls only. That is the exit test of this phase.
+- **The assets and the games' side**: `v_axe` and `v_nail2` exported with the Phase 7 exporter (`--tag-on`/`--tag` for `tag_flash`), id1's and Hellwave's client
+  `viewmodel` filling `sequence` (and `animtime` on each shot), the first-person muzzle flash as a sprite on the view model's `tag_flash` in place of the fixed
+  offset, and the weapon table's view model names. All of it is game content and Blender work.
+- **No shadow of, and no dynamic light from, what hangs on the weapon** (documented). The flash light keeps using `GetMuzzleFlashOrigin(GetViewmodelEntity(), out)`.
 
 ### Decisions (2026-11-12, from the maintainer)
 
@@ -1206,7 +1236,7 @@ and melee slots, muzzle flash sprites. Hellwave is its own repository (`submodul
 *Browser: co-op with two players in chase cam, weapon switches, axe with the gun on the back, flashes
 at the barrel.* *Exit: Hellwave players carry their weapons.*
 
-**Phase 8: IQM view weapons.** **Not started; not needed for the merge (decision 3).** `R.DrawViewModel` renderer-agnostic (can ship earlier on its own),
+**Phase 8: IQM view weapons.** **Engine half done 2026-11-16 (see Phase 8 results); assets, the games' side and the browser pass are open. Not needed for the merge (decision 3).** `R.DrawViewModel` renderer-agnostic (can ship earlier on its own),
 `ViewmodelConfig` sequence fields, view model tags and attached entities in the view model pass.
 `v_axe` and `v_nail2` are rigged; the shape-key view weapons stay MDL until reworked in Blender.
 
@@ -1224,7 +1254,8 @@ for far entities.
 2. **A real GPU.** Every browser pass ran on software GL. Phase 4's exit item "`r_speeds` with a wave of IQM monsters" is met as counts only; take frame times (`r_speeds`, `r_bench`, `docs/frame-profiling.md`)
    with a Hellwave wave and record them here. They decide Phase 9.
 3. **Two human players** (what a remote client sees: held weapons, flash sprite, spine bend), once with the in-page server and once with a dedicated server. Phase 7's exit criterion named co-op with two players in chase cam.
-4. `npm run build:production` (the build that ships), a beam in a chase view (Phase 7d), and the shadow of an attached entity.
+4. **The MDL first-person weapon in a browser** (Phase 8 changed how the narrow projection reaches every program; the weapon, the world behind it and the HUD must look as before, in id1 and in Hellwave).
+5. `npm run build:production` (the build that ships), a beam in a chase view (Phase 7d), and the shadow of an attached entity.
 
 Known and accepted: pointer lock and mouse look were never exercised in the headless harness.
 

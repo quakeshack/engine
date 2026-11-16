@@ -12,6 +12,7 @@ import { MeshModelRenderer } from './renderer/models/MeshModelRenderer.ts';
 import { SkeletalModelRenderer } from './renderer/models/SkeletalModelRenderer.ts';
 import { BrushModel } from '../common/model/BSP.ts';
 import { MeshModel } from '../common/model/MeshModel.ts';
+import { SpriteModel } from '../common/model/SpriteModel.ts';
 import { IQMModel } from '../common/model/IQMModel.ts';
 import PostProcess from './renderer/postprocess/PostProcess.ts';
 import BloomEffect from './renderer/postprocess/BloomEffect.ts';
@@ -137,28 +138,108 @@ class R {
 
     gl.depthRange(0.0, 0.3);
 
-    // the weapon is drawn with a narrower field of view than the world
+    // the weapon is drawn with a narrower field of view than the world, whatever program its model is drawn with
     const aspect = Camera.refdef.vrect.width / Camera.refdef.vrect.height;
     Camera.UpdateProjection(viewCvars.fov.value * 0.82, aspect);
-    let program = GL.UseProgram('alias')!;
-    console.assert(program !== null, 'alias program required');
-    gl.uniformMatrix4fv(program.uPerspective!, false, Camera.perspective);
+    FrameUniforms.UploadPerspective();
 
     const viewent = clientRuntimeState.viewent;
     if (viewent !== null && viewent.model !== null) {
-      const aliasRenderer = modelRendererRegistry.getRendererForModel(viewent.model);
-      console.assert(aliasRenderer !== null, 'alias renderer required');
-      aliasRenderer!.setupRenderState(0);
-      aliasRenderer!.render(viewent.model, viewent, 0);
-      aliasRenderer!.cleanupRenderState(0);
+      const renderer = modelRendererRegistry.getRendererForModel(viewent.model);
+      console.assert(renderer !== null, `renderer required for ${viewent.model.constructor.name}`);
+      if (renderer !== null) {
+        renderer.setupRenderState(0);
+        renderer.render(viewent.model, viewent, 0);
+        renderer.cleanupRenderState(0);
+        R.#drawViewModelAttachments();
+      }
     }
 
     Camera.UpdateProjection(Camera.refdef.fov_y, aspect);
-    program = GL.UseProgram('alias')!;
-    console.assert(program !== null, 'alias program required');
-    gl.uniformMatrix4fv(program.uPerspective!, false, Camera.perspective);
+    FrameUniforms.UploadPerspective();
 
     gl.depthRange(0.0, 1.0);
+  }
+
+  /**
+   * Draws what hangs on the view model (a muzzle flash on its `tag_flash`) with the view model's projection and depth
+   * range, which are set already: opaque entities first, then the blended ones and sprites over them, in the order they were
+   * staged (there are few, so they are not sorted by distance).
+   */
+  static #drawViewModelAttachments(): void {
+    const attachments = clientRuntimeState.clientEntities.resolveViewmodelAttachments();
+
+    if (attachments.length === 0) {
+      return;
+    }
+
+    const spriteRenderer = modelRendererRegistry.getRendererForModelClass(SpriteModel);
+    let hasBlended = false;
+
+    for (const entity of attachments) {
+      const model = entity.model;
+
+      if (model === null || entity.alpha === 0.0) {
+        continue;
+      }
+
+      const renderer = modelRendererRegistry.getRendererForModel(model);
+
+      if (renderer === null) {
+        continue;
+      }
+
+      if (renderer === spriteRenderer || !renderer.rendersOpaquePass(model, entity)) {
+        hasBlended = true;
+        continue;
+      }
+
+      renderer.setupRenderState(0);
+      renderer.render(model, entity, 0);
+      renderer.cleanupRenderState(0);
+    }
+
+    if (!hasBlended) {
+      return;
+    }
+
+    gl.depthMask(false);
+    gl.enable(gl.BLEND);
+
+    for (const entity of attachments) {
+      const model = entity.model;
+
+      if (model === null || entity.alpha === 0.0) {
+        continue;
+      }
+
+      const renderer = modelRendererRegistry.getRendererForModel(model);
+
+      if (renderer === null) {
+        continue;
+      }
+
+      if (renderer === spriteRenderer) {
+        // sprite textures and the sprite shader's output are premultiplied
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        renderer.setupRenderState(1);
+        renderer.render(model, entity, 1);
+        renderer.cleanupRenderState(1);
+      } else if (renderer.rendersTransparentPass(model, entity)) {
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        renderer.setupRenderState(2);
+        renderer.render(model, entity, 2);
+        renderer.cleanupRenderState(2);
+      } else {
+        continue;
+      }
+
+      // sprites are streamed: they are drawn at the flush, which has to happen before the projection changes back
+      GL.StreamFlush();
+    }
+
+    gl.disable(gl.BLEND);
+    gl.depthMask(true);
   }
 
   /**

@@ -161,10 +161,16 @@ export default class FirstPersonView {
     if (viewmodel !== null) {
       view.model = viewmodel.model;
       view.frame = viewmodel.frame;
+      view.sequence = viewmodel.sequence ?? -1;
+      view.framerate = viewmodel.framerate ?? 1.0;
+      if (viewmodel.animtime !== undefined && viewmodel.animtime !== null) {
+        view.animtime = viewmodel.animtime;
+      }
       // visibility is considered by R.DrawViewModel
     } else {
       view.model = null;
       view.frame = 0;
+      view.sequence = -1;
     }
 
     // allow lerping viewmodel by heuristic

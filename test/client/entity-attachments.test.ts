@@ -537,4 +537,78 @@ void describe('ClientEntities.emit with attachments', () => {
     assert.deepEqual(drawn, [parent, child]);
     assertAllNear(child.lerp.origin, [110, 200, 300]);
   });
+
+  void describe('what hangs on the view model', () => {
+    const previousViewmodel = clientRuntimeState.viewent;
+    let viewmodel: ClientEdict;
+
+    beforeEach(() => {
+      viewmodel = createEntity(createFlashModel());
+      clientRuntimeState.viewent = viewmodel;
+    });
+
+    afterEach(() => {
+      clientRuntimeState.viewent = previousViewmodel;
+    });
+
+    void test('is kept out of the world pass and placed on the view model\'s tag once the view model has its place', () => {
+      const clientEntities = new ClientEntities();
+      const flash = allocate(clientEntities);
+
+      flash.setAttachment(viewmodel, 'tag_flash');
+
+      // the entity list is built before the frame's view is calculated, so the weapon is not placed yet
+      assert.deepEqual(emit(clientEntities), []);
+
+      viewmodel.origin.setTo(100, 200, 300);
+
+      const attachments = clientEntities.resolveViewmodelAttachments();
+
+      assert.deepEqual(attachments, [flash]);
+      assertAllNear(flash.lerp.origin, [110, 200, 300]);
+    });
+
+    void test('follows a chain on the view model, whatever order the entities were allocated in', () => {
+      const clientEntities = new ClientEntities();
+      const grandchild = allocate(clientEntities);
+      const child = allocate(clientEntities);
+
+      child.setAttachment(viewmodel, 'tag_flash');
+      grandchild.setAttachment(child, 'tag_flash');
+      emit(clientEntities);
+      viewmodel.origin.setTo(100, 0, 0);
+
+      assert.deepEqual(new Set(clientEntities.resolveViewmodelAttachments()), new Set([child, grandchild]));
+      assertAllNear(child.lerp.origin, [110, 0, 0]);
+      assertAllNear(grandchild.lerp.origin, [120, 0, 0]);
+    });
+
+    void test('leaves out what cannot be placed, a view model without a model', () => {
+      const clientEntities = new ClientEntities();
+
+      allocate(clientEntities).setAttachment(viewmodel, 'tag_flash');
+      emit(clientEntities);
+      viewmodel.model = null;
+
+      assert.deepEqual(clientEntities.resolveViewmodelAttachments(), []);
+    });
+
+    void test('forgets an entity that was detached by the next emit pass, and leaves other attachments to the world pass', () => {
+      const clientEntities = new ClientEntities();
+      const flash = allocate(clientEntities);
+      const parent = allocate(clientEntities);
+      const other = allocate(clientEntities);
+
+      flash.setAttachment(viewmodel, 'tag_flash');
+      other.setAttachment(parent, 'tag_flash');
+
+      assert.deepEqual(emit(clientEntities), [parent, other]);
+      assert.deepEqual(clientEntities.resolveViewmodelAttachments(), [flash]);
+
+      flash.clearAttachment();
+      emit(clientEntities);
+
+      assert.deepEqual(clientEntities.resolveViewmodelAttachments(), []);
+    });
+  });
 });

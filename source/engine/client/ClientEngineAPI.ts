@@ -541,6 +541,18 @@ export class ClientEngineAPI extends CommonEngineAPI {
   }
 
   /**
+   * The entity that draws the first-person weapon, for what an entity is asked: its tags (`GetEntityTag`), its joints
+   * (`SetEntityJointAngles`) and what to attach to (`ClientEdict.setAttachment` on an entity from `AllocEntity`). An entity
+   * attached to it is drawn with the weapon, in its narrower field of view and depth range, and only while the weapon is drawn.
+   * The weapon is placed once the frame's view is calculated, so ask from `updateRefDef` or later in the frame; before that
+   * the answer is the previous frame's.
+   * @returns The entity, `null` while no map is loaded. Its `model`, `frame` and `sequence` follow the game's `viewmodel`: do not set them.
+   */
+  GetViewmodelEntity(): ClientEdict | null {
+    return clientRuntimeState.viewent;
+  }
+
+  /**
    * Turns a joint of an entity's skeletal model on top of its animation, for as long as the game keeps setting it (a spine that bends
    * with where a player looks). The rotation is in model space and about the joint's own origin; the joint's place stays, and what
    * hangs below it follows: the vertices skinned to it, the joints under it, and so every tag and every entity attached to them.

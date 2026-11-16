@@ -495,7 +495,8 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
    * Attaches this client-only entity to another entity, to a tag of its model or to its origin, the same as
    * `ServerEdict.setAttachment` does for server entities, without any network traffic: a muzzle flash sprite on the
    * barrel, a spark on a hand. From now on `origin` and `angles` are this entity's offset in the tag's space and it is
-   * drawn exactly when its parent is, hidden in first person when the parent is the view entity. The attachment
+   * drawn exactly when its parent is, hidden in first person when the parent is the view entity. When the parent is the
+   * first-person weapon (`ClientEngineAPI.GetViewmodelEntity()`) it is drawn with the weapon, in the weapon's projection. The attachment
    * follows the parent while it lives; when the parent is freed this entity stops being drawn, and the game that
    * attached it frees it or attaches it elsewhere. Attachments of client-only entities are not saved.
    * @param parent The entity to follow, a server entity or another client-only one.
@@ -867,6 +868,12 @@ export default class ClientEntities {
 
   /** The attached entities of the current `emit()` pass, waiting for their parents (`#emitAttachedEntities`). */
   readonly #attachedCandidates: ClientEdict[] = [];
+
+  /**
+   * The entities of the current `emit()` pass that hang on the view model (directly or through a chain), which are drawn
+   * with it and not with the world (`resolveViewmodelAttachments`).
+   */
+  readonly #viewmodelAttachments: ClientEdict[] = [];
 
   tempEntitySounds: TempEntitySounds = {
     wizhit: null,
@@ -1467,6 +1474,8 @@ export default class ClientEntities {
   #emitAttachedEntities(): void {
     const pending = this.#attachedCandidates;
 
+    this.#takeViewmodelAttachments(pending);
+
     for (let round = 0; round < MAX_ATTACHMENT_DEPTH && pending.length > 0; round++) {
       let remaining = 0;
 
@@ -1488,6 +1497,54 @@ export default class ClientEntities {
     }
 
     pending.length = 0;
+  }
+
+  /**
+   * Moves the entities that hang on the view model out of the candidates. The view model is placed after the entity list
+   * is built (`FirstPersonView.CalcRefdef`) and drawn with a projection of its own, so what hangs on it is resolved and
+   * drawn with it (`resolveViewmodelAttachments`), not with the world. The entity's handler runs now, like it does for the others.
+   * @param pending The attached candidates of this pass; the ones that hang on the view model are removed.
+   */
+  #takeViewmodelAttachments(pending: ClientEdict[]): void {
+    const viewmodel = clientRuntimeState.viewent;
+
+    if (viewmodel === null) {
+      return;
+    }
+
+    let remaining = 0;
+
+    for (const clent of pending) {
+      if (findAttachmentRoot(clent) !== viewmodel) {
+        pending[remaining++] = clent;
+        continue;
+      }
+
+      clent.emit();
+      this.#viewmodelAttachments.push(clent);
+    }
+
+    pending.length = remaining;
+  }
+
+  /**
+   * Places what hangs on the view model, now that the view model has its place for the frame, and says what is to be drawn
+   * with it. An entity that cannot be placed (its parent has no model, or the chain loops) is left out.
+   * @returns The entities to draw with the view model, in the order they were staged. Reused: valid until the next `emit()`.
+   */
+  resolveViewmodelAttachments(): readonly ClientEdict[] {
+    const attachments = this.#viewmodelAttachments;
+    let remaining = 0;
+
+    for (const clent of attachments) {
+      if (EntityAttachments.resolve(clent)) {
+        attachments[remaining++] = clent;
+      }
+    }
+
+    attachments.length = remaining;
+
+    return attachments;
   }
 
   /**
@@ -1526,6 +1583,7 @@ export default class ClientEntities {
 
     this.#emitSerial++;
     this.#attachedCandidates.length = 0;
+    this.#viewmodelAttachments.length = 0;
 
     this.#emitEntities();
     this.#emitProjectiles();

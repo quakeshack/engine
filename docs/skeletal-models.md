@@ -203,6 +203,36 @@ flashSprite.setAttachment(weaponEntity, 'tag_flash');
 - **On the wire** (protocol 45): update bit `u.attachment` (bit 17) is followed by the parent's entity number (`uint16`, 0 detaches) and the
   tag's index (signed short, -1 for the parent's origin).
 
+## The first-person weapon
+
+The view model is an entity of its own (`ClientEngineAPI.GetViewmodelEntity()`) that the engine draws in front of the world, in a narrower
+field of view and a depth range that keeps it out of the walls. It is drawn by whichever renderer its model needs, so a skeletal weapon
+works like an alias one, and the game describes it through `ClientGameInterface.viewmodel`:
+
+```ts
+viewmodel = {
+  visible: true,
+  model: engine.ModForName('progs/v_axe.iqm'),
+  frame: 0,                                   // used while `sequence` is -1 or missing, and by models without sequences
+  sequence: engine.GetSequenceIndex('progs/v_axe.iqm', 'swing'),
+  animtime: lastSwingTime,                    // optional: the client time the sequence started; missing leaves it to the engine
+  framerate: 1,                               // optional
+};
+```
+
+Selecting another `sequence` restarts it (the engine stamps its clock when `animtime` is missing or `null`), the same sequence
+keeps running, and a game restarts a shot's animation by setting `animtime` to the time of the shot.
+
+- **Tags and joints work on it**: `GetEntityTag(GetViewmodelEntity(), 'tag_flash', origin, angles)` is the muzzle as drawn this frame (interpolated,
+  bobbing with the view). The weapon is placed once the frame's view is calculated, so ask from `updateRefDef` or later; before
+  that the answer is the previous frame's. `GetMuzzleFlashOrigin` and `SetEntityJointAngles` take it as well.
+- **Entities attached to it are drawn with it**: `ClientEdict.setAttachment(viewmodelEntity, 'tag_flash')` on a client-only entity
+  (a muzzle flash sprite) draws it in the view model's projection and depth range, so it sits on the barrel on the screen and not where the
+  barrel would be in the world's field of view. Solid entities draw first, blended ones and sprites over them, unsorted. They are
+  drawn exactly when the weapon is (not in a chase view, not with `r_drawviewmodel 0`, not while `viewmodel.visible` is false) and never with the world.
+  A chain works (a flash on a gun part on the weapon). They get no shadows and no dynamic light of their own.
+- **A light at the muzzle** is placed in the world as before: the weapon's world position is real, only its projection is not.
+
 ## Joint rotations: bending a model with the game
 
 A game can turn joints of one entity's skeletal model **on top of the animation**: a spine that bends with where a player looks, a head that
