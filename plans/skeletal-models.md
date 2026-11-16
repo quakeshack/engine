@@ -647,6 +647,9 @@ The first IQM view weapon, with its muzzle flash, checked by the maintainer in a
 - **Found by a browser run**: the flash was spawned, attached, resolved onto the tag and given a draw call, and still invisible: it was drawn in the weapon's pass before the world, and a blended
   sprite writes no depth, so the world painted over it. Blended attachments now have their own pass after the world (`R.DrawViewModelBlended`, see Phase 8 results, engine half).
 - **The flash light** of id1's first-person handler now sits at the view model's `tag_flash` (`GetMuzzleFlashOrigin(GetViewmodelEntity())`), the fixed place 20 units ahead of the eye for a view model without one (id1 commit after `b2a4b0f`; not looked at in a browser).
+- **More view models (2026-11-16)**: `v_shot2` (two recoil keys, off by 0.042 at the worst frame), `v_rock` (the grenade launcher's recoil is a big turn: 0.53 units at the worst frame, built with `--max-error 0.6`)
+  and `v_rock2` (no recoil, only the flash) went through the same script; muzzles are guesses from the end of the barrel (checked on a side-view plot, not in the game), their flash families are those of the
+  held models. `v_nail` (barrels) and `v_light` (claws) move parts on their own, so the script would refuse them: they need a real rig, like `v_axe` and `v_nail2`, which have one. Not looked at in a browser.
 - **Open**: the flash scale is per
   GIF family and shared with third person (`star_shotgun` is 0.15 now); the other view models (`v_shot2` has five shape keys and needs a look; `v_axe` and `v_nail2` are rigged and go through
   `export_iqm.py`); the "MDL first-person weapon still looks as before" check of the merge list was not done on its own, though the other weapons were drawn in the same runs.
