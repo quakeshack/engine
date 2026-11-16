@@ -16,6 +16,7 @@ import RenderStats from '../scene/RenderStats.ts';
 import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
 import { PlayerColors } from './PlayerColors.ts';
 import { SkeletalPoseSelection } from './SkeletalPoseSelection.ts';
+import type { JointAdjustments } from '../../../common/model/JointAdjustments.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -52,6 +53,9 @@ interface SkinnedPose {
   frameA: number;
   frameB: number;
   blend: number;
+  /** The joint rotations the skinning was made with, and their version: a change in either makes the skinning again. */
+  adjustments: JointAdjustments | null;
+  adjustmentsVersion: number;
 }
 
 /** What the garbage collector hands back when a model's mesh data is gone. */
@@ -299,11 +303,14 @@ export class SkeletalModelRenderer extends ModelRenderer {
     let pose = SkeletalModelRenderer.#skinnedPoses.get(entity);
 
     if (pose === undefined || pose.meshData !== meshData) {
-      pose = { meshData, vertices: SkeletalModelRenderer.#createVertices(meshData), frameA: -1, frameB: -1, blend: 0 };
+      pose = { meshData, vertices: SkeletalModelRenderer.#createVertices(meshData), frameA: -1, frameB: -1, blend: 0, adjustments: null, adjustmentsVersion: 0 };
       SkeletalModelRenderer.#skinnedPoses.set(entity, pose);
     }
 
-    if (pose.frameA === frameA && pose.frameB === frameB && pose.blend === blend) {
+    const adjustments = entity.jointAdjustments;
+
+    if (pose.frameA === frameA && pose.frameB === frameB && pose.blend === blend
+      && pose.adjustments === adjustments && pose.adjustmentsVersion === (adjustments?.version ?? 0)) {
       return pose.vertices;
     }
 
@@ -314,12 +321,14 @@ export class SkeletalModelRenderer extends ModelRenderer {
       SkeletalModelRenderer.#skinningMatrices = new Float32Array(matrixFloats);
     }
 
-    SkeletalAnimation.computePose(model, frameA, frameB, blend, SkeletalModelRenderer.#jointMatrices, SkeletalModelRenderer.#skinningMatrices);
+    SkeletalAnimation.computePose(model, frameA, frameB, blend, SkeletalModelRenderer.#jointMatrices, SkeletalModelRenderer.#skinningMatrices, adjustments);
     SkeletalAnimation.skinMeshInto(meshData, SkeletalModelRenderer.#skinningMatrices, pose.vertices, VERTEX_FLOATS, POSITION_OFFSET, NORMAL_OFFSET);
 
     pose.frameA = frameA;
     pose.frameB = frameB;
     pose.blend = blend;
+    pose.adjustments = adjustments;
+    pose.adjustmentsVersion = adjustments?.version ?? 0;
 
     return pose.vertices;
   }

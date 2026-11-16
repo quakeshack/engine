@@ -3,6 +3,7 @@ import { eventBus } from '../EventBus.ts';
 import Vector from '../../../shared/Vector.ts';
 import type { ModelType } from '../Mod.ts';
 import { modelFlags } from '../../../shared/Defs.ts';
+import type { JointAdjustments } from './JointAdjustments.ts';
 
 let gl: WebGL2RenderingContext | null = null;
 
@@ -222,9 +223,17 @@ export class BaseModel {
    * @param _blend Weight of `frameB`, 0 to 1. The pose of a tag is interpolated like the model's vertices, so the two
    * are at the same place.
    * @param _out Receives the origin `x, y, z` and the rotation as a quaternion `w, x, y, z`, 7 numbers.
+   * @param _adjustments Rotations a game put on joints of the entity, `null` for none.
    * @returns `false` when the model has no such tag, and `out` untouched.
    */
-  sampleTag(_index: number, _frameA: number, _frameB: number, _blend: number, _out: Float32Array | Float64Array | number[]): boolean {
+  sampleTag(
+    _index: number,
+    _frameA: number,
+    _frameB: number,
+    _blend: number,
+    _out: Float32Array | Float64Array | number[],
+    _adjustments: JointAdjustments | null = null,
+  ): boolean {
     return false;
   }
 

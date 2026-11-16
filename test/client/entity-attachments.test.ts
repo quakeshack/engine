@@ -10,6 +10,7 @@ import rendererCvars from '../../source/engine/client/renderer/resources/Rendere
 import { MAX_ATTACHMENT_DEPTH, TRANSFORM_SIZE } from '../../source/engine/common/AttachmentTransform.ts';
 import type Cvar from '../../source/engine/common/Cvar.ts';
 import type { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
+import { JointAdjustments } from '../../source/engine/common/model/JointAdjustments.ts';
 import { effect, modelFlags } from '../../source/shared/Defs.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { assertNear } from '../support/assertions.ts';
@@ -237,6 +238,49 @@ void describe('EntityAttachments', () => {
       assertAllNear(entity.lerp.origin, [10, 20, 30]);
       assertAllNear(entity.lerp.rotationMatrix, new Vector(20, 40, 60).toRotationMatrix(), 0);
       assert.equal(entity.worldOrigin, entity.origin);
+    });
+
+    void test('an entity whose pitch is turned into joint rotations draws upright: lerp.angles keeps the pitch, the body does not use it', () => {
+      const entity = createEntity(createFlashModel(), [10, 20, 30], [20, 40, 60]);
+      entity.bodyPitch = false;
+
+      assertAllNear(entity.lerp.angles, [20, 40, 60]);
+      assertAllNear(entity.lerp.bodyAngles, [0, 40, 60]);
+      assertAllNear(entity.lerp.rotationMatrix, new Vector(0, 40, 60).toRotationMatrix(), 0);
+    });
+
+    void test('the pitch of an entity that has bodyPitch is what it always was, and a freed entity gets it back', () => {
+      const entity = createEntity(createFlashModel(), [10, 20, 30], [20, 40, 60]);
+      entity.bodyPitch = false;
+      entity.jointAdjustments = new JointAdjustments(2);
+
+      entity.freeEdict();
+
+      assert.equal(entity.bodyPitch, true);
+      assert.equal(entity.jointAdjustments, null);
+    });
+
+    void test('an entity attached to an upright body hangs on the tag of that body, not of a tilted one', () => {
+      const parent = createEntity(createFlashModel(), [100, 200, 300], [30, 0, 0]);
+      parent.bodyPitch = false;
+      const child = createChild(parent, 'tag_flash', [0, 0, 0]);
+
+      assert.equal(EntityAttachments.resolve(child), true);
+
+      assertAllNear(child.lerp.origin, [110, 200, 300]);
+    });
+
+    void test('a tag follows the joint rotations of its parent, so does what is attached to it', () => {
+      const parent = createEntity(createFlashModel(), [100, 200, 300]);
+      const adjustments = new JointAdjustments(2);
+      adjustments.setAngles(0, new Vector(30, 0, 0));
+      parent.jointAdjustments = adjustments;
+      const child = createChild(parent, 'tag_flash', [0, 0, 0]);
+
+      assert.equal(EntityAttachments.resolve(child), true);
+
+      // the tag is 10 units ahead of the root, and the root is lifted by 30 degrees
+      assertAllNear(child.lerp.origin, [100 + 10 * Math.cos(Math.PI / 6), 200, 300 + 10 * Math.sin(Math.PI / 6)]);
     });
 
     void test('makes an attached entity draw where the attachment puts it, while its own origin stays the offset', () => {

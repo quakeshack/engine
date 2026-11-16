@@ -2,6 +2,7 @@ import type { ClientEventValue, SerializedData } from '../../shared/GameInterfac
 import type { GameTrace } from '../common/GameApiSupport.ts';
 import type { SFX } from './Sound.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
+import type { JointAdjustments } from '../common/model/JointAdjustments.ts';
 import { ModelScope, type BrushModel } from '../common/Mod.ts';
 import type { Pmove } from '../common/Pmove.ts';
 
@@ -39,11 +40,16 @@ interface ClientEntityLerpState {
    * by them: renderers take `rotationMatrix`.
    */
   readonly angles: Vector;
+  /**
+   * The angles the body of the entity is turned by: `angles`, without the pitch when the game turned it into joint rotations
+   * instead (`ClientEdict.bodyPitch`).
+   */
+  readonly bodyAngles: Vector;
   /** The entity's own interpolated origin, the offset in tag space for an attached entity. */
   readonly localOrigin: Vector;
   /**
    * The nine numbers of the rotation to draw the entity with, the form the model renderers upload as `uAngles` (what
-   * `Vector.toRotationMatrix()` gives): from `angles` for an entity that stands free, from the rotation the attachment
+   * `Vector.toRotationMatrix()` gives): from `bodyAngles` for an entity that stands free, from the rotation the attachment
    * resolved for an attached one, which never becomes angles on the way.
    */
   readonly rotationMatrix: number[];
@@ -279,6 +285,16 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   /** Index of the parent's tag that the server resolved, -1 for the parent's origin. */
   attachmentTag = -1;
   /**
+   * Rotations a game put on joints of this entity's skeletal model, on top of its animation (`ClientEngineAPI.SetEntityJointAngles`);
+   * `null` while there are none. The renderer, the tags and with them the entities attached to this one all use them.
+   */
+  jointAdjustments: JointAdjustments | null = null;
+  /**
+   * Whether the entity's pitch tilts the whole body, as it does for alias models. A game that bends joints with the pitch instead
+   * (`ClientEngineAPI.SetEntityPitchesBody`) turns it off; `lerp.angles` still holds the pitch.
+   */
+  bodyPitch = true;
+  /**
    * The name of the tag a client-only entity follows, looked up in the parent's model every frame so a parent that
    * changes model is followed. `null` when the tag index came from the server.
    */
@@ -390,9 +406,18 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
         const f = Math.min(1, Math.max(0, (time - that.anglesTime) / (that.lerpEndTime - that.anglesTime)));
         return Quaternion.slerpAngles(that.anglesPrevious, that.angles, f, new Vector());
       },
+      get bodyAngles(): Vector {
+        const angles = this.angles;
+
+        if (that.bodyPitch || angles[0] === 0) {
+          return angles;
+        }
+
+        return new Vector(0, angles[1], angles[2]);
+      },
       get rotationMatrix(): number[] {
         if (!that.attachmentResolved) {
-          return this.angles.toRotationMatrix();
+          return this.bodyAngles.toRotationMatrix();
         }
 
         const matrix: number[] = new Array<number>(9).fill(0);
@@ -532,6 +557,8 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.animtime = 0.0;
     this.framerate = 1.0;
     this.clearAttachment();
+    this.jointAdjustments = null;
+    this.bodyPitch = true;
     this.modelindex = 0;
     this.skinnum = 0;
     this.colormap = 0;

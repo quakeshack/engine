@@ -3,6 +3,8 @@ import { EntityTags } from './EntityTags.ts';
 import { BitmapFont, type BitmapFontConfig } from './BitmapFont.ts';
 import type { GLTexture } from './GL.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
+import { JointAdjustments } from '../common/model/JointAdjustments.ts';
+import { SkeletalModel } from '../common/model/SkeletalModel.ts';
 import type { DiscoveredSession, SessionDiscoveryStatus } from './menu/SessionDiscovery.ts';
 import type { SaveSlotInfo } from './menu/SaveSlots.ts';
 
@@ -536,6 +538,58 @@ export class ClientEngineAPI extends CommonEngineAPI {
    */
   GetEntityTag(entity: ClientEdict, tagName: string, outOrigin: Vector, outAngles: Vector): boolean {
     return EntityTags.resolve(entity, tagName, outOrigin, outAngles);
+  }
+
+  /**
+   * Turns a joint of an entity's skeletal model on top of its animation, for as long as the game keeps setting it (a spine that bends
+   * with where a player looks). The rotation is in model space and about the joint's own origin; the joint's place stays, and what
+   * hangs below it follows: the vertices skinned to it, the joints under it, and so every tag and every entity attached to them.
+   * Set it every frame from the entity's handler, from values that are already interpolated (`lerp.angles`).
+   * @param entity The entity.
+   * @param jointName The joint's name in the model, which is the name of a tag.
+   * @param angles Pitch, yaw and roll in degrees, in the convention of an entity's `angles`: a positive pitch lifts what points along
+   * the model's X axis. All zero removes the rotation.
+   * @returns `false` when the entity has no skeletal model or the model has no such joint, and nothing was changed.
+   */
+  SetEntityJointAngles(entity: ClientEdict, jointName: string, angles: Vector): boolean {
+    const model = entity.model;
+
+    if (!(model instanceof SkeletalModel)) {
+      return false;
+    }
+
+    const joint = model.getTagIndex(jointName);
+
+    if (joint < 0) {
+      return false;
+    }
+
+    if (entity.jointAdjustments === null || entity.jointAdjustments.jointCount !== model.jointCount) {
+      entity.jointAdjustments = new JointAdjustments(model.jointCount);
+    }
+
+    entity.jointAdjustments.setAngles(joint, angles);
+
+    return true;
+  }
+
+  /**
+   * Removes every rotation that `SetEntityJointAngles` put on an entity.
+   * @param entity The entity.
+   */
+  ClearEntityJointAngles(entity: ClientEdict): void {
+    entity.jointAdjustments = null;
+  }
+
+  /**
+   * Chooses whether an entity's pitch tilts its whole body, as it does for every model by default. A game that bends joints with the
+   * pitch (`SetEntityJointAngles`) turns it off, or the body would tilt as well. It applies to drawing, shadows and the
+   * place of attached entities; `lerp.angles` still holds the pitch.
+   * @param entity The entity.
+   * @param pitchesBody `false` to keep the body upright.
+   */
+  SetEntityPitchesBody(entity: ClientEdict, pitchesBody: boolean): void {
+    entity.bodyPitch = pitchesBody;
   }
 
   /**

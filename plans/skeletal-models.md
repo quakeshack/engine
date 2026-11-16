@@ -535,6 +535,45 @@ Differences from the plan, and why:
 - **The weapon table is filled by the game when the module loads** (`weaponConfig` is a mutable shared map), since `WeaponConfigEntry` is read-only per entry and id1 has no per-game hook.
 - **`PlayerEntity._modelPlayer`** is a new id1 static, the minimum for a game to swap the model; id1's own behavior is unchanged.
 
+### Phase 7b: look pitch on the spine, the axe on the back (2026-11-16, ideas from the maintainer)
+
+Two follow-ups after the first look at Hellwave's players. Decided by me (recommendations, nothing forked on the maintainer yet):
+
+1. **The axe is on the back while a gun is in the hand** (instead of hidden). The rig has no back tag, so the exporter learns `--tag-on BONE:NAME=x,y,z[,rx,ry,rz]` (a fixed tag on a bone, placed in the model space of
+   the rest pose) and Hellwave's player gets `tag_axe_back` on `spine1`. The place was found with a Blender render of the player with the axe at candidate holsters, not by guessing: (−9, −1, 10), rolled 50 degrees about
+   X, which lies the axe diagonally across the back with the head over the left shoulder, blade flat. `HeldWeaponEntity` moves between `tag_axe` and `tag_axe_back` with the weapon in use (no more `EF_NODRAW`).
+2. **Looking up and down flexes the spine** instead of tilting the whole body. The wire already carries the player's pitch (the entity's `angles[0]` is −v_angle/3, set by `ServerClientPhysics`), so the work is on the client:
+   - **Engine, a general capability, not a player feature: procedural joint rotations.** `JointAdjustments` (a rotation per joint, in model space about the joint's own origin) is an optional argument of
+     `SkeletalAnimation.computePose` and `sampleJointInto` (so a weapon on a hand tag follows the bent spine), lives on `ClientEdict.jointAdjustments`, is part of the renderer's skinning cache key, and is set by the game through
+     `ClientEngineAPI.SetEntityJointAngles(entity, jointName, angles)` / `ClearEntityJointAngles`. No format, no wire change, no model metadata: which joints and how much is the game's decision.
+   - **The body stops tilting:** `ClientEdict.bodyPitch` (default true, set by `SetEntityPitchesBody`) makes `lerp.rotationMatrix` and the attachment parent transform ignore the entity's pitch (`lerp.bodyAngles`); the game
+     turns it off for a model it bends the spine of.
+   - **Game (id1's player client handler):** 3 × the entity's interpolated pitch is the look angle, spread over `spine0`, `spine1`, `neck` and `head`; a model without those joints (the MDL player) keeps the old whole-body tilt.
+   - Tests: the pose maths against hand-computed joints (pivot at the joint's own origin, children follow, tags agree with the skinned pose under adjustments), the cache key, `bodyPitch`, the API, the handler.
+   - Not in this: bone controllers on the wire (Half-Life style), a model-declared aim rig, server-side use of the adjustments (the server's pose of a freed child's parent ignores them).
+
+**Phase 7b results (2026-11-16).** Shipped: `JointAdjustments` and the optional argument of `computePose`/`sampleJointInto`/`sampleTag`; `ClientEdict.jointAdjustments`/`bodyPitch`, `lerp.bodyAngles`;
+`ClientEngineAPI.SetEntityJointAngles`/`ClearEntityJointAngles`/`SetEntityPitchesBody`; the renderer's skinning cache keyed on the set and its version; id1's player handler (3 × the entity pitch over
+`spine0` 0.15, `spine1` 0.25, `neck` 0.25, `head` 0.35); Hellwave's axe on `tag_axe_back` while a gun is in the hand; qs-tools `--tag-on` and `--reparent`; docs. `npm test` 3,430 pass, typecheck zero, ESLint
+clean; mutation checks (a flipped rotation-matrix sign, a tag or the renderer or the parent transform ignoring the adjustments, the cache keyed without the version or without the set's identity, no
+resize for another model, the holster's parent, its Euler order, the reparent's parents and loop check) each fail a test, and four survivors got tests (yaw and roll, the Euler order with three
+angles, the identity of the set, a vertex shared by two groups in `fit_grip`).
+
+- **The weapon tags did not follow the bend, and the first browser pass found it.** The rig's `playergun` and `playeraxe` are root bones keyed per frame in model space, so `tag_weapon` and `tag_axe` had no parent
+  and the engine's rotation of `spine1` (which carries the arms) left the gun behind: at a look pitch of +80 the left fist hung a hand's width from the gun. The exporter's `--reparent BONE=PARENT` now puts them under
+  `spine1` and recomputes their local poses so that their world places in every frame stay what Blender shows (checked: the same tag positions to 0.01 as before); the hands are under `spine1` too, and a rotation of
+  `spine1` moves all of them rigidly. Re-checked in the browser: `tag_weapon` and `tag_axe` now move with the bend, and the gun stays in both hands at +80 and −70.
+- **Weapons at 66% size** (the maintainer found them too big): all eight grips refitted with `fit_grip.py grip --scale 0.66`, so they stay centered on the same place in the hand; the guns read as hand-held at that size,
+  the muzzle flash light still equals `GetEntityTag(gun, 'tag_flash')` for all eight within 0.1 unit.
+- **The bend over the wire**: the entity pitch is a byte (1.4 degrees, 4.2 for the look pitch), interpolated; at 15 degrees per second the pitch moved 1.0 to 1.4 degrees per frame with a one-frame stall every 3 to 4 seconds
+  followed by a catch-up of about 2.5 degrees, of which the head gets 35%: no visible 4-degree steps. A smoother look would need the full view pitch on the wire (a wire change, not done).
+- **The axe on the back**: one axe entity per player, its tag name switches between `tag_axe` and `tag_axe_back` with the weapon; the haft lies diagonally across the back; the handle looks a little long next to the torso
+  (a judgment call; the holster's place is one `--tag-on` argument).
+
+Not checked: the MDL player (Hellwave has none; the check on an id1 build is open, so the fallback "no joints, the body tilts as a whole" is covered by the handler's unit tests and by `SetEntityJointAngles` returning
+`false`, not by a picture); ducking; pointer lock and mouse look (the pitch was written to `CL.state.viewangles`); a real GPU; a second human player; the server's own tags and the pose a freed child is left in still
+ignore joint rotations; stale rotations stay on an entity whose model is swapped for one without those joints (harmless there).
+
 ### Decisions (2026-11-12, from the maintainer)
 
 1. **IQM first.** It is the first skeletal format. Half-Life `IDST` v10 follows later as a second

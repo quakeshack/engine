@@ -82,7 +82,7 @@ export class EntityTags {
     const [frameA, frameB, blend] = SkeletalPoseSelection.select(model, entity);
     const local = EntityTags.#local;
 
-    if (!model.sampleTag(tag, frameA, frameB, blend, local)) {
+    if (!model.sampleTag(tag, frameA, frameB, blend, local, entity.jointAdjustments)) {
       return false;
     }
 

@@ -199,6 +199,37 @@ flashSprite.setAttachment(weaponEntity, 'tag_flash');
 - **On the wire** (protocol 45): update bit `u.attachment` (bit 17) is followed by the parent's entity number (`uint16`, 0 detaches) and the
   tag's index (signed short, -1 for the parent's origin).
 
+## Joint rotations: bending a model with the game
+
+A game can turn joints of one entity's skeletal model **on top of the animation**: a spine that bends with where a player looks, a head that
+follows a target. It is the game's decision which joints turn and by how much; the engine only applies them, so there is no model format, no wire
+traffic (it all happens on the client, from values the client has) and no per-model metadata.
+
+```ts
+// in a client entity handler, every frame, from interpolated values
+this.engine.SetEntityJointAngles(this.clientEdict, 'spine1', new Vector(lookPitch * 0.25, 0, 0));
+this.engine.SetEntityJointAngles(this.clientEdict, 'head', new Vector(lookPitch * 0.35, 0, 0));
+this.engine.SetEntityPitchesBody(this.clientEdict, false);   // the body no longer tilts with the pitch
+this.engine.ClearEntityJointAngles(this.clientEdict);        // back to the animation
+```
+
+- **`SetEntityJointAngles(entity, jointName, angles)`**: pitch, yaw and roll in degrees in the convention of an entity's `angles` (a positive pitch lifts what points
+  along the model's X axis), applied **in model space about the joint's own origin**. The joint stays where it is and turns; the joints below it, the vertices
+  skinned to them and so every tag and every entity attached to a tag follow. Angles of zero remove the rotation. It returns `false` (and changes nothing) for an
+  entity without a skeletal model and for a joint the model does not have, which is how a game tells a rig that can bend from one that cannot (the alias player).
+  The rotations of a joint and of a joint below it add up.
+- **`ClearEntityJointAngles(entity)`** removes them all. A freed entity forgets them.
+- **`SetEntityPitchesBody(entity, false)`** turns off the tilt of the whole body by the entity's pitch (the default for every model, and what an alias player does with a
+  third of the view pitch). `lerp.angles` still holds the pitch; `lerp.bodyAngles` is what the body is turned by, `lerp.rotationMatrix` and the place of attached
+  entities use it.
+- **Poses and tags agree.** `SkeletalAnimation.computePose` and `sampleJointInto` take the rotations (`JointAdjustments`, a flat rotation per joint with a `version`) as their last
+  argument, and the renderer's per-entity skinning cache is keyed on the set and its version, so the picture, `GetEntityTag` and an attached weapon never disagree. A set is sized for
+  one model: an entity that gets another model gets a new set at the next call.
+- **Not in this:** rotations on the server (its tags, and the pose a freed child is left in, ignore them), bone controllers on the wire (Half-Life style), model-declared aim joints.
+
+An example in a game: id1's player handler spreads **three times the player entity's pitch** (the server sends `-v_angle[0] / 3` as `angles[0]`, which tilted an alias body
+a little) over `spine0`, `spine1`, `neck` and `head` (0.15, 0.25, 0.25, 0.35, so the head turns the whole way), and keeps the body upright when the model has them.
+
 ## Drawing
 
 `SkeletalModelRenderer` (`source/engine/client/renderer/models/`) is registered for `IQMModel`; a later format registers its own

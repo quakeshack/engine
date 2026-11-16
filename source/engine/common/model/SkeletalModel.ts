@@ -2,6 +2,7 @@ import type { GLTexture } from '../../client/GL.ts';
 import { BaseModel } from './BaseModel.ts';
 import { SkeletalAnimation } from './SkeletalAnimation.ts';
 import { ModelType } from './ModelType.ts';
+import type { JointAdjustments } from './JointAdjustments.ts';
 
 /** A named run of frames, played by the sequence state of an entity. */
 export interface SkeletalSequence {
@@ -146,8 +147,15 @@ export abstract class SkeletalModel extends BaseModel {
    * `SkeletalAnimation.sampleJointInto`). The server realm has the joints and frames too, so it answers the same.
    * @returns `false` for an index that is no joint.
    */
-  override sampleTag(index: number, frameA: number, frameB: number, blend: number, out: Float32Array | Float64Array | number[]): boolean {
-    return SkeletalAnimation.sampleJointInto(this, index, frameA, frameB, blend, out);
+  override sampleTag(
+    index: number,
+    frameA: number,
+    frameB: number,
+    blend: number,
+    out: Float32Array | Float64Array | number[],
+    adjustments: JointAdjustments | null = null,
+  ): boolean {
+    return SkeletalAnimation.sampleJointInto(this, index, frameA, frameB, blend, out, adjustments);
   }
 
   /**

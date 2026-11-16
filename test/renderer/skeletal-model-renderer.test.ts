@@ -24,6 +24,7 @@ import { publishGlReady } from '../support/glEvents.ts';
 import { buildIqm, createTwoJointSpec, type IqmSpec } from '../support/iqmBuilder.ts';
 import { createModelLoadContext } from '../support/modelContext.ts';
 import { createRecordingContext, type RecordingContext } from '../support/recordingContext.ts';
+import { JointAdjustments } from '../../source/engine/common/model/JointAdjustments.ts';
 
 const SQRT_HALF = Math.SQRT1_2;
 const VERTEX_FLOATS = 8;
@@ -143,6 +144,7 @@ void describe('SkeletalModelRenderer', () => {
       effects: 0,
       alpha: 1,
       colormap: 0,
+      jointAdjustments: null,
       ...overrides,
     } as unknown as ClientEdict;
   }
@@ -437,6 +439,44 @@ void describe('SkeletalModelRenderer', () => {
 
       assert.deepEqual(Array.from(lastUploadedVertices()), firstVertices);
       assert.equal(skinning.mock.callCount(), 2, 'the first entity\'s second draw reuses its own skinning');
+    });
+
+    void test('skins again when the joint rotations of the entity change, and only then', async () => {
+      const model = await loadModel();
+      const adjustments = new JointAdjustments(model.jointCount);
+      const entity = createEntity({ lerpFrame: [0, 0, 0], frame: 0 }, { jointAdjustments: adjustments });
+
+      renderer.render(model, entity, 0);
+      const plain = positionOf(lastUploadedVertices(), 0);
+      renderer.render(model, entity, 0);
+      assert.equal(skinning.mock.callCount(), 1, 'nothing changed');
+
+      adjustments.setAngles(0, new Vector(0, 90, 0));
+      renderer.render(model, entity, 0);
+      const turned = positionOf(lastUploadedVertices(), 0);
+      renderer.render(model, entity, 0);
+
+      assert.equal(skinning.mock.callCount(), 2);
+      assert.ok(Math.hypot(turned[0]! - plain[0]!, turned[1]! - plain[1]!, turned[2]! - plain[2]!) > 1, 'the vertex moved with the turned root');
+    });
+
+    void test('skins again when the entity gets another set of joint rotations that has the same version', async () => {
+      const model = await loadModel();
+      const first = new JointAdjustments(model.jointCount);
+      first.setAngles(0, new Vector(0, 90, 0));
+      const second = new JointAdjustments(model.jointCount);
+      second.setAngles(0, new Vector(0, 45, 0));
+      assert.equal(first.version, second.version, 'the premise: one change each');
+      const entity = createEntity({ lerpFrame: [0, 0, 0], frame: 0 }, { jointAdjustments: first });
+
+      renderer.render(model, entity, 0);
+      const ninety = positionOf(lastUploadedVertices(), 0);
+      Object.assign(entity, { jointAdjustments: second });
+      renderer.render(model, entity, 0);
+      const fortyFive = positionOf(lastUploadedVertices(), 0);
+
+      assert.equal(skinning.mock.callCount(), 2);
+      assert.ok(Math.hypot(ninety[0]! - fortyFive[0]!, ninety[1]! - fortyFive[1]!, ninety[2]! - fortyFive[2]!) > 1);
     });
 
     void test('skins afresh when the entity gets another model in the same frame', async () => {

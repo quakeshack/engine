@@ -58,7 +58,7 @@ export class EntityAttachments {
     const childRotation = EntityAttachments.#childRotation;
 
     if (parent === null) {
-      AttachmentTransform.fromOriginAnglesInto(out, origin, entity.lerp.angles);
+      AttachmentTransform.fromOriginAnglesInto(out, origin, entity.lerp.bodyAngles);
       return true;
     }
 
@@ -101,6 +101,6 @@ export class EntityAttachments {
     const [frameA, frameB, blend] = SkeletalPoseSelection.select(model, parent);
     const tag = EntityAttachments.#tag;
 
-    return model.sampleTag(tagIndex, frameA, frameB, blend, tag) ? tag : null;
+    return model.sampleTag(tagIndex, frameA, frameB, blend, tag, parent.jointAdjustments) ? tag : null;
   }
 }

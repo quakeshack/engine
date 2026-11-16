@@ -1,4 +1,5 @@
 import { Quaternion } from '../../../shared/Vector.ts';
+import type { JointAdjustments } from './JointAdjustments.ts';
 import { SkeletalModel, type SkeletalMeshData } from './SkeletalModel.ts';
 
 /** The inverse bind matrices of a model, and how many joints could not be inverted. */
@@ -84,6 +85,8 @@ export class SkeletalAnimation {
    * @param blend Weight of `frameB`: 0 gives `frameA`, 1 gives `frameB`.
    * @param outJointMatrices Receives `jointCount * MATRIX_FLOATS` numbers.
    * @param outSkinningMatrices Receives the same count, or `null` when only joints are needed (tags).
+   * @param adjustments Rotations a game put on joints of this entity on top of the animation, `null` for none. A joint is turned about
+   * its own origin after it has been composed with its parents, so what hangs below it follows.
    */
   static computePose(
     model: SkeletalModel,
@@ -92,12 +95,14 @@ export class SkeletalAnimation {
     blend: number,
     outJointMatrices: Float32Array,
     outSkinningMatrices: Float32Array | null,
+    adjustments: JointAdjustments | null = null,
   ): void {
     const { jointCount, jointParents, framePoses, inverseBindMatrices } = model;
     console.assert(outJointMatrices.length >= jointCount * SkeletalAnimation.MATRIX_FLOATS, 'joint matrix buffer too small');
     console.assert(outSkinningMatrices === null || outSkinningMatrices.length >= jointCount * SkeletalAnimation.MATRIX_FLOATS, 'skinning matrix buffer too small');
     console.assert(Number.isFinite(blend), 'finite blend');
     console.assert(LOCAL_POSE_FLOATS === SkeletalModel.POSE_FLOATS, 'pose layout changed');
+    console.assert(adjustments === null || adjustments.jointCount === jointCount, 'the joint adjustments are for another model');
 
     const poseFloats = SkeletalModel.POSE_FLOATS;
     const matrixFloats = SkeletalAnimation.MATRIX_FLOATS;
@@ -119,6 +124,10 @@ export class SkeletalAnimation {
         SkeletalAnimation.multiplyMatrix3x4Into(outJointMatrices, matrixOffset, outJointMatrices, parent * matrixFloats, localMatrix, 0);
       }
 
+      if (adjustments !== null && adjustments.isSet[joint] === 1) {
+        SkeletalAnimation.#turnInto(outJointMatrices, matrixOffset, adjustments.rotations, joint * 4);
+      }
+
       if (outSkinningMatrices !== null) {
         SkeletalAnimation.multiplyMatrix3x4Into(outSkinningMatrices, matrixOffset, outJointMatrices, matrixOffset, inverseBindMatrices, matrixOffset);
       }
@@ -136,9 +145,19 @@ export class SkeletalAnimation {
    * @param frameB Second frame.
    * @param blend Weight of `frameB`.
    * @param out Receives the origin `x, y, z` and the rotation `w, x, y, z`, 7 numbers.
+   * @param adjustments The rotations a game put on joints of the entity, `null` for none: the joint and its parents are turned as
+   * `computePose` turns them, so a tag is where the vertices are.
    * @returns `false` when the model has no such joint, and `out` untouched.
    */
-  static sampleJointInto(model: SkeletalModel, joint: number, frameA: number, frameB: number, blend: number, out: Float32Array | Float64Array | number[]): boolean {
+  static sampleJointInto(
+    model: SkeletalModel,
+    joint: number,
+    frameA: number,
+    frameB: number,
+    blend: number,
+    out: Float32Array | Float64Array | number[],
+    adjustments: JointAdjustments | null = null,
+  ): boolean {
     if (!Number.isInteger(joint) || joint < 0 || joint >= model.jointCount) {
       return false;
     }
@@ -175,6 +194,10 @@ export class SkeletalAnimation {
       } else {
         SkeletalAnimation.multiplyMatrix3x4Into(matrix, 0, matrix, 0, localMatrix, 0);
       }
+
+      if (adjustments !== null && adjustments.isSet[chain[index]!] === 1) {
+        SkeletalAnimation.#turnInto(matrix, 0, adjustments.rotations, chain[index]! * 4);
+      }
     }
 
     out[0] = matrix[3];
@@ -184,6 +207,41 @@ export class SkeletalAnimation {
     Quaternion.fromMatrix3x4Into(out, 3, matrix, 0);
 
     return true;
+  }
+
+  /**
+   * Turns a joint matrix about the joint's own origin, in model space: the rotation is multiplied in from the left, the
+   * translation (the origin) stays.
+   * @param matrices The array holding the matrix.
+   * @param offset Index of the matrix's first number.
+   * @param rotations The array holding the unit quaternion `w, x, y, z`.
+   * @param rotationOffset Index of its `w`.
+   */
+  static #turnInto(matrices: Float32Array, offset: number, rotations: Float32Array, rotationOffset: number): void {
+    const w = rotations[rotationOffset]!;
+    const x = rotations[rotationOffset + 1]!;
+    const y = rotations[rotationOffset + 2]!;
+    const z = rotations[rotationOffset + 3]!;
+
+    const r00 = 1 - 2 * (y * y + z * z);
+    const r01 = 2 * (x * y - z * w);
+    const r02 = 2 * (x * z + y * w);
+    const r10 = 2 * (x * y + z * w);
+    const r11 = 1 - 2 * (x * x + z * z);
+    const r12 = 2 * (y * z - x * w);
+    const r20 = 2 * (x * z - y * w);
+    const r21 = 2 * (y * z + x * w);
+    const r22 = 1 - 2 * (x * x + y * y);
+
+    for (let column = 0; column < 3; column++) {
+      const m0 = matrices[offset + column]!;
+      const m1 = matrices[offset + 4 + column]!;
+      const m2 = matrices[offset + 8 + column]!;
+
+      matrices[offset + column] = r00 * m0 + r01 * m1 + r02 * m2;
+      matrices[offset + 4 + column] = r10 * m0 + r11 * m1 + r12 * m2;
+      matrices[offset + 8 + column] = r20 * m0 + r21 * m1 + r22 * m2;
+    }
   }
 
   /**

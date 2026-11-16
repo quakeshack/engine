@@ -191,6 +191,79 @@ void describe('ClientEngineAPI tags', () => {
   });
 });
 
+void describe('joint angles of an entity', () => {
+  const previousInterpolation = rendererCvars.interpolation;
+  let restoreRenderTime: () => void = () => {};
+
+  beforeEach(() => {
+    rendererCvars.interpolation = { value: 1 } as unknown as Cvar;
+    restoreRenderTime = patchMembers(clientRuntimeState.clientMessages, { renderTime: 5.05 });
+  });
+
+  afterEach(() => {
+    rendererCvars.interpolation = previousInterpolation;
+    restoreRenderTime();
+  });
+
+  void test('SetEntityJointAngles turns the joint, and the tag of the entity is where the turned model has it', () => {
+    const api = createClientEngineApi();
+    const entity = createEntity(createFlashModel());
+
+    assert.equal(api.SetEntityJointAngles(entity, 'root', new Vector(30, 0, 0)), true);
+
+    const tag = resolve(entity)!;
+    tag.origin.forEach((value, axis) => { assertNear(value, [100 + 10 * Math.cos(Math.PI / 6), 200, 300 + 10 * Math.sin(Math.PI / 6)][axis], 1e-4); });
+  });
+
+  void test('says no, and changes nothing, for a joint the model does not have, a model that is not skeletal and an entity without one', () => {
+    const api = createClientEngineApi();
+    const entity = createEntity(createFlashModel());
+
+    assert.equal(api.SetEntityJointAngles(entity, 'nowhere', new Vector(30, 0, 0)), false);
+    assert.equal(entity.jointAdjustments, null);
+    assert.equal(api.SetEntityJointAngles(createEntity(null), 'root', new Vector(30, 0, 0)), false);
+    assert.equal(api.SetEntityJointAngles(createEntity(new BaseModel('progs/alias.mdl')), 'root', new Vector(30, 0, 0)), false);
+  });
+
+  void test('ClearEntityJointAngles puts the animation back', () => {
+    const api = createClientEngineApi();
+    const entity = createEntity(createFlashModel());
+    api.SetEntityJointAngles(entity, 'root', new Vector(30, 0, 0));
+
+    api.ClearEntityJointAngles(entity);
+
+    const tag = resolve(entity)!;
+    tag.origin.forEach((value, axis) => { assertNear(value, [110, 200, 300][axis], 1e-5); });
+  });
+
+  void test('an entity that gets another model gets rotations that fit it', () => {
+    const api = createClientEngineApi();
+    const entity = createEntity(createFlashModel());
+    api.SetEntityJointAngles(entity, 'root', new Vector(30, 0, 0));
+    const first = entity.jointAdjustments;
+
+    const bigger = createFlashModel();
+    bigger.jointNames = ['root', 'tag_flash', 'extra'];
+    bigger.jointParents = Int32Array.from([-1, 0, 0]);
+    entity.model = bigger;
+    api.SetEntityJointAngles(entity, 'extra', new Vector(10, 0, 0));
+
+    assert.notEqual(entity.jointAdjustments, first);
+    assert.equal(entity.jointAdjustments?.jointCount, 3);
+  });
+
+  void test('SetEntityPitchesBody switches the tilt of the body', () => {
+    const api = createClientEngineApi();
+    const entity = createEntity(createFlashModel(), { angles: [20, 90, 0] });
+
+    api.SetEntityPitchesBody(entity, false);
+    assert.equal(entity.lerp.bodyAngles[0], 0);
+
+    api.SetEntityPitchesBody(entity, true);
+    assert.equal(entity.lerp.bodyAngles[0], 20);
+  });
+});
+
 void describe('entitytag command', () => {
   const previousInterpolation = rendererCvars.interpolation;
   const previousClientEntities = clientRuntimeState.clientEntities;
