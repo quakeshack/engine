@@ -285,6 +285,14 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   /** Index of the parent's tag that the server resolved, -1 for the parent's origin. */
   attachmentTag = -1;
   /**
+   * How many times a server update has set `EF_MUZZLEFLASH` on this entity (a shot). The server clears the bit after one datagram,
+   * so when a client frame reads two datagrams (a slow frame, a burst of messages) the bit is set and clear again before any handler
+   * has looked; a handler that wants every shot compares this count with the one it saw last, instead of sampling `effects`.
+   */
+  muzzleFlashCount = 0;
+  /** The client clock (`CL.time`) when the last of those shots was read, so that a handler can leave out one it comes to see long after (the entity was out of view). */
+  muzzleFlashTime = -Infinity;
+  /**
    * Rotations a game put on joints of this entity's skeletal model, on top of its animation (`ClientEngineAPI.SetEntityJointAngles`);
    * `null` while there are none. The renderer, the tags and with them the entities attached to this one all use them.
    */
@@ -492,10 +500,11 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
    * @param parent The entity to follow, a server entity or another client-only one.
    * @param tagName The name of a tag of the parent's model, `null` for the parent's origin. A name the model does not have also gives the origin.
    */
-  setAttachment(parent: ClientEdict, tagName: string | null = null): void {
+  setAttachment(parent: Readonly<ClientEdict>, tagName: string | null = null): void {
     console.assert(parent !== this, 'ClientEdict.setAttachment: an entity cannot be attached to itself');
 
-    this.attachmentParent = parent;
+    // a game holds entities as `Readonly<ClientEdict>`; every one of them is a real `ClientEdict` of the engine's
+    this.attachmentParent = parent as ClientEdict;
     this.attachmentTag = -1;
     this.attachmentTagName = tagName === '' ? null : tagName;
     this.attachmentResolved = false;
@@ -559,6 +568,8 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.clearAttachment();
     this.jointAdjustments = null;
     this.bodyPitch = true;
+    this.muzzleFlashCount = 0;
+    this.muzzleFlashTime = -Infinity;
     this.modelindex = 0;
     this.skinnum = 0;
     this.colormap = 0;

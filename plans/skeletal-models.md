@@ -574,6 +574,28 @@ Not checked: the MDL player (Hellwave has none; the check on an id1 build is ope
 `false`, not by a picture); ducking; pointer lock and mouse look (the pitch was written to `CL.state.viewangles`); a real GPU; a second human player; the server's own tags and the pose a freed child is left in still
 ignore joint rotations; stale rotations stay on an entity whose model is swapped for one without those joints (harmless there).
 
+### Phase 7c: the muzzle flash sprite (2026-11-16)
+
+Shipped: Hellwave's `HellwavePlayerClientEdictHandler` (replaces id1's for `player`) and `MuzzleFlashClientEdictHandler` (`hellwave_muzzleflash`, a client-only entity on the held gun's `tag_flash`, one of three random GIFs
+of the weapon's family from `gfx/muzzle_flash/`, rolled, gone when its animation is over), their registration (`_clientEdictHandlerRegistry` in Hellwave's server and client game API, so the server precaches the 12 GIFs),
+the sidecar settings of the 27 GIFs the maintainer found (additive, black color key, `repeat: 1`, `interpolate`, `scale` 0.16 to 0.30; `parallelOriented` for the stars and the energy flashes so that a roll turns them, `oriented`
+for the three cone families, which no weapon uses yet), `ClientEdict.setAttachment` taking the game's read-only entity type (the documented call did not typecheck for a game).
+
+- **"The flash is not always there" was a sampling bug, and it was in the light of id1's player handler too.** The first version found a shot by looking at the `EF_MUZZLEFLASH` bit once per render frame. The server clears
+  the bit after one datagram, and a client frame that reads two datagrams (a slow frame, a burst after a hitch) sets and clears it before any handler runs. The browser pass measured it: at 7 to 9 frames per second the sampling saw 2
+  of 55 shotgun shots and 19 of 91 nailgun shots; the light of id1's handler was missed 53 times in 55. Fix: the engine counts shots while it parses updates (`ClientEdict.muzzleFlashCount`, `muzzleFlashTime`: +1 when an update
+  sets the bit, not when it keeps it) and both handlers compare the count with the one they saw last. With it the shotgun made 55 sprites for 55 shots.
+- **A second bug in the fix, found by the same pass:** the freshness rule (a shot older than 0.2 s is not flashed, so that nothing pops out of a player who comes back into view) measured the age against the clock after the frame
+  had advanced, so any frame longer than 0.2 s threw its own shots away (4 of 56 shotgun shots, 12 of 65 nailgun frames, all of them at 335 ms frames). The age now allows for the frame's own length (`CL.frametime`).
+- Browser pass (software GL, dev build): the 12 GIFs load and precache with no console warning; for impulses 2 to 8 the flash entity is attached to the gun with tag `tag_flash`, its drawn origin is 0.000 units from
+  `GetEntityTag(gun, 'tag_flash')`; it leaves after its animation (0.12 to 0.24 s, observed 0.21 to 0.38 at 110 ms frames) and nothing leaks after 50 shots or a save and load; mid-flash screenshots show it at the barrel, bright,
+  additive, no dark box, the roll varying; the axe makes none; first person makes none (the player's own model is not drawn) and the view's own light still works.
+- **Open:** the nailgun is counted about 7 to 10% short in the in-page server's slow frames: two shots whose bits are set in two consecutive datagrams are one change to the client, since the server sends only a changed field.
+  A server frame faster than the shot interval (the dedicated server) does not show it. The scales were chosen blind and the shotgun and rocket launcher flashes are about as big as the weapon (`star_shotgun` at 0.30): one number
+  per family in the `.gif.json` files. The light of a flash is placed once at the shot, so after a rocket's knockback it lags the barrel by up to 12 units while the sprite follows it. The cone flashes (a side view that needs a
+  client entity placed at the tag with the tag's angles, since an attached `oriented` sprite does not turn with its parent) are not wired.
+- Not checked: a real GPU and 60 frames per second (the freshness bug is only visible below 5 frames per second there, so it is a hitch and slow device bug), a second human player, the production build.
+
 ### Decisions (2026-11-12, from the maintainer)
 
 1. **IQM first.** It is the first skeletal format. Half-Life `IDST` v10 follows later as a second

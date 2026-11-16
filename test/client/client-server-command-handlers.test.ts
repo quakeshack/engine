@@ -15,6 +15,7 @@ import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { createBoundsModel, createGameModuleStub } from '../support/fixtures.ts';
 import ClientEntities, { type ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import Vector from '../../source/shared/Vector.ts';
+import { effect } from '../../source/shared/Defs.ts';
 import { ServerEntityState } from '../../source/engine/server/ServerEntityState.ts';
 import { ServerMessages } from '../../source/engine/server/ServerMessages.ts';
 import type Server from '../../source/engine/server/Server.ts';
@@ -346,8 +347,38 @@ void describe('svc.deltapacketentities attachment', () => {
     assert.equal(detached.attachmentParent, null);
     assert.equal(detached.attachmentTag, -1);
   });
-});
 
+  void test('counts a shot when an update sets the muzzle flash bit, also when the next update of the same packet clears it again', () => {
+    // two datagrams read in one frame: the bit is gone before anything draws, the count is what is left
+    const entity = roundTrip([{ effects: effect.EF_MUZZLEFLASH }, { effects: 0 }]).getEntity(7);
+
+    assert.equal(entity.effects & effect.EF_MUZZLEFLASH, 0);
+    assert.equal(entity.muzzleFlashCount, 1);
+  });
+
+  void test('counts every shot, and not an update that keeps the bit or sets another one', () => {
+    const entity = roundTrip([
+      { effects: effect.EF_MUZZLEFLASH },
+      { effects: 0 },
+      { effects: effect.EF_MUZZLEFLASH },
+      { effects: effect.EF_MUZZLEFLASH | effect.EF_DIMLIGHT }, // the bit stays set: the same flash
+      { effects: effect.EF_DIMLIGHT },
+    ]).getEntity(7);
+
+    assert.equal(entity.muzzleFlashCount, 2);
+  });
+
+  void test('stamps the shot with the client clock', () => {
+    const previousTime = clientRuntimeState.time;
+    clientRuntimeState.time = 12.5;
+
+    try {
+      assert.equal(roundTrip([{ effects: effect.EF_MUZZLEFLASH }]).getEntity(7).muzzleFlashTime, 12.5);
+    } finally {
+      clientRuntimeState.time = previousTime;
+    }
+  });
+});
 void describe('svc.deltapacketentities sequence block', () => {
   /**
    * Sends what the server's writer makes of a state change to the client's parser.

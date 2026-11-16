@@ -3,6 +3,7 @@ import * as Def from '../common/Def.ts';
 import Cmd from '../common/Cmd.ts';
 import { HostError } from '../common/Errors.ts';
 import Vector from '../../shared/Vector.ts';
+import { effect } from '../../shared/Defs.ts';
 import GameModule from '../common/GameModule.ts';
 import { engineApi } from './PageServices.ts';
 import { ModelScope, type BrushModel } from '../common/Mod.ts';
@@ -565,7 +566,14 @@ function parsePacketEntities() {
     }
 
     if (bits & Protocol.u.effects) {
-      clent.effects = net.message.readByte();
+      const effects = net.message.readByte();
+
+      if ((effects & effect.EF_MUZZLEFLASH) !== 0 && (clent.effects & effect.EF_MUZZLEFLASH) === 0) {
+        clent.muzzleFlashCount++;
+        clent.muzzleFlashTime = clientRuntimeState.time;
+      }
+
+      clent.effects = effects;
       clent.alpha = net.message.readByte() / 255.0;
     }
 
