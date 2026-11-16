@@ -519,6 +519,12 @@ dedicated-server variant, other maps; spectating, invisibility and disconnect in
 first guesses for **a human to adjust**; the thunderbolt in particular. A flash light keeps the origin it was given for its 0.2 s, so after a rocket's knockback it lags the gun by
 up to about 45 units (the fixed offset did the same). The colormap change seemed to take several seconds to show up in the first pass (not looked into).
 
+**Found afterwards, not part of this work: wave monsters stood still.** `GameManager.spawnEnemies` calls `hunt()` right after the spawn; since id1 commit `39822b7` (2026-11-10) the
+first think of a monster (`EntityAI._initialize()` ends in `thinkStand()`) undoes that, and `findTarget` no longer re-acquires a player that already is the enemy. A bisect with the
+Phase 7 changes removed pinned it to that commit, so it was not this plan's work. Fixed on the Hellwave side (Hellwave commit after `4d5a32d`): `orderHuntAfterSpawn` schedules a named,
+serializable think that repeats the order after the first think; checked in a browser for natural waves (monsters start moving 0.9 to 1.0 s after the spawn), a save and load right after a
+spawn, and monsters killed in the first second. id1 is untouched; its `hunt()` is still undone by a first think that has not run yet.
+
 Differences from the plan, and why:
 
 - **No muzzle flash sprite.** The plan's Hellwave flash was an additive sprite on the gun's `tag_flash`; what exists now is the light at the barrel (which was the part that was wrong).
