@@ -3,7 +3,7 @@ import Con from '../common/Console.ts';
 import Cvar from '../common/Cvar.ts';
 import { clientStaticState } from './ClientState.ts';
 import BenchReport, { type BenchResult } from './BenchReport.ts';
-import FrameProfiler, { type ProfileSection } from './FrameProfiler.ts';
+import FrameProfiler, { SpeedsMode, type ProfileSection } from './FrameProfiler.ts';
 
 /** One setting the benchmark measures: the cvars it changes from what the player has. */
 interface BenchVariant {
@@ -30,7 +30,7 @@ const DEFAULT_FRAMES = 120;
  * `r_bench`: measures the frame with the player's settings and then with cvars switched off, one at a time and all
  * together, a fixed number of drawn frames each, and prints one table to compare them. Every variant first waits
  * {@link SETTLE_FRAMES} frames, so targets that a change rebuilds and GPU times that come in late do not count.
- * `r_speeds` is on while it runs; every cvar is put back afterwards, also when the bench is stopped or the game ends.
+ * `r_speeds 2` is set while it runs; every cvar is put back afterwards, also when the bench is stopped or the game ends.
  *
  * Stand still while it runs: the numbers depend on what is in view.
  */
@@ -144,7 +144,7 @@ export default class FrameBenchmark {
     FrameBenchmark.#saved.clear();
     FrameBenchmark.#frames = frames;
 
-    FrameBenchmark.#set('r_speeds', '1');
+    FrameBenchmark.#set('r_speeds', String(SpeedsMode.SECTIONS));
     FrameProfiler.holdWindow(true);
 
     Con.Print(`r_bench: ${variants.length} variants, ${rounds} rounds, ${frames} frames each, stand still\n`);

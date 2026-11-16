@@ -13,6 +13,18 @@ interface TimerQueryExtension {
   readonly GPU_DISJOINT_EXT: GLenum;
 }
 
+/** What the values of `r_speeds` do. */
+export enum SpeedsMode {
+  /** Nothing is shown. */
+  OFF = 0,
+  /** The frame rate only. */
+  FPS = 1,
+  /** The frame rate, the draw counters and the time of every section of the frame. */
+  SECTIONS = 2,
+  /** Like {@link SpeedsMode.SECTIONS}, and the CPU waits for the GPU at every section border: a fallback without timer queries. */
+  SECTIONS_AND_GPU_WAIT = 3,
+}
+
 /** How long the times are averaged over before the shown numbers change, in milliseconds. */
 const WINDOW_MS = 500;
 
@@ -112,7 +124,7 @@ export class ProfileSection {
  *   outer section. Results come in a few frames late and are added to the window they arrive in.
  *   `scripts/renderer-capture/gpu-bench.mjs` runs a query of its own around the scene, so leave `r_speeds` off
  *   while it measures: two timer queries can not run at once.
- * - `r_speeds 2` calls `gl.finish()` at every section border while drawing, so the CPU time of a section includes
+ * - `r_speeds 3` calls `gl.finish()` at every section border while drawing, so the CPU time of a section includes
  *   waiting for the GPU to finish its commands: a fallback for browsers without timer queries, which slows the frame
  *   down and leaves the GPU idle between sections.
  *
@@ -121,7 +133,8 @@ export class ProfileSection {
  * per drawn frame over half a second, except the worst column: the CPU time of a section in the drawn frame of the
  * window in which it took longest, so that a single hitch is not mistaken for a cost of every frame.
  *
- * Nothing is measured while `r_speeds` is 0; a section then costs a check of a flag.
+ * Nothing is measured while `r_speeds` is below 2 (0 is off, 1 shows the frame rate only); a section then costs a check
+ * of a flag.
  */
 export default class FrameProfiler {
   /** The sections that are not inside another one. */
@@ -180,9 +193,9 @@ export default class FrameProfiler {
    * measured, collects the GPU times that came in, ends the window when it is over, and opens the `draw` section.
    */
   static beginFrame(): void {
-    const mode = rendererCvars.speeds.value;
+    const mode = rendererCvars.speeds.value as SpeedsMode;
 
-    if (mode === 0) {
+    if (mode < SpeedsMode.SECTIONS) {
       if (FrameProfiler.#enabled) {
         FrameProfiler.#stop();
       }
@@ -199,7 +212,7 @@ export default class FrameProfiler {
     FrameProfiler.#starts.length = 0;
     FrameProfiler.#childMs.length = 0;
 
-    FrameProfiler.#finishEach = mode >= 2;
+    FrameProfiler.#finishEach = mode >= SpeedsMode.SECTIONS_AND_GPU_WAIT;
     FrameProfiler.#collectGpuResults();
 
     const now = Sys.FloatMilliTime();
@@ -331,7 +344,7 @@ export default class FrameProfiler {
   /** Prints the numbers of the last window to the console, to copy them out. */
   static Print_f(this: void): void {
     if (FrameProfiler.lines.length === 0) {
-      Con.Print('Nothing measured yet, set r_speeds 1 and wait half a second.\n');
+      Con.Print('Nothing measured yet, set r_speeds 2 and wait half a second.\n');
       return;
     }
 
@@ -467,7 +480,7 @@ export default class FrameProfiler {
     lines.push(`${'section'.padEnd(26)}${'cpu ms'.padStart(7)}${'worst'.padStart(7)}${'gpu ms'.padStart(7)}${'calls'.padStart(6)}`);
     FrameProfiler.#describe(FrameProfiler.root, hasGpu, lines);
 
-    const gpuTotal = hasGpu ? totals.gpuMs.toFixed(2) : FrameProfiler.#timer === null ? 'n/a (try r_speeds 2)' : '-';
+    const gpuTotal = hasGpu ? totals.gpuMs.toFixed(2) : FrameProfiler.#timer === null ? 'n/a (try r_speeds 3)' : '-';
     const frameMs = (now - FrameProfiler.#windowStart) / frames;
     const summary = FrameProfiler.summary;
 

@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { afterEach, beforeEach, describe, test } from 'node:test';
 import { MessageChannel } from 'node:worker_threads';
 
 import WorkerServerController from '../../source/engine/client/WorkerServerController.ts';
 import type Vector from '../../source/shared/Vector.ts';
+import Cmd from '../../source/engine/common/Cmd.ts';
 import { HostError } from '../../source/engine/common/Errors.ts';
 import { eventually } from '../support/assertions.ts';
 import { ControlLink, type ControlFromServer, type ControlPortLike, type ControlToServer, type ServerRequest } from '../../source/engine/common/ServerWorkerProtocol.ts';
@@ -85,6 +86,8 @@ interface ControllerSetup {
   received: ControlToServer[];
   noclip: boolean[];
   sessionRequests: SessionRequest[];
+  /** Whether the client counts as connected to a server, changeable by the test. */
+  connection: { connected: boolean };
   close(): void;
 }
 
@@ -103,6 +106,7 @@ function createController(): ControllerSetup {
   const received: ControlToServer[] = [];
   const noclip: boolean[] = [];
   const sessionRequests: SessionRequest[] = [];
+  const connection = { connected: false };
   const worker: StandInWorker = {
     shutdowns: 0,
     postMessage(message: unknown, transfer?: Transferable[]) { booted.push({ message: message as BootMessage, transfer }); },
@@ -121,6 +125,7 @@ function createController(): ControllerSetup {
     channel: asChannel(channel),
     createInit: () => INIT,
     con,
+    isConnected: () => connection.connected,
     operatorName: () => 'Ranger',
     onNoclipAnglehack: (enabled: boolean) => noclip.push(enabled),
     onSessionRequest: (request: SessionRequest) => sessionRequests.push(request),
@@ -132,7 +137,7 @@ function createController(): ControllerSetup {
   const far = new ControlLink<ControlFromServer, ControlToServer>(asPort(channel.port2), (message) => received.push(message));
 
   return {
-    controller, far, worker, booted, prints, published, errors, crashes, received, noclip, sessionRequests,
+    controller, far, worker, booted, prints, published, errors, crashes, received, noclip, sessionRequests, connection,
     close() { channel.port1.close(); channel.port2.close(); },
   };
 }
@@ -711,6 +716,81 @@ void describe('WorkerServerController', () => {
 
       try {
         await eventually(() => { assert.deepEqual(setup.prints, [['print', 'red\n', [1, 0, 0]]]); });
+      } finally {
+        setup.close();
+      }
+    });
+  });
+  void describe('commands only the server has', () => {
+    const forwarded: string[] = [];
+
+    beforeEach(() => {
+      forwarded.length = 0;
+      Cmd.Init();
+      Cmd.forwardToServer = (command) => { forwarded.push(command.args ?? ''); return true; };
+    });
+
+    afterEach(() => {
+      Cmd.forwardToServer = null;
+    });
+
+    /**
+     * Boots the controller with a worker that has a `status` command and puts the console of the page in place.
+     * @param setup the controller under test
+     */
+    async function attach(setup: ControllerSetup): Promise<void> {
+      const booting = setup.controller.init();
+
+      setup.far.send({ kind: 'ready', cvars: [], commands: ['status'] });
+      await booting;
+      setup.controller.attachConsole();
+    }
+
+    void test('go to the worker while its server runs', async () => {
+      const setup = createController();
+
+      try {
+        setup.connection.connected = true;
+        await attach(setup);
+        setup.far.send({ kind: 'state', state: { active: true, maxclients: 1, mapname: 'e1m1', paused: false } });
+        await eventually(() => { assert.equal(setup.controller.state.active, true); });
+
+        await Cmd.ExecuteString('status');
+
+        await eventually(() => { assert.deepEqual(setup.received.filter((message) => message.kind === 'command'), [{ kind: 'command', text: 'status', operator: 'Ranger' }]); });
+        assert.deepEqual(forwarded, []);
+      } finally {
+        setup.close();
+      }
+    });
+
+    void test('go to the server the player joined when the worker serves nobody', async () => {
+      const setup = createController();
+
+      try {
+        await attach(setup);
+        setup.connection.connected = true;
+
+        await Cmd.ExecuteString('status');
+        await flush();
+
+        assert.deepEqual(forwarded, ['status']);
+        assert.deepEqual(setup.received.filter((message) => message.kind === 'command'), []);
+      } finally {
+        setup.close();
+      }
+    });
+
+    void test('stay with the worker when the player is not connected to any server', async () => {
+      const setup = createController();
+
+      try {
+        await attach(setup);
+
+        await Cmd.ExecuteString('status');
+
+        await eventually(() => { assert.deepEqual(setup.received.filter((message) => message.kind === 'command'), [{ kind: 'command', text: 'status', operator: 'Ranger' }]); });
+        assert.deepEqual(forwarded, []);
       } finally {
         setup.close();
       }

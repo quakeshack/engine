@@ -1,6 +1,6 @@
 import Draw from '../../Draw.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
-import FrameProfiler from '../../FrameProfiler.ts';
+import FrameProfiler, { SpeedsMode } from '../../FrameProfiler.ts';
 
 /**
  * Counters of what the renderer drew this frame and the `r_speeds` text built from them. The model renderers
@@ -66,15 +66,22 @@ class RenderStats {
   }
 
   /**
-   * Draws the frame rate, the `r_speeds` counters and the times of the frame's sections when `r_speeds` is on.
+   * Draws the frame rate when `r_speeds` is on, and from `r_speeds 2` on also the counters and the times of the
+   * frame's sections.
    * @param fps Frames per second to show.
    */
   static Print(fps: number): void {
-    if (!rendererCvars.speeds.value) {
+    const mode = rendererCvars.speeds.value as SpeedsMode;
+
+    if (mode < SpeedsMode.FPS) {
       return;
     }
 
     Draw.String(16, 16, `${fps.toFixed(1)} FPS`, 2.0);
+
+    if (mode < SpeedsMode.SECTIONS) {
+      return;
+    }
 
     let y = 40;
 

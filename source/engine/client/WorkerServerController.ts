@@ -32,6 +32,8 @@ export interface WorkerServerControllerDependencies {
   readonly con: ConsoleOutput;
   /** Publishes an engine event that happened in the worker. */
   readonly publish: (name: string, ...args: unknown[]) => void;
+  /** Whether the client is connected to a server, which may be the one of this worker or one elsewhere. */
+  readonly isConnected: () => boolean;
   /** Name of the local player, shown for what the console does on the server's behalf, like kicks. */
   readonly operatorName: () => string;
   /** The server switched the view hack for a player who flies through walls on or off. */
@@ -281,16 +283,28 @@ export default class WorkerServerController implements ServerController {
    * @returns The command class to register.
    */
   #createForwardedCommand(): new () => ConsoleCommand {
-    const forward = (text: string): void => { this.#forwardCommand(text); };
+    const forward = (command: ConsoleCommand): void => { this.#forwardCommand(command); };
 
     return class ForwardedServerCommand extends ConsoleCommand {
       override run(): void {
-        forward(this.args ?? '');
+        forward(this);
       }
     };
   }
 
-  #forwardCommand(text: string): void {
+  /**
+   * Runs a command the server of the worker has. A player who is connected to a server elsewhere while the worker
+   * serves nobody gets the command sent to that server instead, the worker has no game to run it in.
+   * @param command The command as it was typed.
+   */
+  #forwardCommand(command: ConsoleCommand): void {
+    if (!this.#mirror.active && this.#deps.isConnected()) {
+      command.forward();
+      return;
+    }
+
+    const text = command.args ?? '';
+
     if (this.#dead) {
       this.#deps.con.PrintWarning('The server is not running.\n');
       return;
