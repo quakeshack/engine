@@ -231,6 +231,8 @@ keeps running, and a game restarts a shot's animation by setting `animtime` to t
   barrel would be in the world's field of view. Solid entities draw first, blended ones and sprites over them, unsorted. They are
   drawn exactly when the weapon is (not in a chase view, not with `r_drawviewmodel 0`, not while `viewmodel.visible` is false) and never with the world.
   A chain works (a flash on a gun part on the weapon). They get no shadows and no dynamic light of their own.
+- **Making one**: a LibreQuake view model without a rig (`v_shot`) is animated with shape keys, which IQM cannot store. When the key that moves the gun is a rigid motion,
+  the `qs-tools` script `bake_shape_keys.py` turns it into the animation of one bone (and refuses a file where it is not); the model keeps the frames of the `.mdl`.
 - **A light at the muzzle** is placed in the world as before: the weapon's world position is real, only its projection is not.
 
 ## Joint rotations: bending a model with the game
