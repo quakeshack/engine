@@ -27,7 +27,7 @@ import DefaultTextures from './renderer/resources/DefaultTextures.ts';
 import ShaderPrograms from './renderer/programs/ShaderPrograms.ts';
 import Fog from './renderer/scene/Fog.ts';
 import FrameBenchmark from './FrameBenchmark.ts';
-import FrameProfiler from './FrameProfiler.ts';
+import FrameProfiler, { SpeedsMode } from './FrameProfiler.ts';
 import RenderStats from './renderer/scene/RenderStats.ts';
 import SkyBox from './renderer/scene/SkyBox.ts';
 import TransparentPass from './renderer/scene/TransparentPass.ts';
@@ -495,7 +495,7 @@ class R {
     RenderStats.Reset();
     gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
     R.RenderScene();
-    if (rendererCvars.speeds.value !== 0) {
+    if ((rendererCvars.speeds.value as SpeedsMode) >= SpeedsMode.SECTIONS) {
       RenderStats.Summarize();
     }
     FrameProfiler.end();

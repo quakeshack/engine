@@ -129,7 +129,7 @@ void describe('FrameProfiler', () => {
   beforeEach(() => {
     now = 0;
     context = new FakeTimerContext();
-    restoreCvars = patchMembers(rendererCvars, { speeds: createMutableCvarStub(1) });
+    restoreCvars = patchMembers(rendererCvars, { speeds: createMutableCvarStub(2) });
     mock.method(Sys, 'FloatMilliTime', () => now);
     FrameProfiler.attach(context as unknown as WebGL2RenderingContext);
   });
@@ -299,6 +299,27 @@ void describe('FrameProfiler', () => {
       assert.equal(FrameProfiler.root.children.has('scene'), false);
     });
 
+    void test('measures nothing while it only shows the frame rate', () => {
+      rendererCvars.speeds.set(1);
+      FrameProfiler.beginFrame();
+      FrameProfiler.begin('scene');
+      FrameProfiler.end();
+      FrameProfiler.endFrame();
+
+      assert.equal(context.issued.length, 0);
+      assert.equal(FrameProfiler.root.children.has('scene'), false);
+    });
+
+    void test('2 does not wait for the GPU', () => {
+      rendererCvars.speeds.set(2);
+      FrameProfiler.beginFrame();
+      FrameProfiler.begin('scene');
+      FrameProfiler.end();
+      FrameProfiler.endFrame();
+
+      assert.equal(context.finishes, 0);
+    });
+
     void test('deletes every query, pending or answered, when it is switched off', () => {
       FrameProfiler.beginFrame();
       FrameProfiler.begin('scene');
@@ -315,8 +336,8 @@ void describe('FrameProfiler', () => {
       assert.deepEqual([...context.deleted].sort(), [...new Set(context.issued.map((query) => query.id))].sort());
     });
 
-    void test('2 waits for the GPU at the borders of drawn sections only', () => {
-      rendererCvars.speeds.set(2);
+    void test('3 waits for the GPU at the borders of drawn sections only', () => {
+      rendererCvars.speeds.set(3);
       FrameProfiler.beginFrame();
       FrameProfiler.begin('scene');
       FrameProfiler.end();

@@ -164,6 +164,7 @@ function createPair(): TestPair {
     channel: channel as unknown as { port1: MessagePort; port2: MessagePort },
     createInit: () => INIT,
     con: { Print: (t: string) => prints.push(t), PrintSuccess() {}, PrintWarning() {}, PrintError() {}, DPrint() {} },
+    isConnected: () => false,
     operatorName: () => 'Ranger',
     onNoclipAnglehack() {},
     publish: (name: string, ...args: unknown[]) => published.push([name, ...args]),

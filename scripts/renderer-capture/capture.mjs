@@ -273,7 +273,7 @@ if (MSAA !== null) {
   await page.waitForTimeout(1000);
 }
 
-await enter('r_speeds 1');
+await enter('r_speeds 2');
 await enter('pause');
 await page.waitForTimeout(1000);
 

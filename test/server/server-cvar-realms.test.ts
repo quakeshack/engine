@@ -83,6 +83,7 @@ async function createRealms({ own = {} }: { own?: Record<string, string> } = {})
     channel: channel as unknown as { port1: MessagePort; port2: MessagePort },
     createInit: () => INIT,
     con: { Print: (t: string) => prints.push(t), PrintSuccess() {}, PrintWarning: (t: string) => prints.push(t), PrintError() {}, DPrint() {} },
+    isConnected: () => false,
     operatorName: () => 'Ranger',
     onNoclipAnglehack() {},
     onSessionRequest() {},

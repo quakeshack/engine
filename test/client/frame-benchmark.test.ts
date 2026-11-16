@@ -95,7 +95,7 @@ void describe('FrameBenchmark', () => {
 
       assert.equal(FrameBenchmark.running, false);
       assert.deepEqual(FrameBenchmark.results.map((result) => result.label), ['as set', 'bench_test_shadows 0', 'bench_test_bloom 0', 'all of them 0']);
-      assert.deepEqual([...seen].sort(), ['0/0/1', '0/2/1', '1/0/1', '1/2/1']);
+      assert.deepEqual([...seen].sort(), ['0/0/2', '0/2/2', '1/0/2', '1/2/2']);
       assert.equal(shadows.string, '1');
       assert.equal(bloom.string, '2');
       assert.equal(rendererCvars.speeds.string, '0');

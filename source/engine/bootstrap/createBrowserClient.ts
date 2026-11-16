@@ -44,6 +44,7 @@ import { createServerRuntime } from './createServerRuntime.ts';
 import { editionOf } from '../common/GameApiSupport.ts';
 import clientCvars from '../client/ClientCvars.ts';
 import { clientStaticState } from '../client/ClientState.ts';
+import * as Def from '../common/Def.ts';
 import { ShaderLibrary } from '../client/renderer/programs/ShaderLibrary.ts';
 import GL from '../client/GL.ts';
 import { ClientEngineAPI } from '../client/ClientEngineAPI.ts';
@@ -136,6 +137,7 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
         buildConfig,
       }),
       con: Con,
+      isConnected: () => clientStaticState.state === Def.clientConnectionState.connected,
       operatorName: () => clientCvars.name.string,
       onNoclipAnglehack: (enabled) => { Host.noclip_anglehack = enabled; },
       publish: (name, ...args) => { eventBus.publishUntyped(name, ...args); },

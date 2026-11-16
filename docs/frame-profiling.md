@@ -10,7 +10,7 @@ For a comparison of two builds at fixed views, outside the game, use `scripts/re
 
 ## `r_speeds`
 
-`r_speeds 1` shows the frame rate, the draw counters of the frame (draw calls, triangles, texture binds, entities,
+`r_speeds 1` shows the frame rate only. `r_speeds 2` shows the frame rate, the draw counters of the frame (draw calls, triangles, texture binds, entities,
 transparent items, scene copies, point shadows) and a table of the sections of the frame:
 
 ```
@@ -42,9 +42,10 @@ most cpu: prediction 1.63 ms, most gpu: world 4.17 ms
 - **host** is the host frame (network, client, local server, prediction, sound). It runs before the browser asks for
   the drawing and is measured on the CPU only, per drawn frame: two host frames between two drawn frames count twice.
 
-`r_speeds 2` also calls `gl.finish()` at every section border while drawing, so the CPU column includes waiting for the
-GPU. It is the fallback without timer queries; it slows the frame down and leaves the GPU idle between sections, so
-compare the rows with each other, not with the frame rate of `r_speeds 1`.
+`r_speeds 3` is `r_speeds 2` and also calls `gl.finish()` at every section border while drawing, so the CPU column
+includes waiting for the GPU. It is the fallback without timer queries; it slows the frame down and leaves the GPU idle
+between sections, so compare the rows with each other, not with the frame rate of `r_speeds 2`. Nothing is measured
+below `r_speeds 2`.
 
 `r_profile` prints the table of the last half second to the console, to copy it out.
 
@@ -67,7 +68,7 @@ that is 0 already is left out, a name that is no cvar stops it before it starts.
   time of the rounds lay apart, and a **dgpu** (GPU time less the first row) below it is noise.
 - The section columns (`scene`, `world`, `transp`, `sky`, `shadow`, `post`) include what is nested in them.
 - Below the table, every variant lists the three sections whose own GPU time changed most against the first row.
-- `r_speeds` is on while it runs. Every cvar is put back at the end, by `r_bench stop`, and when the game ends during
+- `r_speeds 2` is set while it runs. Every cvar is put back at the end, by `r_bench stop`, and when the game ends during
   the run.
 
 ## Adding a section
@@ -83,9 +84,9 @@ FrameProfiler.end();
   `ModelRenderer.profileName`).
 - `begin` and `end` pair up within one task. **Never across an `await`**: the browser can draw a frame in between,
   which resets the open sections (`ClientHost.RunFrame` opens `host` after `Host.BeginFrame`, not around it).
-- While `r_speeds` is 0 a section costs a check of a flag. While it is on, each one costs two `performance.now()` calls
+- While `r_speeds` is below 2 a section costs a check of a flag. From 2 on, each one costs two `performance.now()` calls
   and, while drawing, a timer query; a section per item in a loop of hundreds distorts what it measures. Group by kind
   instead, as `TransparentPass` does.
 - Timer queries cannot nest: opening a section ends the query of the one around it and closing it starts a new one, so
-  every section's GPU time is its own. Nothing else may run a `TIME_ELAPSED` query while `r_speeds` is on, which is why
+  every section's GPU time is its own. Nothing else may run a `TIME_ELAPSED` query while `r_speeds` is 2 or more, which is why
   `gpu-bench.mjs` needs it off.
