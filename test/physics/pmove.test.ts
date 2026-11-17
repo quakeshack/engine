@@ -835,6 +835,41 @@ void describe('PmovePlayer', () => {
     });
   });
 
+  void describe('in the air flush against the side of a step', () => {
+    // Regression (hw_e1m2): a player whose box touched the side of a step at the height of its top hovered there,
+    // sliding along the step with neither gravity nor friction until they backed off or jumped, because the step's top
+    // caught every move that was not straight down at fraction 0.
+    void test('gets onto the ground within a few frames instead of hovering at step height', () => {
+      const pmove = new Pmove();
+
+      pmove.movevars = createMoveVars();
+      pmove.setWorldmodel(createDeterminismWorld());
+
+      const player = pmove.newPlayerMove();
+
+      // The second step of the determinism world spans x 232..264 and y -64..64 with its top at z = 16: the player's
+      // face at y = 64 touches its side and their feet are level with its top. They drift along it and run into it at
+      // an angle (yaw 223.6, as reported).
+      player.origin.setTo(240, 80, 40);
+      player.velocity.setTo(60, 0, 0);
+      player.pmFlags = 0;
+      player.onground = null;
+
+      let groundedFrame: number | null = null;
+
+      for (let frame = 0; frame < 10 && groundedFrame === null; frame++) {
+        player.cmd = toUserCmd({ msec: 16, forwardmove: 320, sidemove: 0, upmove: 0, pitch: 0, yaw: 223.6 });
+        player.move();
+
+        if (player.onground !== null) {
+          groundedFrame = frame;
+        }
+      }
+
+      assert.notEqual(groundedFrame, null, `still in the air at ${[...player.origin].join(' ')}`);
+    });
+  });
+
   void describe('_slideMove', () => {
     void test('slides past a wall-to-clip seam and snap keeps the seam walkable', () => {
       const pmove = new Pmove();

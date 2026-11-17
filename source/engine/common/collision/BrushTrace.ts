@@ -922,12 +922,6 @@ export class BrushTrace {
     let getout = false;
     let startout = false;
 
-    // A box that only touches the side of a brush cannot reach it by moving straight up or down. The tangent handling
-    // below keeps the faces around a touched wall in play for horizontal moves, which a vertical move would turn into a
-    // hit on the top or bottom of the brush: a player flush against a wall of two stacked brushes, the lower one step
-    // high, stepped onto the lower brush from the side that way.
-    const verticalMove = Math.abs(ctx.totalMove[0]) <= DIST_EPSILON * 0.01 && Math.abs(ctx.totalMove[1]) <= DIST_EPSILON * 0.01;
-
     for (let i = 0; i < brush.numsides; i++) {
       const side = brushsides[brush.firstside + i];
       const plane = planes[side.planenum];
@@ -961,8 +955,9 @@ export class BrushTrace {
       const d2 = plane.normal.dot(ctx.end) - dist;
       const startClear = d1 >= -DIST_EPSILON;
       const endClear = d2 >= -DIST_EPSILON;
-      const axialWallClearContact = !verticalMove
-        && plane.type < 3
+      // A box flush against an axial wall that does not move into it keeps the brush in play, so that its other walls
+      // still close a gap exactly as wide as the box (the hull does the same), see the top and bottom check below.
+      const axialWallClearContact = plane.type < 3
         && Math.abs(plane.normal[2]) <= DIST_EPSILON
         && Math.abs(d1) <= DIST_EPSILON
         && d2 >= -DIST_EPSILON;
@@ -1020,7 +1015,10 @@ export class BrushTrace {
       return;
     }
 
-    if (ctx.isPoint && axialWallClearAxisMask === 3 && clipplane !== null && Math.abs(clipplane.normal[2]) > DIST_EPSILON) {
+    // A box that only touches the side of a brush cannot reach its top or bottom, whichever way it moves along that
+    // side. Clipping there held a player flush against a wall at step height while they walked or fell off a step: the
+    // next step's top caught every downward move at fraction zero, so they hovered and slid along the wall.
+    if (axialWallClearAxisMask !== 0 && clipplane !== null && Math.abs(clipplane.normal[2]) > DIST_EPSILON) {
       return;
     }
 
