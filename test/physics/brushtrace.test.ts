@@ -403,6 +403,24 @@ void describe('BrushTrace', () => {
       assert.deepEqual([...trace.endpos], [64, 32, 0]);
     });
 
+    void test('a box that only touches the side of a brush falls past its top while also moving along that side', () => {
+      // The same contact as above, but the box drifts along the face (x) as it falls, the way a player does who walks off
+      // a step flush against a wall: the brush's top used to catch the move at fraction 0 and the player hovered.
+      const worldModel = createBrushWorldModel({ halfExtents: [32, 16, 16] });
+      const trace = BrushTrace.boxTrace(
+        worldModel,
+        0,
+        new Vector(64, 32, 40),
+        new Vector(48, 32, 30),
+        Pmove.PLAYER_MINS,
+        Pmove.PLAYER_MAXS,
+      );
+
+      assert.equal(trace.startsolid, false);
+      assert.equal(trace.fraction, 1.0);
+      assert.deepEqual([...trace.endpos], [48, 32, 30]);
+    });
+
     void test('a box that overlaps the side of a brush by a little still lands on its top', () => {
       const worldModel = createBrushWorldModel({ halfExtents: [32, 16, 16] });
       const trace = BrushTrace.boxTrace(
