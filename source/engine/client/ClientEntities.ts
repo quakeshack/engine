@@ -1234,7 +1234,12 @@ export default class ClientEntities {
     return beam.start;
   }
 
-  #thinkTempEntities(): void {
+  /**
+   * Builds the lights and the segments of every beam. Called by `emit()` once the entities are placed for the frame, not by
+   * `think()`: a beam starts at its shooter's muzzle, which is only where it is drawn after the shooter's origin and the
+   * attachments of this frame are resolved. Built earlier, a beam trails a moving shooter by one frame.
+   */
+  #emitBeams(): void {
     // TODO: rework
     this.num_temp_entities = 0;
     for (let i = 0; i < Def.limits.beams; i++) {
@@ -1372,7 +1377,6 @@ export default class ClientEntities {
   think(): void {
     this.#physicsEntities();
     this.#thinkEntities();
-    this.#thinkTempEntities();
     this.#thinkDlights();
   }
 
@@ -1587,8 +1591,9 @@ export default class ClientEntities {
 
     this.#emitEntities();
     this.#emitProjectiles();
-    this.#emitTempEntities();
     this.#emitAttachedEntities();
+    this.#emitBeams();
+    this.#emitTempEntities();
     this.#pullLightsOutOfWalls();
   }
 

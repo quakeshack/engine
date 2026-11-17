@@ -2,8 +2,8 @@
 
 ## Status
 
-✅ Phases 0 to 7d are done (2026-11-15 and 2026-11-16, results below), and the branch `skeletal-models` is ready to merge into `main` apart from the checks under
-"Before the merge". The protocol is at 45. Phase 8 (IQM view weapons) has its engine half; its assets, the games' side and a browser pass are open. Not started: Phase 9 (polish, only as measured). All questions were settled on 2026-11-13; quaternion handling
+✅ Phases 0 to 7d are done (2026-11-15 and 2026-11-16, results below), and the branch `skeletal-models` is ready to merge into `main` apart from two checks under
+"Before the merge" that need a real GPU or a second human player (updated 2026-11-17: the others are done). The protocol is at 45. Phase 8 (IQM view weapons) has its engine half; its assets, the games' side and a browser pass are open. Not started: Phase 9 (polish, only as measured). All questions were settled on 2026-11-13; quaternion handling
 was added on 2026-11-14 (decisions 19–21).
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
@@ -602,7 +602,11 @@ for the three cone families, which no weapon uses yet), `ClientEdict.setAttachme
 Shipped (`56901be6`, documented in "Beams" of `docs/skeletal-models.md`): a lightning beam (`te.lightning1` to `te.lightning3`) starts on the `tag_flash` of the entity that fired it (its own, or
 its weapon's), the same place the muzzle flash uses, and follows it every frame while the beam lasts; the end stays where the server's trace hit. A shooter without a muzzle keeps the server's start
 (its origin plus 16 up). The local player in first person still starts at the player's origin, since the player model is not drawn there; a chase view uses the muzzle. Test: `test/client/beam-start.test.ts`.
-Not checked in a browser.
+Browser pass (2026-11-17, production build, software GL, Hellwave `hw_e1m2`, chase view): the beam start equals `GetEntityTag(gun, 'tag_flash')` to 0.000 units in 28 samples (standing, turning, moving), the end is left alone, first
+person still starts at the player's origin, a screenshot shows the beam leaving the thunderbolt's prong. **It found a one-frame lag:** the start was worked out in `ClientEntities.think()`, before `emit()` moved the player for the
+frame, so a moving shooter's beam trailed its muzzle by one frame of movement (6.5 to 21.8 units at 3 to 5 FPS in software GL, about 5 units at 60 FPS and 320 u/s). Fixed the same day: the beams' lights and segments are built by `emit()`
+(`#emitBeams`), after the entities and attachments of the frame are placed and before the temp entities are staged; `think()` no longer builds them. A test moves the shooter between frames (`beam-start.test.ts`; it fails with the beams
+built in `think()`). The fix itself is not looked at again in a browser (the two runs after it were the MDL checks).
 
 ### Phase 8 results, engine half (2026-11-16)
 
@@ -1273,13 +1277,16 @@ for far entities.
 - **Muzzle flash sprite scales and cone flashes.** The sprite itself shipped in Phase 7c; what is left is the scale per weapon family (one number in each `.gif.json`, chosen blind) and the three cone families, which no
   weapon uses yet and which need a client entity placed at the tag with the tag's angles. The nailgun is counted 7 to 10% short in the in-page server's slow frames (Phase 7c).
 
-**Before the merge (checks the plan owes, none of them a known bug):**
-1. **A colored MDL player in a browser.** The Phase 4 fix (`tPlayer` behind the shadow samplers) is only unit tested; the bug it fixes blacked out the whole world and remote players in multiplayer are colored.
-2. **A real GPU.** Every browser pass ran on software GL. Phase 4's exit item "`r_speeds` with a wave of IQM monsters" is met as counts only; take frame times (`r_speeds`, `r_bench`, `docs/frame-profiling.md`)
-   with a Hellwave wave and record them here. They decide Phase 9.
-3. **Two human players** (what a remote client sees: held weapons, flash sprite, spine bend), once with the in-page server and once with a dedicated server. Phase 7's exit criterion named co-op with two players in chase cam.
-4. **The MDL first-person weapon in a browser** (Phase 8 changed how the narrow projection reaches every program; the weapon, the world behind it and the HUD must look as before, in id1 and in Hellwave).
-5. `npm run build:production` (the build that ships), a beam in a chase view (Phase 7d), and the shadow of an attached entity.
+**Before the merge (checks the plan owes, none of them a known bug).** Done 2026-11-17 unless marked open; all on software GL, production build:
+1. **A colored MDL player in a browser.** Done (id1, `e1m1`, chase view, in-page server): the MDL player drew through the `player` program with `color 4 13`, `13 4` and `1 6` (the tints changed), with shadows on, two injected dynamic
+   lights, a translucent player and after leaving chase view; the world stayed fully drawn in every screenshot and **0 GL errors over about 3,200 to 9,200 draws per window** (`getError` after every draw, per program). The Phase 4 fix holds.
+2. **A real GPU.** **Open.** Every pass ran on software GL (3 to 5 FPS). `r_speeds`/`r_bench` frame times with a Hellwave wave decide Phase 9; ask before a GPU run (it heats the maintainer's notebook).
+3. **Two human players** (held weapons, flash sprite, spine bend as a remote client sees them), once with the in-page server and once with a dedicated server. **Open.**
+4. **The MDL first-person weapon in a browser.** Done for id1 (`e1m1`: axe, shotgun, rocket launcher: narrow field of view, lit, world and HUD intact, 0 GL errors over 204 to 23,140 draws per phase), judged by eye (no before/after
+   pixel comparison against an older build). **Hellwave has no MDL view weapon left** (all eight are IQM), so the IQM axe, shotgun and rocket launcher were looked at instead: proportions, light and HUD fine, 0 GL errors. The muzzle flash light
+   of the shotgun and the axe was not captured on screen (a screenshot lags the 0.1 s flash); a rocket's dynamic lights were seen.
+5. **`npm run build:production`** passes (420 modules). **A beam in a chase view**: done, found and fixed the one-frame lag (Phase 7d). **The shadow of an attached entity**: the held gun and the axe each add one caster to the shadow pass (hiding
+   one changes the shadow-pass draw count by exactly one), no GL errors; on screen the shadows were too faint at `r_shadow_darkness 0.1` to point to a gun-shaped one (the counts are the stronger evidence).
 
 Known and accepted: pointer lock and mouse look were never exercised in the headless harness.
 

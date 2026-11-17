@@ -16,6 +16,18 @@ const SERVER_START = [100, 200, 316];
 const BEAM_END = [100, 500, 316];
 
 /**
+ * Puts a server entity somewhere the way the network does: `emit()` takes the position from the last message.
+ * @param entity The entity.
+ * @param origin Where it is.
+ * @param angles Which way it faces.
+ */
+function place(entity: ReturnType<ClientEntities['getEntity']>, origin: number[], angles: number[]): void {
+  entity.msg_origins[0].setTo(origin[0]!, origin[1]!, origin[2]!);
+  entity.msg_angles[0].setTo(angles[0]!, angles[1]!, angles[2]!);
+  entity.updatecount = 1;
+}
+
+/**
  * Lets a beam of a shooter think for one frame and finds where it starts: the first light it makes.
  * @param prepare Sets up the shooter (edict 1, at (100, 200, 300) facing +Y) and its surroundings.
  * @param viewentity The entity the local player is, 1 is the shooter.
@@ -26,8 +38,7 @@ function beamStart(prepare: (clientEntities: ClientEntities, shooter: ReturnType
   const clientEntities = new ClientEntities();
   const shooter = clientEntities.getEntity(1);
 
-  shooter.origin.setTo(100, 200, 300);
-  shooter.angles.setTo(0, 90, 0);
+  place(shooter, [100, 200, 300], [0, 90, 0]);
   prepare(clientEntities, shooter);
 
   const beam = new ClientBeam();
@@ -39,11 +50,11 @@ function beamStart(prepare: (clientEntities: ClientEntities, shooter: ReturnType
   beam.end = new Vector(...BEAM_END);
   clientEntities.beams[0] = beam;
 
-  const restore = patchMembers(clientRuntimeState, { time: 5, viewentity, clientEntities });
+  const restore = patchMembers(clientRuntimeState, { time: 5, viewentity, clientEntities, worldmodel: {} as never });
   const restoreChase = patchMembers(Chase, { active: { value: chase ? 1 : 0 } as Cvar });
 
   try {
-    withEngineMocks({ Host: { frametime: 1 / 60 } }, () => { clientEntities.think(); });
+    withEngineMocks({ Host: { frametime: 1 / 60 } }, () => { clientEntities.emit(); });
   } finally {
     restoreChase();
     restore();
@@ -58,15 +69,19 @@ function beamStart(prepare: (clientEntities: ClientEntities, shooter: ReturnType
 
 void describe('where a beam starts', () => {
   const previousInterpolation = rendererCvars.interpolation;
+  const previousNovis = rendererCvars.novis;
   let restoreRenderTime: () => void = () => {};
 
   beforeEach(() => {
     rendererCvars.interpolation = { value: 1 } as unknown as Cvar;
+    // novis reveals everything, so emit() needs no world model to look up a PVS
+    rendererCvars.novis = { value: 1 } as unknown as Cvar;
     restoreRenderTime = patchMembers(clientRuntimeState.clientMessages, { renderTime: 5.05 });
   });
 
   afterEach(() => {
     rendererCvars.interpolation = previousInterpolation;
+    rendererCvars.novis = previousNovis;
     restoreRenderTime();
   });
 
@@ -124,7 +139,7 @@ void describe('where a beam starts', () => {
     const weapon = clientEntities.allocateClientEntity();
 
     shooter.model = new BaseModel('progs/player.iqm');
-    shooter.origin.setTo(100, 200, 300);
+    place(shooter, [100, 200, 300], [0, 0, 0]);
     weapon.model = createFlashModel();
     weapon.origin.setTo(0, 0, 0);
     weapon.angles.setTo(0, 0, 0);
@@ -139,14 +154,14 @@ void describe('where a beam starts', () => {
     beam.end = new Vector(...BEAM_END);
     clientEntities.beams[0] = beam;
 
-    const restore = patchMembers(clientRuntimeState, { time: 5, viewentity: 2, clientEntities });
+    const restore = patchMembers(clientRuntimeState, { time: 5, viewentity: 2, clientEntities, worldmodel: {} as never });
     const starts: number[][] = [];
 
     try {
       withEngineMocks({ Host: { frametime: 1 / 60 } }, () => {
         for (const yaw of [0, 90]) {
-          shooter.angles.setTo(0, yaw, 0);
-          clientEntities.think();
+          place(shooter, [100, 200, 300], [0, yaw, 0]);
+          clientEntities.emit();
           starts.push(Array.from(clientEntities.dlights.filter((light) => !light.isFree() && light.radius === 50)[0]!.origin).map((value) => Math.round(value)));
           clientEntities.dlights.forEach((light) => { light.die = 0; });
         }
@@ -156,5 +171,46 @@ void describe('where a beam starts', () => {
     }
 
     assert.deepEqual(starts, [[110, 200, 300], [100, 210, 300]]);
+  });
+
+  void test('starts at the muzzle of the frame it is drawn in when the shooter moves (it trailed by a frame when built before emit)', () => {
+    const clientEntities = new ClientEntities();
+    const shooter = clientEntities.getEntity(1);
+
+    shooter.model = createFlashModel();
+
+    const beam = new ClientBeam();
+
+    beam.entity = 1;
+    beam.model = new BaseModel('progs/bolt2.mdl');
+    beam.endtime = 10;
+    beam.start = new Vector(...SERVER_START);
+    beam.end = new Vector(...BEAM_END);
+    clientEntities.beams[0] = beam;
+
+    const restore = patchMembers(clientRuntimeState, { time: 5, viewentity: 2, clientEntities, worldmodel: {} as never });
+    const frames: { light: number[]; segment: number[] }[] = [];
+
+    try {
+      withEngineMocks({ Host: { frametime: 1 / 60 } }, () => {
+        for (const origin of [[100, 200, 300], [160, 200, 300]]) {
+          place(shooter, origin, [0, 90, 0]);
+          clientEntities.think();
+          clientEntities.emit();
+
+          const light = clientEntities.dlights.filter((candidate) => !candidate.isFree() && candidate.radius === 50)[0]!;
+          const segment = Array.from(clientEntities.getVisibleEntities()).find((entity) => entity.model === beam.model)!;
+
+          frames.push({ light: Array.from(light.origin), segment: Array.from(segment.lerp.origin) });
+          clientEntities.dlights.forEach((candidate) => { candidate.die = 0; });
+        }
+      });
+    } finally {
+      restore();
+    }
+
+    // the muzzle is 10 units ahead along the shooter's own X, which a yaw of 90 turns onto +Y
+    assert.deepEqual(frames[1]!.light, [160, 210, 300]);
+    assert.deepEqual(frames[1]!.segment, [160, 210, 300]);
   });
 });
