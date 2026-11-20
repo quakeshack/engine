@@ -8,6 +8,7 @@ import { effect, modelFlags } from '../../shared/Defs.ts';
 import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
 
 import { clientRuntimeState } from './ClientState.ts';
+import { EntityTags } from './EntityTags.ts';
 import Particles from './renderer/effects/Particles.ts';
 
 
@@ -19,7 +20,10 @@ import Particles from './renderer/effects/Particles.ts';
 export class DefaultClientEdictHandler extends BaseClientEdictHandler {
   emit(): void {
     const clent = this.clientEdict;
-    const oldorg = clent.originPrevious;
+    // an attached entity's own origin, and the one before it, are offsets in tag space: lights and trails go where it
+    // was drawn last frame, and a trail has no stretch to leave behind
+    const worldOrigin = clent.worldOrigin;
+    const oldorg = clent.attachmentParent === null ? clent.originPrevious : worldOrigin;
     const modelBits = clent.model?.flags ?? 0;
 
     if ((modelBits & modelFlags.MF_ROTATE) !== 0) {
@@ -30,12 +34,19 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
     }
     if ((clent.effects & effect.EF_MUZZLEFLASH) !== 0) {
       const dl = clientRuntimeState.clientEntities.allocateDynamicLight(clent.num);
-      const fv = clent.angles.angleVectors().forward;
-      dl.origin = new Vector(
-        clent.origin[0] + 20.0 * fv[0],
-        clent.origin[1] + 20.0 * fv[1],
-        clent.origin[2] + 16.0 + 20.0 * fv[2],
-      );
+      const flashOrigin = new Vector();
+
+      if (EntityTags.resolveMuzzleFlash(clent, flashOrigin)) {
+        // a model with a tag at its muzzle, or a weapon attached to the entity that has one: the light sits there, whatever the pose
+        dl.origin = flashOrigin;
+      } else {
+        const fv = clent.angles.angleVectors().forward;
+        dl.origin = new Vector(
+          clent.origin[0] + 20.0 * fv[0],
+          clent.origin[1] + 20.0 * fv[1],
+          clent.origin[2] + 16.0 + 20.0 * fv[2],
+        );
+      }
       dl.radius = 200.0 + Math.random() * 32.0;
       dl.minlight = 32.0;
       dl.die = clientRuntimeState.time + 0.5;
@@ -43,7 +54,7 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
     }
     if ((clent.effects & effect.EF_BRIGHTLIGHT) !== 0) {
       const dl = clientRuntimeState.clientEntities.allocateDynamicLight(clent.num);
-      dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2] + 16.0);
+      dl.origin = new Vector(worldOrigin[0], worldOrigin[1], worldOrigin[2] + 16.0);
       dl.radius = 400.0 + Math.random() * 32.0;
       // Refreshed every frame while the effect is active, so `die` only
       // matters as the fade-out tail once the effect stops. A near-zero
@@ -54,29 +65,29 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
     }
     if ((clent.effects & effect.EF_DIMLIGHT) !== 0) {
       const dl = clientRuntimeState.clientEntities.allocateDynamicLight(clent.num);
-      dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2] + 16.0);
+      dl.origin = new Vector(worldOrigin[0], worldOrigin[1], worldOrigin[2] + 16.0);
       dl.radius = 200.0 + Math.random() * 32.0;
       dl.die = clientRuntimeState.time + 0.1;
       // dl.color = new Vector(0.5, 0.5, 1.0);
     }
     if ((modelBits & modelFlags.MF_GIB) !== 0) {
-      Particles.RocketTrail(oldorg, clent.origin, 2);
+      Particles.RocketTrail(oldorg, worldOrigin, 2);
     } else if ((modelBits & modelFlags.MF_ZOMGIB) !== 0) {
-      Particles.RocketTrail(oldorg, clent.origin, 4);
+      Particles.RocketTrail(oldorg, worldOrigin, 4);
     } else if ((modelBits & modelFlags.MF_TRACER) !== 0) {
-      Particles.RocketTrail(oldorg, clent.origin, 3);
+      Particles.RocketTrail(oldorg, worldOrigin, 3);
     } else if ((modelBits & modelFlags.MF_TRACER2) !== 0) {
-      Particles.RocketTrail(oldorg, clent.origin, 5);
+      Particles.RocketTrail(oldorg, worldOrigin, 5);
     } else if ((modelBits & modelFlags.MF_ROCKET) !== 0) {
-      Particles.RocketTrail(oldorg, clent.origin, 0);
+      Particles.RocketTrail(oldorg, worldOrigin, 0);
       const dl = clientRuntimeState.clientEntities.allocateDynamicLight(clent.num);
-      dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2]);
+      dl.origin = new Vector(worldOrigin[0], worldOrigin[1], worldOrigin[2]);
       dl.radius = 200.0;
       dl.die = clientRuntimeState.time + 0.1;
     } else if ((modelBits & modelFlags.MF_GRENADE) !== 0) {
-      Particles.RocketTrail(oldorg, clent.origin, 1);
+      Particles.RocketTrail(oldorg, worldOrigin, 1);
     } else if ((modelBits & modelFlags.MF_TRACER3) !== 0) {
-      Particles.RocketTrail(oldorg, clent.origin, 6);
+      Particles.RocketTrail(oldorg, worldOrigin, 6);
     }
   }
 

@@ -162,7 +162,7 @@ export class SpriteModelRenderer extends ModelRenderer {
     }
 
     SpriteModelRenderer.#setBasis(spriteModel.orientation, entity);
-    SpriteModelRenderer.#emitQuad(entity.origin, SpriteModelRenderer.#sample);
+    SpriteModelRenderer.#emitQuad(entity.worldOrigin, SpriteModelRenderer.#sample);
   }
 
   /**
@@ -205,7 +205,7 @@ export class SpriteModelRenderer extends ModelRenderer {
     asset.texture.bind(program.tTexture!, true);
 
     SpriteModelRenderer.#selectImage(spriteModel, entity);
-    SpriteModelRenderer.#emitQuad(entity.origin, SpriteModelRenderer.#sample);
+    SpriteModelRenderer.#emitQuad(entity.worldOrigin, SpriteModelRenderer.#sample);
 
     // the next caster may switch programs, and the stream is drawn with the program current at the flush
     GL.StreamFlush();
@@ -219,7 +219,7 @@ export class SpriteModelRenderer extends ModelRenderer {
 
     SpriteModelRenderer.#viewRight.set(Camera.vright);
     SpriteModelRenderer.#viewUp.set(Camera.vup);
-    SpriteModelRenderer.#toSprite.setTo(entity.origin[0] - vieworg[0], entity.origin[1] - vieworg[1], entity.origin[2] - vieworg[2]);
+    SpriteModelRenderer.#toSprite.setTo(entity.worldOrigin[0] - vieworg[0], entity.worldOrigin[1] - vieworg[1], entity.worldOrigin[2] - vieworg[2]);
   }
 
   /**
@@ -233,9 +233,9 @@ export class SpriteModelRenderer extends ModelRenderer {
     let forwardZ = ctx.lightDirection[2];
 
     if (ctx.isPointLight) {
-      forwardX = entity.origin[0] - ctx.pointLightOrigin[0];
-      forwardY = entity.origin[1] - ctx.pointLightOrigin[1];
-      forwardZ = entity.origin[2] - ctx.pointLightOrigin[2];
+      forwardX = entity.worldOrigin[0] - ctx.pointLightOrigin[0];
+      forwardY = entity.worldOrigin[1] - ctx.pointLightOrigin[1];
+      forwardZ = entity.worldOrigin[2] - ctx.pointLightOrigin[2];
     }
 
     const length = Math.hypot(forwardX, forwardY, forwardZ);
@@ -297,13 +297,13 @@ export class SpriteModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Picks the image an entity shows now into {@link SpriteModelRenderer.#sample}: its `frame` selects a frame, a
-   * sequence animates on the clock the model's phase names, and a sequence with rotations shows the view the viewer
-   * sees it from.
+   * Picks the image an entity shows now into {@link SpriteModelRenderer.#sample}: its `sequence` (its `frame` for a
+   * `.spr`) selects a frame, a sequence animates on the clock the model's phase names at the speed its `framerate`
+   * scales, and a sequence with rotations shows the view the viewer sees it from.
    */
   static #selectImage(spriteModel: SpriteModel, entity: ClientEdict): void {
     const frames = spriteModel.frames;
-    const frame = frames[entity.frame >= 0 && entity.frame < frames.length ? entity.frame : 0];
+    const frame = frames[spriteModel.selectedFrame(entity.frame, entity.sequence)];
     let time = clientRuntimeState.time;
     let view = 0;
 
@@ -319,11 +319,13 @@ export class SpriteModelRenderer extends ModelRenderer {
         time += 'images' in frame ? entity.syncbase * SpriteAnimator.cycleDuration(frame) : 0.0;
         break;
       case SpritePhase.spawn:
-        time -= entity.animationStartTime;
+        time -= entity.animtime;
         break;
       default:
         break;
     }
+
+    time *= entity.framerate;
 
     SpriteAnimator.sample(frame, time, spriteModel.asset!.interpolate && rendererCvars.interpolation.value !== 0, SpriteModelRenderer.#sample, view);
   }

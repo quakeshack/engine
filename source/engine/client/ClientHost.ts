@@ -42,7 +42,7 @@ import { ModelScope, ModelType } from '../common/Mod.ts';
 import Mod from '../common/Mod.ts';
 import Chase from './Chase.ts';
 import VID from './VID.ts';
-import GL from './GL.ts';
+import GL, { GLTexture } from './GL.ts';
 import rendererCvars from './renderer/resources/RendererCvars.ts';
 import { SpriteImageDecoding } from './renderer/sprite/SpriteImageDecoding.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
@@ -187,6 +187,7 @@ export default class ClientHost {
         maxLayers: GL.maxArrayTextureLayers,
         maxBytes: rendererCvars.spriteMemory.value * 1048576,
       })),
+      textures: { loadImage: (filename) => GLTexture.FromImageFile(filename, true) },
       keptClientModels: () => Object.keys(clientRuntimeState.clientEntities.tempEntityModels),
     });
     net.Init();

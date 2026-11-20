@@ -17,7 +17,6 @@ import type { ModelLoadOptions } from '../common/model/ModelLoadContext.ts';
 import { ModelPrecacheFlags } from '../../shared/ModelPrecacheFlags.ts';
 import { HostError } from '../common/Errors.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
-import { SpriteModel } from '../common/model/SpriteModel.ts';
 import { type BaseEntity, ServerEdict } from './Edict.ts';
 import { Navigation, type NavigationBox } from './Navigation.ts';
 
@@ -510,31 +509,39 @@ export class ServerEngineAPI {
   }
 
   /**
-   * How long a sprite's sequence plays, for effects that remove themselves when it is over.
+   * How long a sequence of a model plays, for effects that remove themselves when it is over.
    * @param modelName A model that was precached and has finished loading.
-   * @param frame The `frame` that selects the sequence, 0 for a sprite with a single one.
-   * @returns Seconds, `Infinity` when the sequence repeats forever, 0 when the model is no sprite or the frame is a
-   * single picture. See [Sprites](docs/sprites.md).
+   * @param sequence The `sequence` of an entity that plays it (the `frame` for a Quake `.spr`, which has no
+   * sequences), 0 for a model with a single one.
+   * @returns Seconds, `Infinity` when the sequence repeats forever, 0 when it holds a single picture or pose and for a
+   * model that has no sequences. See [Sprites](docs/sprites.md) and [Skeletal models](docs/skeletal-models.md).
    */
-  GetSpriteSequenceDuration(modelName: string, frame = 0): number {
-    const model = this.#findLoadedModel(modelName, 'GetSpriteSequenceDuration');
-
-    return model instanceof SpriteModel ? model.sequenceDuration(frame) : 0;
+  GetSequenceDuration(modelName: string, sequence = 0): number {
+    return this.#findLoadedModel(modelName, 'GetSequenceDuration').sequenceDuration(sequence);
   }
 
   /**
-   * Finds a named sequence of a sprite, so a game does not depend on their order.
+   * Finds a named sequence of a model, so a game does not depend on their order.
    * @param modelName A model that was precached and has finished loading.
-   * @param name The name of the sequence in the sprite's settings file.
-   * @returns The `frame` that selects it, -1 when the model is no sprite or has no sequence of that name.
+   * @param name The name of the sequence in the model's file or settings file.
+   * @returns The `sequence` that selects it, -1 when the model has no sequence of that name.
    */
-  GetSpriteSequenceIndex(modelName: string, name: string): number {
-    const model = this.#findLoadedModel(modelName, 'GetSpriteSequenceIndex');
-
-    return model instanceof SpriteModel ? model.sequenceIndex(name) : -1;
+  GetSequenceIndex(modelName: string, name: string): number {
+    return this.#findLoadedModel(modelName, 'GetSequenceIndex').sequenceIndex(name);
   }
 
-  #findLoadedModel(modelName: string, caller: string): BaseModel | null {
+  /**
+   * Finds a tag of a model, a named place on it such as the muzzle of a weapon or the hand of a monster. Every joint of
+   * a skeletal model is one. See [Skeletal models](docs/skeletal-models.md#tags).
+   * @param modelName A model that was precached and has finished loading.
+   * @param tagName The name of the tag.
+   * @returns The tag's index, -1 when the model has no tag of that name, and for a model that has no tags.
+   */
+  GetTagIndex(modelName: string, tagName: string): number {
+    return this.#findLoadedModel(modelName, 'GetTagIndex').getTagIndex(tagName);
+  }
+
+  #findLoadedModel(modelName: string, caller: string): BaseModel {
     if (!this.#sv.server.modelPrecache.includes(modelName)) {
       throw new HostError(`ServerEngineAPI.${caller}: ${modelName} not precached`);
     }

@@ -14,6 +14,7 @@ import Cmd, { ConsoleCommand } from './Cmd.ts';
 import { eventBus } from './EventBus.ts';
 import { HostError } from './Errors.ts';
 import Con from './Console.ts';
+import { ModelInfoCommand } from './model/ModelInfoCommand.ts';
 
 type DeferredCallback = () => void | Promise<void>;
 
@@ -312,6 +313,8 @@ export default class Host {
         throw new Error(message);
       }
     });
+
+    Cmd.AddCommand('modelinfo', ModelInfoCommand);
 
     Cmd.AddCommand('eb_topics', class HostEventBusTopicsCommand extends ConsoleCommand {
       override run(): void {

@@ -151,6 +151,20 @@ void describe('FrameUniforms.Upload', () => {
     assert.equal(calls[3][3], Camera.perspective);
   });
 
+  void test('UploadPerspective writes only the projection, to every program that has one', () => {
+    GL.programs = [fakeProgram('uPerspective', 'uGamma'), fakeProgram('uGamma'), fakeProgram('uViewOrigin', 'uPerspective')];
+
+    FrameUniforms.UploadPerspective();
+
+    assert.deepEqual(calls.map(([name, location]) => `${name} ${location}`), [
+      'useProgram program of uPerspective,uGamma',
+      'uniformMatrix4fv uPerspective',
+      'useProgram program of uViewOrigin,uPerspective',
+      'uniformMatrix4fv uPerspective',
+    ]);
+    assert.equal(calls[1][3], Camera.perspective);
+  });
+
   void test('visits every program', () => {
     GL.programs = [fakeProgram('uGamma'), fakeProgram('uViewOrigin')];
 

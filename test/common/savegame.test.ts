@@ -160,7 +160,11 @@ interface MockSaveEdict {
   entity: MockSaveEntity | null;
   freeCount: number;
   linkedCount: number;
+  /** What the edict follows: the parent's edict number and the tag, `null` when it stands free. */
+  attachment: [parent: number, tagName: string | null] | null;
   isFree(): boolean;
+  attachmentSnapshot(): [parent: number, tagName: string | null] | null;
+  setAttachment(parent: { num: number }, tagName: string | null): void;
   freeEdict(): void;
   linkEdict(): void;
 }
@@ -172,16 +176,25 @@ interface MockSaveEdict {
  * @param hooks Called when the edict is freed or linked.
  * @param hooks.onFree Called when the edict is freed.
  * @param hooks.onLink Called when the edict is linked.
+ * @param hooks.onAttach Called when the edict is attached to a parent.
  * @returns The mock edict.
  */
-function createMockEdict(num: number, entity: MockSaveEntity | null = null, { onFree = null, onLink = null }: { onFree?: (() => void) | null; onLink?: (() => void) | null } = {}): MockSaveEdict {
+function createMockEdict(num: number, entity: MockSaveEntity | null = null, { onFree = null, onLink = null, onAttach = null }: { onFree?: (() => void) | null; onLink?: (() => void) | null; onAttach?: ((parent: number, tagName: string | null) => void) | null } = {}): MockSaveEdict {
   return {
     num,
     entity,
     freeCount: 0,
     linkedCount: 0,
+    attachment: null,
     isFree() {
       return this.entity === null;
+    },
+    attachmentSnapshot() {
+      return this.attachment;
+    },
+    setAttachment(parent: { num: number }, tagName: string | null) {
+      onAttach?.(parent.num, tagName);
+      this.attachment = [parent.num, tagName];
     },
     freeEdict() {
       this.freeCount += 1;
@@ -443,11 +456,15 @@ void describe('ClientHost.Savegame_f', () => {
       edictId: 1,
       serializedData: { health: 100, origin: [128, 64, 32] },
     });
+    // the weapon the player holds: the engine, not the game, knows it follows the player's tag
+    const weapon = createMockEntity({ classname: 'weapon', edictId: 3, serializedData: { model: 'progs/p_shotgun.iqm' } });
     const edicts = [
       createMockEdict(0, worldspawn),
       createMockEdict(1, player),
       createMockEdict(2, null),
+      createMockEdict(3, weapon),
     ];
+    edicts[3].attachment = [1, 'tag_weapon'];
     const gameAPI = createSerializableGameAPI(edicts, { worldspawn });
     const clientGameAPI = {
       saveGame() {
@@ -557,6 +574,8 @@ void describe('ClientHost.Savegame_f', () => {
     assert.deepEqual(saved.edicts[0], ['worldspawn', { model: '*0' }]);
     assert.deepEqual(saved.edicts[1], ['player', { health: 100, origin: [128, 64, 32] }]);
     assert.equal(saved.edicts[2], null);
+    // only an attached entity has a third element, and an older save without one still loads
+    assert.deepEqual(saved.edicts[3], ['weapon', { model: 'progs/p_shotgun.iqm' }, [1, 'tag_weapon']]);
     assert.equal(saved.num_edicts, 2);
     assert.deepEqual(saved.particles, [{ type: 'spark' }]);
     assert.deepEqual(saved.clientEntities, [{ classname: 'debris' }]);
@@ -597,6 +616,17 @@ void describe('ClientHost.Loadgame_f', () => {
           callOrder.push('link:2');
         },
       }),
+      createMockEdict(3, null, {
+        onFree() {
+          callOrder.push('free:3');
+        },
+        onLink() {
+          callOrder.push('link:3');
+        },
+        onAttach(parent, tagName) {
+          callOrder.push(`attach:3:${parent}:${tagName}`);
+        },
+      }),
     ];
     const gameAPI = createSerializableGameAPI(edicts, {
       callOrder,
@@ -619,6 +649,8 @@ void describe('ClientHost.Loadgame_f', () => {
         ['worldspawn', { health: 100 }],
         ['player', { health: 42 }],
         null,
+        // a weapon the player held: the parent may come later in the list than the child, so attaching waits for all
+        ['weapon', { health: 1 }, [1, 'tag_weapon']],
       ],
       num_edicts: 2,
       particles: [{ type: 'spark' }],
@@ -702,12 +734,18 @@ void describe('ClientHost.Loadgame_f', () => {
       'prepare:0:worldspawn',
       'prepare:1:player',
       'free:2',
+      'prepare:3:weapon',
       'entity-deserialize:0',
       'link:0',
       'entity-deserialize:1',
       'link:1',
+      'entity-deserialize:3',
+      'link:3',
+      'attach:3:1:tag_weapon',
       'globals-deserialize',
     ]);
+    assert.deepEqual(edicts[3].attachment, [1, 'tag_weapon']);
+    assert.equal(edicts[1].attachment, null);
     assert.equal(sv.server.paused, false);
     assert.equal(sv.server.loadgame, true);
     assert.deepEqual(sv.server.lightstyles, ['m']);

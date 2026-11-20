@@ -15,7 +15,7 @@ const SHADER_DIRECTORY = new URL('../../source/engine/client/shaders/', import.m
 interface ProgramEntry {
   readonly identifier: string;
   readonly uniforms: readonly string[];
-  readonly textures: readonly string[];
+  readonly textures: ReadonlyArray<string | null>;
 }
 
 /**
@@ -65,7 +65,7 @@ void describe('ShaderPrograms.Init', () => {
     // Init reads only the attribute type constants of the context.
     GL.gl = { FLOAT: 0x1406, UNSIGNED_BYTE: 0x1401 } as unknown as WebGL2RenderingContext;
     publishGlReady(GL.gl);
-    mock.method(GL, 'CreateProgram', (identifier: string, uniforms: string[], _attribs: unknown, textures: string[]) => {
+    mock.method(GL, 'CreateProgram', (identifier: string, uniforms: string[], _attribs: unknown, textures: Array<string | null>) => {
       entries.push({ identifier, uniforms, textures });
 
       return {} as GLProgramInfo;
@@ -91,7 +91,7 @@ void describe('ShaderPrograms.Init', () => {
 
     for (const { identifier, uniforms, textures } of entries) {
       const { vertex, fragment } = library.build(identifier);
-      const listed = new Set([...uniforms, ...textures]);
+      const listed = new Set([...uniforms, ...textures.filter((name) => name !== null)]);
 
       for (const name of new Set([...declaredUniforms(vertex.source), ...declaredUniforms(fragment.source)])) {
         if (!listed.has(name)) {
@@ -101,5 +101,43 @@ void describe('ShaderPrograms.Init', () => {
     }
 
     assert.deepEqual(unlisted, []);
+  });
+
+  // Texture units are shared by all programs. A shadow texture has a compare mode that a plain sampler2D rejects, and
+  // `brush` binds its tSpecular (unit 7) and tNormal (unit 8) only for a world with a deluxemap, so a program that
+  // leaves a shadow texture on one of those makes the next world draw fail with "Mismatch between texture format and
+  // sampler type" (found by the browser pass of the skeletal models, a translucent entity turned the world black).
+  void test('the skeletal program keeps its shadow samplers on the units the brush program gives its own', () => {
+    const unitsOf = (identifier: string): Record<string, number> => {
+      const entry = entries.find((candidate) => candidate.identifier === identifier)!;
+
+      return Object.fromEntries(['tShadowMap', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2', 'tShadowBlockerMap']
+        .map((name) => [name, entry.textures.indexOf(name)]));
+    };
+
+    assert.deepEqual(unitsOf('skeletal'), unitsOf('brush'));
+    assert.ok(Object.values(unitsOf('brush')).every((unit) => unit >= 10), 'brush has its shadow samplers behind its own layers');
+  });
+
+  // Found by the browser pass: a colored MDL player (the `player` program had its blocker map on unit 7) made every world
+  // draw fail for good, about 9,400 errors per 3 seconds, and the world stayed black once the player was gone.
+  // The cube samplers are no risk: they use another texture target than brush's sampler2Ds.
+  void test('no program but brush keeps a 2D shadow sampler on a unit brush reads as a plain sampler2D without binding it', () => {
+    const BRUSH_UNBOUND_UNITS = [7, 8]; // tSpecular and tNormal, bound only for a world with a deluxemap
+    const offenders: string[] = [];
+
+    for (const { identifier, textures } of entries) {
+      if (identifier === 'brush' || identifier === 'brush-refract') {
+        continue;
+      }
+
+      for (const name of ['tShadowMap', 'tShadowBlockerMap']) {
+        if (BRUSH_UNBOUND_UNITS.includes(textures.indexOf(name))) {
+          offenders.push(`${identifier}: ${name} on unit ${textures.indexOf(name)}`);
+        }
+      }
+    }
+
+    assert.deepEqual(offenders, []);
   });
 });

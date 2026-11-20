@@ -62,14 +62,14 @@ through it, so `ERROR: 2:41: 'x' : undeclared identifier` is reported as
 | `fog-vertex.glsl` | `uFogParams`, `vFog` (out), `computeFog(dist)` | `entity-vertex.glsl`, `brush-vertex.glsl`, `turbulent`, `sprite`, `decal`, `particle` (.vert) |
 | `fog-fragment.glsl` | `vFog` (in), `uFogColor` | the matching fragment shaders, `brush-fragment-inputs.glsl` and `sky.frag` |
 | `entity-varyings-out.glsl` / `entity-varyings-in.glsl` | the vertex outputs / fragment inputs shared by the lit entity programs | `entity-vertex.glsl` / `entity-lighting.glsl` |
-| `entity-vertex.glsl` | the vertex side of a lit entity: shared uniforms, `emitEntityVertex(position, normal, texCoord)` (position, shadow coordinates, light vectors, fog) | `alias`, `mesh`, `player` (.vert) |
-| `entity-lighting.glsl` | the fragment side: `computeEntityLighting(shininess, intensity, lighting, specular)` (top-down and point shadows, shade and dynamic light, Blinn-Phong) | `alias`, `mesh`, `player` (.frag) |
+| `entity-vertex.glsl` | the vertex side of a lit entity: shared uniforms, `emitEntityVertex(position, normal, texCoord)` (position, shadow coordinates, light vectors, fog) | `alias`, `mesh`, `player`, `skeletal` (.vert) |
+| `entity-lighting.glsl` | the fragment side: `computeEntityLighting(shininess, intensity, lighting, specular)` (top-down and point shadows, shade and dynamic light, Blinn-Phong) | `alias`, `mesh`, `player`, `skeletal` (.frag) |
 
 Vertex outputs and fragment inputs cannot be one chunk (`out` vs `in`), so they come as pairs. Linking a program
 fails when one side declares a varying the other does not, which is what the glslang link test checks.
 
 What a lit entity program keeps for itself: its attributes and how it builds the object-space position (alias and player
-interpolate two frames, mesh does not), its texturing, the specular constants it passes in, its emissive output.
+interpolate two frames, mesh does not, and skeletal gets its vertices skinned on the CPU), its texturing, the specular constants it passes in, its emissive output.
 
 Still per program on purpose: `brush.frag`'s `sampleLocalShadowPCF` and `samplePointLightContribution`,
 `fog-volume.frag`'s volume code, the bloom helpers, `sky.vert`'s `vFog`.

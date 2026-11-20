@@ -23,6 +23,7 @@ This directory contains documentation for the QuakeShack engine codebase and fea
 - [Refraction](refraction.md) - Screen-space refraction of translucent liquids and glass: the `_qs_waterrefraction` worldspawn key, `MF_REFRACT` and `refraction` materials, `r_refraction` and how the scene copies are scheduled.
 - [Sprites](sprites.md) - Images as models: GIF, PNG/APNG, WebP and Aseprite sprites next to Quake's and Half-Life's `.spr`, the optional settings file (`scale`, `origin`, `blend`, `colorKey`, `sequences`, `regions` and more), Doom-style rotations, shadows, timing, memory limit and the precache hint, and drawing the same files on the screen (`LoadSprite`/`DrawSprite`: HUD elements, sprite sheet regions, screen effects).
 - [Shader Chunks](shader-chunks.md) - `#include` for GLSL: the chunk folder, once-per-stage expansion, `#line` based error mapping, the list of chunks and how to add one.
+- [Skeletal Models](skeletal-models.md) - IQM models (posed by joints, skinned on the CPU): making one with the Blender exporter, what the loader accepts and refuses, the layout in memory (poses, quaternions, bounds, sequences), what a server keeps, and `modelinfo`.
 - [Traceline API](traceline.md) - Contract and semantics of the gameplay-facing trace query used by server and client game logic.
 - [Volumetric Fog](volumetric-fog.md) - Guide on creating atmospheric fog volumes in maps.
 - [Workers](workers.md) - The `PlatformWorker` abstraction for Node.js and the browser: key files, registering a new worker and how the bundles are built.

@@ -44,6 +44,9 @@ const CONSTANTS: Readonly<Record<string, number>> = {
   LESS: 0x0201,
   VIEWPORT: 0x0BA2,
   STATIC_DRAW: 0x88E4,
+  DYNAMIC_DRAW: 0x88E8,
+  ELEMENT_ARRAY_BUFFER: 0x8893,
+  UNSIGNED_SHORT: 0x1403,
   FLOAT: 0x1406,
 };
 
@@ -61,6 +64,14 @@ export interface RecordingContext {
    * @returns The calls, in order.
    */
   calls(method: string): string[];
+
+  /**
+   * The arguments of the recorded calls of one method, in order. A typed array is copied when the call is made, so
+   * the numbers are the ones the call saw even when the caller reuses the array.
+   * @param method The method name.
+   * @returns One list of arguments per call.
+   */
+  invocations(method: string): unknown[][];
 }
 
 /**
@@ -72,6 +83,7 @@ export interface RecordingContext {
  */
 export function createRecordingContext(): RecordingContext {
   const log: string[] = [];
+  const invocations: { method: string; args: unknown[] }[] = [];
   const counters = new Map<string, number>();
   const names = new Map<number, string>();
 
@@ -151,6 +163,7 @@ export function createRecordingContext(): RecordingContext {
       }
 
       return (...args: unknown[]) => {
+        invocations.push({ method: property, args: args.map((argument) => (ArrayBuffer.isView(argument) && !(argument instanceof DataView) ? (argument as Float32Array).slice() : argument)) });
         log.push(`${property}(${args.map((argument) => describeValue(argument, noneMethods.has(property))).join(', ')})`);
       };
     },
@@ -160,5 +173,6 @@ export function createRecordingContext(): RecordingContext {
     gl,
     log,
     calls: (method: string) => log.filter((line) => line.startsWith(`${method}(`)),
+    invocations: (method: string) => invocations.filter((call) => call.method === method).map((call) => call.args),
   };
 }

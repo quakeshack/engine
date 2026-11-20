@@ -295,6 +295,73 @@ void describe('ClientEntities.serialize/deserialize (save/load)', () => {
     }
   });
 
+  void test('resumes a saved animation where it was: the sequence, its start time and its speed come back', () => {
+    // A sequence that the save left half played must not restart, and a sequence started before the save must not
+    // jump when the model is restored (a model set on a client-only entity stamps the clock, the save overrides it).
+    withTestGameModule(() => {
+      let saved: SerializedClientEntity[] | undefined;
+
+      withMockClRegistry(10.0, () => {
+        const original = new ClientEntities();
+        const ent = original.allocateSimulatedEntity('test_debris');
+        ent.spawn();
+        ent.setOrigin(new Vector(1, 2, 3));
+        ent.sequence = 3;
+        ent.animtime = 8.25;
+        ent.framerate = 1.5;
+
+        saved = original.serialize();
+      });
+
+      assert.equal(saved![0].sequence, 3);
+      assert.equal(saved![0].animtime, 8.25);
+      assert.equal(saved![0].framerate, 1.5);
+
+      const previousTime = clientRuntimeState.time;
+
+      try {
+        withMockClRegistry(2.0, () => {
+          clientRuntimeState.time = 50;
+
+          const restored = new ClientEntities();
+          restored.deserialize(saved!);
+
+          const [ent] = [...restored.getEntities()];
+          assert.equal(ent.sequence, 3);
+          assert.equal(ent.animtime, 8.25, 'not the 50 the client clock stamped for the restored model');
+          assert.equal(ent.framerate, 1.5);
+        });
+      } finally {
+        clientRuntimeState.time = previousTime;
+      }
+    });
+  });
+
+  void test('restores the defaults for a save made before the sequence state existed', () => {
+    withTestGameModule(() => {
+      let saved: SerializedClientEntity[] | undefined;
+
+      withMockClRegistry(10.0, () => {
+        const original = new ClientEntities();
+        const ent = original.allocateSimulatedEntity('test_debris');
+        ent.spawn();
+        saved = original.serialize();
+      });
+
+      const { sequence: _sequence, animtime: _animtime, framerate: _framerate, ...oldSave } = saved![0];
+
+      withMockClRegistry(2.0, () => {
+        const restored = new ClientEntities();
+        restored.deserialize([oldSave]);
+
+        const [ent] = [...restored.getEntities()];
+        assert.equal(ent.sequence, -1);
+        assert.equal(ent.animtime, 0);
+        assert.equal(ent.framerate, 1);
+      });
+    });
+  });
+
   void test('a freed edict loses its physics state', () => {
     const ent = new ClientEdict(-1);
     ent.movetype = moveType.MOVETYPE_BOUNCE;

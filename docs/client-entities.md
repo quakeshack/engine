@@ -63,7 +63,7 @@ gib.spawn({ delay: 0.5 });                        // optional parameters for the
 - **Set the model before `setOrigin()`.** Linking an entity into the BSP needs its bounds.
 - **Always move an entity with `setOrigin()`**, never by writing `origin`. It recomputes the BSP leafs the PVS culling relies on.
 - **Models have to be precached by the server**, otherwise they are not in the client's model list. A handler declares them in `static _precache(engineAPI)`, and the game's handler registry calls that for every handler when the server precaches its resources, the way `BaseEntity._precache()` works for server entities.
-- **`model` and `frame` are accessors.** Assigning looks the same, but a *different* model or frame stamps `animationStartTime` with the client clock, which restarts a sprite's animation that follows its entity's own clock. Writing the value an entity already has changes nothing, so the server repeating a `frame` does not restart a running sequence. A persistent entity that is restored from a save starts its sequence at load time.
+- **`model` and `sequence` are accessors.** Assigning looks the same, but a *different* model or sequence stamps `animtime` with the client clock, which restarts the animation of a model that plays a sequence from its entity's own clock (a sprite with `phase: spawn`, a skeletal model). Writing the value an entity already has changes nothing, so the server repeating a `sequence` does not restart a running one. Set `animtime` afterwards to start somewhere else (`CL.time - elapsed` resumes), and `framerate` (1 by default) scales the speed. A persistent entity that is restored from a save gets its `sequence`, `animtime` and `framerate` back, so its animation resumes where it was. `frame` is a plain field: it picks a pose or an image, and for an image sprite it picks nothing (`sequence` does).
 - `SpawnClientEntity(classname, { persistent: false })` is for entities something else regenerates on every connect. Almost everything wants the default.
 
 ### Triggering it from the server
@@ -131,6 +131,22 @@ override think(): void {
 ### Knowing whether it can be seen: `IsInPVS`
 
 `ClientEngineAPI.IsInPVS(entity)` tells whether the entity is in the PVS of the current view, also for entities that are not drawn. An effect source can skip its work while nobody can see it. It reflects the previous frame, is coarse (a wall in the way does not count), and answers "yes" when it cannot tell. If the source skips effects while hidden, replay what it missed when it comes back, so the effect does not start from nothing in front of the player.
+
+### Following another entity: `setAttachment`
+
+`clientEdict.setAttachment(parent, 'tag_flash')` makes a client-only entity follow a tag of another entity (a server entity or another client-only one), or its origin with `null`, with no network traffic: a flash sprite on a barrel, a spark on a hand. Its `origin` and `angles` are then its offset in the tag's space (set both before attaching, they start out non-finite), it is drawn exactly when its parent is (no PVS check of its own, hidden with the view entity in first person), and it stops being drawn when the parent is freed: free it or attach it elsewhere. `clearAttachment()` lets go; the origin and angles are world values again. Attachments of client-only entities are not saved. See [Skeletal models](skeletal-models.md#attachments).
+
+### Counting shots: `muzzleFlashCount`
+
+The server sets `EF_MUZZLEFLASH` on an entity for one datagram and clears it. A client frame that reads two datagrams (a slow frame, a burst of messages after a hitch) sees the bit set and cleared again before any handler runs, so a handler that samples `effects` loses that shot, with a light, a sprite or a sound of it. `ClientEdict.muzzleFlashCount` counts, while the engine reads the updates, every time a server update **sets** the bit (an update that keeps it set is the same flash), and `muzzleFlashTime` is the client clock (`CL.time`) of the last one. A handler remembers the count it saw and compares:
+
+```typescript
+const fresh = this.clientEdict.muzzleFlashCount - this.#seen;
+this.#seen = this.clientEdict.muzzleFlashCount;
+if (fresh > 0 && this.engine.CL.time - this.clientEdict.muzzleFlashTime < 0.2) { /* flash */ }
+```
+
+Leave out a shot that is not fresh: an entity that was out of view counts shots too, and a flash must not pop out of it when it comes back. Take the first count the handler ever sees as the baseline (an entity that is met with shots already counted did not just fire them). id1's player handler does this for its light, and Hellwave's for the flash sprite.
 
 ### Other client API a handler can use
 

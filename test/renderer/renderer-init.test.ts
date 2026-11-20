@@ -138,6 +138,7 @@ void describe('R.Init', () => {
       'renderer AliasModelRenderer',
       'renderer SpriteModelRenderer',
       'renderer MeshModelRenderer',
+      'renderer SkeletalModelRenderer',
       'postprocess',
       // the order effects are registered in is the order they resolve in
       'effect bloom',
@@ -190,6 +191,7 @@ void describe('R.RenderScene', () => {
     mock.method(PostProcess, 'getEffect', () => null);
     mock.method(SkyBox, 'Draw', () => {});
     mock.method(R, 'DrawViewModel', () => {});
+    mock.method(R, 'DrawViewModelBlended', () => {});
     mock.method(R, 'RenderWorld', () => {});
 
     R.RenderScene();

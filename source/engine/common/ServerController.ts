@@ -1,6 +1,13 @@
 import type { SerializedData } from '../../shared/GameInterfaces.ts';
 import type { ServerClientSpawnParameters } from '../server/Client.ts';
 
+/**
+ * An edict in a savegame: the entity's class and fields, and, for an entity attached to another (`ServerEdict.
+ * setAttachment`), the number of its parent's edict and the tag it follows. The engine holds attachments, not the
+ * game, so they are saved here. A save from before attachments has no third element.
+ */
+export type SavedEdict = [classname: string, data: SerializedData, attachment?: [parent: number, tagName: string | null]];
+
 /** The server's half of a savegame. The page adds its own half and writes the file. */
 export interface ServerSaveState {
   readonly version: number;
@@ -11,7 +18,7 @@ export interface ServerSaveState {
   readonly lightstyles: string[];
   readonly globals: SerializedData;
   readonly cvars: Array<[name: string, value: string]>;
-  readonly edicts: Array<[classname: string, data: SerializedData] | null>;
+  readonly edicts: Array<SavedEdict | null>;
   readonly num_edicts: number;
 }
 

@@ -64,7 +64,7 @@ async function createServerAsker(models: readonly string[]): Promise<Asker> {
 
   const api = new ServerEngineAPI({ server, mod } as unknown as Server, () => ({ registered: true, hipnotic: false, rogue: false }));
 
-  return { duration: (name, frame) => api.GetSpriteSequenceDuration(name, frame), index: (name, sequence) => api.GetSpriteSequenceIndex(name, sequence) };
+  return { duration: (name, frame) => api.GetSequenceDuration(name, frame), index: (name, sequence) => api.GetSequenceIndex(name, sequence) };
 }
 
 /**
@@ -77,11 +77,11 @@ async function createClientAsker(models: readonly string[]): Promise<Asker> {
 
   clientRuntimeState.model_precache = [undefined as unknown as BaseModel, ...loaded, new BaseModel('progs/player.mdl')];
 
-  return { duration: (name, frame) => api.GetSpriteSequenceDuration(name, frame), index: (name, sequence) => api.GetSpriteSequenceIndex(name, sequence) };
+  return { duration: (name, frame) => api.GetSequenceDuration(name, frame), index: (name, sequence) => api.GetSequenceIndex(name, sequence) };
 }
 
 for (const [side, createAsker] of [['ServerEngineAPI', createServerAsker], ['ClientEngineAPI', createClientAsker]] as const) {
-  void describe(`${side} sprite sequence queries`, () => {
+  void describe(`${side} sequence queries`, () => {
     let previousPrecache: BaseModel[] = [];
 
     beforeEach(() => {
@@ -92,27 +92,27 @@ for (const [side, createAsker] of [['ServerEngineAPI', createServerAsker], ['Cli
       clientRuntimeState.model_precache = previousPrecache;
     });
 
-    void test('GetSpriteSequenceDuration tells how long a one-shot animation plays', async () => {
+    void test('GetSequenceDuration tells how long a one-shot animation plays', async () => {
       const asker = await createAsker(['anim-once.gif', 'anim-loop3.gif']);
 
       assert.equal(Math.round(asker.duration('anim-once.gif', 0) * 1000), 350);
       assert.equal(Math.round(asker.duration('anim-loop3.gif') * 1000), 1200);
     });
 
-    void test('GetSpriteSequenceDuration is infinite for a sequence that repeats forever', async () => {
+    void test('GetSequenceDuration is infinite for a sequence that repeats forever', async () => {
       const asker = await createAsker(['anim.apng']);
 
       assert.equal(asker.duration('anim.apng'), Infinity);
     });
 
-    void test('GetSpriteSequenceDuration is 0 for a single picture and for a model that is no sprite', async () => {
+    void test('GetSequenceDuration is 0 for a single picture and for a model that is no sprite', async () => {
       const asker = await createAsker(['static.png']);
 
       assert.equal(asker.duration('static.png'), 0);
       assert.equal(asker.duration('progs/player.mdl'), 0);
     });
 
-    void test('GetSpriteSequenceDuration takes the sequence the frame selects', async () => {
+    void test('GetSequenceDuration takes the sequence the number selects', async () => {
       const asker = await createAsker(['anim.gif']);
 
       // the images last 50, 100 and 200 ms
@@ -121,14 +121,14 @@ for (const [side, createAsker] of [['ServerEngineAPI', createServerAsker], ['Cli
       assert.equal(Math.round(asker.duration('anim.gif', 2) * 1000), 900, '"idle" goes 0, 1, 2, 1 in 450 ms, twice');
     });
 
-    void test('GetSpriteSequenceDuration treats a frame out of range like the renderer does, as the first', async () => {
+    void test('GetSequenceDuration treats a number out of range like the renderer does, as the first', async () => {
       const asker = await createAsker(['anim-once.gif']);
 
       assert.equal(asker.duration('anim-once.gif', 9), asker.duration('anim-once.gif', 0));
       assert.equal(asker.duration('anim-once.gif', -1), asker.duration('anim-once.gif', 0));
     });
 
-    void test('GetSpriteSequenceIndex finds a sequence by name', async () => {
+    void test('GetSequenceIndex finds a sequence by name', async () => {
       const asker = await createAsker(['anim.gif']);
 
       assert.equal(asker.index('anim.gif', 'rise'), 0);
@@ -136,7 +136,7 @@ for (const [side, createAsker] of [['ServerEngineAPI', createServerAsker], ['Cli
       assert.equal(asker.index('anim.gif', 'idle'), 2);
     });
 
-    void test('GetSpriteSequenceIndex is -1 for an unknown name, an empty name, and a model that is no sprite', async () => {
+    void test('GetSequenceIndex is -1 for an unknown name, an empty name, and a model that is no sprite', async () => {
       const asker = await createAsker(['anim.gif', 'anim.apng']);
 
       assert.equal(asker.index('anim.gif', 'nope'), -1);

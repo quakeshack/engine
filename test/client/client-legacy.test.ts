@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import { DefaultClientEdictHandler } from '../../source/engine/client/ClientLegacy.ts';
 import ClientEntities, { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
@@ -9,9 +9,12 @@ import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import Particles from '../../source/engine/client/renderer/effects/Particles.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 import type { ClientEngineAPI } from '../../source/engine/client/ClientEngineAPI.ts';
-import type { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
 import type { ClientDlight } from '../../source/engine/client/ClientEntities.ts';
 import { withEngineMocks } from '../support/withEngineMocks.ts';
+import { createFlashModel } from '../support/skeletalModels.ts';
+import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
+import type Cvar from '../../source/engine/common/Cvar.ts';
+import { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
 
 /**
  * Runs a callback with a real `ClientEntities` instance wired into the
@@ -120,6 +123,109 @@ void describe('DefaultClientEdictHandler.emit dynamic lights', () => {
 
       assert.equal(dl.radius, 0.0, 'rocket dlight should eventually fade fully to zero');
       assert.ok(distinctPositiveSamples.size > 1, `expected a gradual multi-frame fade, got samples ${samples.join(', ')}`);
+    });
+  });
+});
+
+void describe('DefaultClientEdictHandler.emit muzzle flash', () => {
+  const previousInterpolation = rendererCvars.interpolation;
+
+  beforeEach(() => {
+    rendererCvars.interpolation = { value: 1 } as unknown as Cvar;
+  });
+
+  afterEach(() => {
+    rendererCvars.interpolation = previousInterpolation;
+  });
+
+  /**
+   * Lets an entity with a muzzle flash emit, and finds the light it made.
+   * @param model The model the entity shows.
+   * @param angles The entity's angles.
+   * @returns Where the light is.
+   */
+  function flashOrigin(model: BaseModel, angles: [number, number, number]): number[] {
+    let origin: number[] = [];
+
+    withMockLegacyClientRegistry((clientEntities) => {
+      const clent = new ClientEdict(1);
+
+      clent.model = model;
+      clent.effects |= effect.EF_MUZZLEFLASH;
+      clent.origin.setTo(100, 200, 300);
+      clent.angles.setTo(...angles);
+      new DefaultClientEdictHandler(clent, {} as ClientEngineAPI).emit();
+
+      const dl = clientEntities.dlights.find((light) => light.entity === clent.num);
+
+      assert.ok(dl, 'a muzzle flash makes a light');
+      origin = Array.from(dl.origin);
+    });
+
+    return origin;
+  }
+
+  void test('keeps the fixed place of the light, 20 units ahead and 16 up, for a model without a tag', () => {
+    // An alias model has no tags: the light is where it always was. Facing +Y, 20 ahead is 220.
+    assert.deepEqual(flashOrigin(new BaseModel('progs/v_nail.mdl'), [0, 90, 0]).map((value) => Math.round(value)), [100, 220, 316]);
+  });
+
+  void test('keeps the fixed place for a skeletal model that has no tag_flash', () => {
+    const model = createFlashModel();
+
+    model.jointNames = ['root', 'barrel'];
+
+    assert.deepEqual(flashOrigin(model, [0, 90, 0]).map((value) => Math.round(value)), [100, 220, 316]);
+  });
+
+  void test('puts the light on tag_flash when the model has one: 10 units along the model\'s X, turned with the entity', () => {
+    assert.deepEqual(flashOrigin(createFlashModel(), [0, 90, 0]).map((value) => Math.round(value)), [100, 210, 300]);
+    assert.deepEqual(flashOrigin(createFlashModel(), [0, 0, 0]).map((value) => Math.round(value)), [110, 200, 300]);
+  });
+
+  void test('puts the light on the tag_flash of a weapon attached to the entity, which has none itself', () => {
+    let origin: number[] = [];
+
+    withMockLegacyClientRegistry((clientEntities) => {
+      const holder = clientEntities.getEntity(1);
+      holder.model = new BaseModel('progs/player.mdl');
+      holder.effects |= effect.EF_MUZZLEFLASH;
+      holder.origin.setTo(100, 200, 300);
+      holder.angles.setTo(0, 90, 0);
+
+      const weapon = clientEntities.allocateClientEntity();
+      weapon.model = createFlashModel();
+      weapon.origin.setTo(0, 0, 0);
+      weapon.angles.setTo(0, 0, 0);
+      weapon.setAttachment(holder);
+      new DefaultClientEdictHandler(holder, {} as ClientEngineAPI).emit();
+
+      origin = Array.from(clientEntities.dlights.find((light) => light.entity === holder.num)!.origin);
+    });
+
+    // the weapon sits at the holder's origin and its tag is 10 units along its X, which faces +Y with the holder
+    assert.deepEqual(origin.map((value) => Math.round(value)), [100, 210, 300]);
+  });
+
+  void test('keeps the fixed place when the attached entity has no tag_flash either, and for an entity attached to something else', () => {
+    withMockLegacyClientRegistry((clientEntities) => {
+      const holder = clientEntities.getEntity(1);
+      const bystander = clientEntities.getEntity(2);
+      holder.model = new BaseModel('progs/player.mdl');
+      holder.effects |= effect.EF_MUZZLEFLASH;
+      holder.origin.setTo(100, 200, 300);
+      holder.angles.setTo(0, 90, 0);
+
+      const elsewhere = clientEntities.allocateClientEntity();
+      elsewhere.model = createFlashModel();
+      elsewhere.origin.setTo(0, 0, 0);
+      elsewhere.angles.setTo(0, 0, 0);
+      elsewhere.setAttachment(bystander);
+      new DefaultClientEdictHandler(holder, {} as ClientEngineAPI).emit();
+
+      const origin = Array.from(clientEntities.dlights.find((light) => light.entity === holder.num)!.origin);
+
+      assert.deepEqual(origin.map((value) => Math.round(value)), [100, 220, 316]);
     });
   });
 });

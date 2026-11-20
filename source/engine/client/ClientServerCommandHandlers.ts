@@ -3,6 +3,7 @@ import * as Def from '../common/Def.ts';
 import Cmd from '../common/Cmd.ts';
 import { HostError } from '../common/Errors.ts';
 import Vector from '../../shared/Vector.ts';
+import { effect } from '../../shared/Defs.ts';
 import GameModule from '../common/GameModule.ts';
 import { engineApi } from './PageServices.ts';
 import { ModelScope, type BrushModel } from '../common/Mod.ts';
@@ -314,6 +315,9 @@ function parseStaticEntity() {
   ent.effects = net.message.readByte();
   ent.alpha = net.message.readByte() / 255.0;
   ent.solid = net.message.readByte();
+
+  readSequenceBlock(ent);
+
   ent.angles.set(net.message.readAngleVector());
   ent.setOrigin(net.message.readCoordVector());
   ent.spawn();
@@ -490,6 +494,27 @@ function parseTemporaryEntity() {
 }
 
 /**
+ * Reads the sequence block of an entity update or a static entity: a byte that names the fields that follow. An
+ * `animtime` the block does not carry leaves the one the client stamped when the model or the sequence changed.
+ * @param entity The entity the block belongs to.
+ */
+function readSequenceBlock(entity: ClientEdict): void {
+  const fields = net.message.readByte();
+
+  if (fields & Protocol.sequenceField.sequence) {
+    entity.sequence = net.message.readShort();
+  }
+
+  if (fields & Protocol.sequenceField.animtime) {
+    entity.animtime = net.message.readFloat();
+  }
+
+  if (fields & Protocol.sequenceField.framerate) {
+    entity.framerate = net.message.readFloat();
+  }
+}
+
+/**
  * Applies entity deltas for the current frame.
  */
 function parsePacketEntities() {
@@ -502,7 +527,7 @@ function parsePacketEntities() {
 
     const clent = clientRuntimeState.clientEntities.getEntity(edictNum);
 
-    const bits = net.message.readUint16();
+    const bits = net.message.readUint32();
 
     if (bits & Protocol.u.classname) {
       clent.classname = net.message.readString();
@@ -541,7 +566,14 @@ function parsePacketEntities() {
     }
 
     if (bits & Protocol.u.effects) {
-      clent.effects = net.message.readByte();
+      const effects = net.message.readByte();
+
+      if ((effects & effect.EF_MUZZLEFLASH) !== 0 && (clent.effects & effect.EF_MUZZLEFLASH) === 0) {
+        clent.muzzleFlashCount++;
+        clent.muzzleFlashTime = clientRuntimeState.time;
+      }
+
+      clent.effects = effects;
       clent.alpha = net.message.readByte() / 255.0;
     }
 
@@ -567,6 +599,20 @@ function parsePacketEntities() {
     if (bits & Protocol.u.size) {
       clent.maxs.set(net.message.readCoordVector());
       clent.mins.set(net.message.readCoordVector());
+    }
+
+    if (bits & Protocol.u.sequence) {
+      readSequenceBlock(clent);
+    }
+
+    if (bits & Protocol.u.attachment) {
+      const parentNumber = net.message.readUint16();
+      const tag = net.message.readShort();
+
+      clent.attachmentParent = parentNumber === 0 ? null : clientRuntimeState.clientEntities.getEntity(parentNumber);
+      clent.attachmentTag = tag;
+      clent.attachmentTagName = null;
+      clent.attachmentResolved = false;
     }
 
     if (bits & Protocol.u.nextthink) {

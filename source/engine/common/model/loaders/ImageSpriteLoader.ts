@@ -62,6 +62,7 @@ export class ImageSpriteLoader extends ModelLoader {
     const loadmodel = new SpriteModel(name);
 
     loadmodel.orientation = sidecar.orientation ?? SpriteOrientation.parallel;
+    loadmodel.selectsBySequence = true;
     loadmodel.phase = sidecar.phase ?? SpritePhase.spawn;
     loadmodel.random = loadmodel.phase === SpritePhase.random;
     loadmodel.lit = sidecar.lit ?? false;

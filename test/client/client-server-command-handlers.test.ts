@@ -15,6 +15,10 @@ import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { createBoundsModel, createGameModuleStub } from '../support/fixtures.ts';
 import ClientEntities, { type ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import Vector from '../../source/shared/Vector.ts';
+import { effect } from '../../source/shared/Defs.ts';
+import { ServerEntityState } from '../../source/engine/server/ServerEntityState.ts';
+import { ServerMessages } from '../../source/engine/server/ServerMessages.ts';
+import type Server from '../../source/engine/server/Server.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 import { withEngineMocks } from '../support/withEngineMocks.ts';
 
@@ -158,7 +162,7 @@ void describe('svc.spawnstatic', () => {
    * @param random Whether the model asks for a random sync base.
    * @returns The entity the client allocated.
    */
-  function spawnStaticWithModel(random: boolean): ClientEdict | null {
+  function spawnStaticWithModel(random: boolean, sequenceBlock: { sequence?: number; animtime?: number; framerate?: number } | null = null): ClientEdict | null {
     const mockedRegistry = createMockClientRegistry();
     const { message } = mockedRegistry.NET;
     const model = createBoundsModel(new Vector(-8, -8, -8), new Vector(8, 8, 8), 'gfx/flame.gif');
@@ -185,6 +189,25 @@ void describe('svc.spawnstatic', () => {
     message.writeByte(0);
     message.writeByte(255);
     message.writeByte(0);
+
+    const { sequence, animtime, framerate } = sequenceBlock ?? {};
+
+    message.writeByte((sequence !== undefined ? Protocol.sequenceField.sequence : 0)
+      | (animtime !== undefined ? Protocol.sequenceField.animtime : 0)
+      | (framerate !== undefined ? Protocol.sequenceField.framerate : 0));
+
+    if (sequence !== undefined) {
+      message.writeShort(sequence);
+    }
+
+    if (animtime !== undefined) {
+      message.writeFloat(animtime);
+    }
+
+    if (framerate !== undefined) {
+      message.writeFloat(framerate);
+    }
+
     message.writeAngleVector(new Vector(0, 0, 0));
     message.writeCoordVector(new Vector(16, 32, 48));
 
@@ -215,6 +238,238 @@ void describe('svc.spawnstatic', () => {
 
   void test('leaves the sync base at zero for a model that is not random', () => {
     assert.equal(spawnStaticWithModel(false)?.syncbase, 0);
+  });
+
+  void test('takes the sequence block the server sends, whatever the client clock stamped for the model', () => {
+    const previousTime = clientRuntimeState.time;
+    clientRuntimeState.time = 3;
+
+    try {
+      const entity = spawnStaticWithModel(false, { sequence: 2, animtime: 12.5, framerate: 0.5 });
+
+      assert.equal(entity?.sequence, 2);
+      assert.equal(entity?.animtime, 12.5);
+      assert.equal(entity?.framerate, 0.5);
+    } finally {
+      clientRuntimeState.time = previousTime;
+    }
+  });
+
+  void test('a block without a start time leaves the client\'s own stamp, which is how a decoration always started', () => {
+    const previousTime = clientRuntimeState.time;
+    clientRuntimeState.time = 3;
+
+    try {
+      const entity = spawnStaticWithModel(false, { sequence: 1 });
+
+      assert.equal(entity?.sequence, 1);
+      assert.equal(entity?.animtime, 3);
+      assert.equal(entity?.framerate, 1);
+    } finally {
+      clientRuntimeState.time = previousTime;
+    }
+  });
+
+  void test('without a block plays no sequence and starts at the client clock, as a decoration always did', () => {
+    const previousTime = clientRuntimeState.time;
+    clientRuntimeState.time = 3;
+
+    try {
+      const entity = spawnStaticWithModel(false);
+
+      assert.equal(entity?.sequence, -1);
+      assert.equal(entity?.framerate, 1);
+      assert.equal(entity?.animtime, 3);
+    } finally {
+      clientRuntimeState.time = previousTime;
+    }
+  });
+});
+
+void describe('svc.deltapacketentities attachment', () => {
+  /**
+   * Sends what the server's writer makes of a state change to the client's parser.
+   * @param changes One change per update of the packet, applied to entity 7 in turn.
+   * @returns The registry the client keeps.
+   */
+  function roundTrip(changes: Array<Partial<ServerEntityState>>): ClientEntities {
+    const mockedRegistry = createMockClientRegistry();
+    const { message } = mockedRegistry.NET;
+    const previousClientEntities = clientRuntimeState.clientEntities;
+    const clientEntities = new ClientEntities();
+    const messages = new ServerMessages({ server: { time: 1, clientEntityFields: {} } } as unknown as Server);
+    let state = new ServerEntityState(7);
+
+    clientRuntimeState.clientEntities = clientEntities;
+    message.writeByte(Protocol.svc.deltapacketentities);
+
+    for (const change of changes) {
+      const next = new ServerEntityState(7);
+
+      next.set(state);
+      Object.assign(next, change);
+      messages.writeDeltaEntity(message, state, next);
+      state = next;
+    }
+
+    message.writeUint16(0);
+
+    try {
+      void withMockClientRegistry(mockedRegistry, () => {
+        parseServerMessage();
+      });
+
+      return clientEntities;
+    } finally {
+      clientRuntimeState.clientEntities = previousClientEntities;
+    }
+  }
+
+  void test('carries the parent and the tag from the server writer to the client entity, as the client\'s own entity of that number', () => {
+    const clientEntities = roundTrip([{ attachmentParent: 3, attachmentTag: 12 }]);
+    const entity = clientEntities.getEntity(7);
+
+    assert.equal(entity.attachmentParent, clientEntities.getEntity(3));
+    assert.equal(entity.attachmentTag, 12);
+    assert.equal(entity.attachmentTagName, null);
+  });
+
+  void test('a detach lets go of the parent, and an update without the bit leaves the attachment alone', () => {
+    // The frame update after the attachment must be read from where the attachment ended: a reader that is off by a
+    // byte gets the wrong frame, or runs into the terminator.
+    const attached = roundTrip([{ attachmentParent: 3, attachmentTag: 12 }, { frame: 17 }]).getEntity(7);
+
+    assert.notEqual(attached.attachmentParent, null);
+    assert.equal(attached.frame, 17);
+
+    const detached = roundTrip([{ attachmentParent: 3, attachmentTag: 12 }, { attachmentParent: 0, attachmentTag: -1 }]).getEntity(7);
+
+    assert.equal(detached.attachmentParent, null);
+    assert.equal(detached.attachmentTag, -1);
+  });
+
+  void test('counts a shot when an update sets the muzzle flash bit, also when the next update of the same packet clears it again', () => {
+    // two datagrams read in one frame: the bit is gone before anything draws, the count is what is left
+    const entity = roundTrip([{ effects: effect.EF_MUZZLEFLASH }, { effects: 0 }]).getEntity(7);
+
+    assert.equal(entity.effects & effect.EF_MUZZLEFLASH, 0);
+    assert.equal(entity.muzzleFlashCount, 1);
+  });
+
+  void test('counts every shot, and not an update that keeps the bit or sets another one', () => {
+    const entity = roundTrip([
+      { effects: effect.EF_MUZZLEFLASH },
+      { effects: 0 },
+      { effects: effect.EF_MUZZLEFLASH },
+      { effects: effect.EF_MUZZLEFLASH | effect.EF_DIMLIGHT }, // the bit stays set: the same flash
+      { effects: effect.EF_DIMLIGHT },
+    ]).getEntity(7);
+
+    assert.equal(entity.muzzleFlashCount, 2);
+  });
+
+  void test('stamps the shot with the client clock', () => {
+    const previousTime = clientRuntimeState.time;
+    clientRuntimeState.time = 12.5;
+
+    try {
+      assert.equal(roundTrip([{ effects: effect.EF_MUZZLEFLASH }]).getEntity(7).muzzleFlashTime, 12.5);
+    } finally {
+      clientRuntimeState.time = previousTime;
+    }
+  });
+});
+void describe('svc.deltapacketentities sequence block', () => {
+  /**
+   * Sends what the server's writer makes of a state change to the client's parser.
+   * @param changes One change per update of the packet, applied to the same entity in turn.
+   * @returns The entity the client keeps.
+   */
+  function roundTrip(changes: Array<Partial<ServerEntityState>>): ClientEdict {
+    const mockedRegistry = createMockClientRegistry();
+    const { message } = mockedRegistry.NET;
+    const previousClientEntities = clientRuntimeState.clientEntities;
+    const clientEntities = new ClientEntities();
+    const messages = new ServerMessages({ server: { time: 1, clientEntityFields: {} } } as unknown as Server);
+    let state = new ServerEntityState(7);
+
+    clientRuntimeState.clientEntities = clientEntities;
+    message.writeByte(Protocol.svc.deltapacketentities);
+
+    for (const change of changes) {
+      const next = new ServerEntityState(7);
+
+      next.set(state);
+      Object.assign(next, change);
+      messages.writeDeltaEntity(message, state, next);
+      state = next;
+    }
+
+    message.writeUint16(0);
+
+    try {
+      void withMockClientRegistry(mockedRegistry, () => {
+        parseServerMessage();
+      });
+
+      return clientEntities.getEntity(7);
+    } finally {
+      clientRuntimeState.clientEntities = previousClientEntities;
+    }
+  }
+
+  void test('carries the sequence, the start time and the speed from the server writer to the client entity', () => {
+    const entity = roundTrip([{ sequence: 5, animtime: 321.75, framerate: 1.5 }]);
+
+    assert.equal(entity.sequence, 5);
+    assert.equal(entity.animtime, 321.75);
+    assert.equal(entity.framerate, 1.5);
+  });
+
+  void test('a restart is a new start time on the same sequence, which the client takes over as it comes', () => {
+    const entity = roundTrip([{ sequence: 5, animtime: 10 }, { animtime: 14.5 }]);
+
+    assert.equal(entity.sequence, 5);
+    assert.equal(entity.animtime, 14.5);
+  });
+
+  void test('a sequence change without a start time keeps the client\'s own stamp, for a game that does not set one', () => {
+    const previousTime = clientRuntimeState.time;
+    clientRuntimeState.time = 6;
+
+    try {
+      const entity = roundTrip([{ sequence: 2 }]);
+
+      assert.equal(entity.sequence, 2);
+      assert.equal(entity.animtime, 6);
+    } finally {
+      clientRuntimeState.time = previousTime;
+    }
+  });
+
+  void test('does not touch the sequence of an update that has no block, and the update still parses to its end', () => {
+    // The frame update after the block must be read from where the block ended; a reader that is off by a byte
+    // gets the wrong frame, or runs into the terminator.
+    const entity = roundTrip([{ sequence: 5, animtime: 10 }, { frame: 17 }]);
+
+    assert.equal(entity.sequence, 5);
+    assert.equal(entity.animtime, 10);
+    assert.equal(entity.frame, 17);
+  });
+
+  void test('reads the block in the place the writer put it, before the nextthink byte that follows', () => {
+    const entity = roundTrip([{ sequence: 2, animtime: 5.5, frame: 4, nextthink: 1.2 }]);
+
+    assert.equal(entity.sequence, 2);
+    assert.equal(entity.animtime, 5.5);
+    assert.equal(entity.frame, 4);
+    assert.ok(entity.lerpEndTime > 0, 'the nextthink byte was read where it was written');
+  });
+
+  void test('a game that sets the sequence back to none sends -1', () => {
+    const entity = roundTrip([{ sequence: 5 }, { sequence: -1 }]);
+
+    assert.equal(entity.sequence, -1);
   });
 });
 

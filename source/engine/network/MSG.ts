@@ -234,6 +234,11 @@ export class SzBuffer {
     new DataView(this.data).setUint16(this.allocate(2), value, true);
   }
 
+  writeUint32(value: number): void {
+    console.assert(Number.isInteger(value) && value >= 0 && value <= 4294967295, 'must be unsigned long', value);
+    new DataView(this.data).setUint32(this.allocate(4), value, true);
+  }
+
   writeLong(value: number): void {
     console.assert(value >= -2147483648 && value <= 2147483647, 'must be signed long', value);
     new DataView(this.data).setInt32(this.allocate(4), value, true);
@@ -336,6 +341,19 @@ export class SzBuffer {
     const value = new DataView(this.data).getUint16(this.readcount, true);
 
     this.readcount += 2;
+
+    return value;
+  }
+
+  readUint32(): number {
+    if (this.readcount + 4 > this.cursize) {
+      this.badread = true;
+      return -1;
+    }
+
+    const value = new DataView(this.data).getUint32(this.readcount, true);
+
+    this.readcount += 4;
 
     return value;
   }

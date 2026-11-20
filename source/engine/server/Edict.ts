@@ -16,6 +16,8 @@ import { ModelType } from '../common/Mod.ts';
 import { CorruptedResourceError, HostError } from '../common/Errors.ts';
 import type Server from './Server.ts';
 import COM from '../common/Com.ts';
+import { MAX_ATTACHMENT_DEPTH } from '../common/AttachmentTransform.ts';
+import { ServerAttachments } from './ServerAttachments.ts';
 
 // FIXME: we should improve this interface and make the actual BaseEntity implement it
 export interface BaseEntity extends SerializableEntity {
@@ -37,6 +39,19 @@ export interface BaseEntity extends SerializableEntity {
   effects: number;
   flags: number;
   frame: number;
+  /**
+   * The sequence a sequenced model plays (image sprites, skeletal models), -1 for none, which is also what an entity
+   * that does not declare it has: the model then follows `frame`. See `docs/skeletal-models.md`.
+   */
+  sequence?: number;
+  /**
+   * Server time at which the sequence started. Setting it to `now` restarts it, to `now - elapsed` resumes it.
+   * `null` or `undefined`, the default, says the game sets none: the client then stamps its own when the model or the
+   * sequence changes. A game that declares it with a number sends that number, 0 included.
+   */
+  animtime?: number | null;
+  /** Playback speed multiplier of the sequence, 1 when not declared. */
+  framerate?: number;
   free(): void;
   goalentity?: BaseEntity | ServerEdict | null;
   gravity?: number | null;
@@ -159,6 +174,19 @@ function formatPrintableEntityValue(value: unknown): string {
 }
 
 const SERVER: unique symbol = Symbol('ServerEdict.server');
+const ATTACHMENT: unique symbol = Symbol('ServerEdict.attachment');
+
+/** What an edict knows about attachments: whom it follows and who follows it. */
+interface AttachmentState {
+  /** The edict this one is attached to, `null` when it is free-standing. */
+  parent: ServerEdict | null;
+  /** The tag of the parent's model it follows, `null` for the parent's origin. */
+  tagName: string | null;
+  /** Whether the missing tag has been reported for this attachment, so a model without it logs once. */
+  tagReported: boolean;
+  /** The edicts attached to this one. */
+  readonly children: Set<ServerEdict>;
+}
 
 /**
  * Server-side edict allocation, parsing, and debugging helpers.
@@ -216,6 +244,11 @@ export class ED {
    * Marks an edict free so it can be reused later.
    */
   Free(ed: ServerEdict): void {
+    if (ed.attachedChildren.size > 0) {
+      ServerAttachments.releaseChildren(this.#sv, ed, ed.attachedChildren);
+    }
+
+    ed.clearAttachment();
     this.#sv.area.unlinkEdict(ed);
     ed.free = true;
 
@@ -493,6 +526,39 @@ export class ED {
 }
 
 /**
+ * Whether `other` is `edict` or one of the edicts `edict` is attached to, directly or through others.
+ * @returns True when attaching `other` to `edict` would make a loop, or the chain is implausibly deep.
+ */
+function isInChainOf(edict: ServerEdict, other: ServerEdict): boolean {
+  let current: ServerEdict | null = edict;
+
+  for (let depth = 0; current !== null; depth++) {
+    if (current === other || depth > MAX_ATTACHMENT_DEPTH) {
+      return true;
+    }
+
+    current = current[ATTACHMENT].parent;
+  }
+
+  return false;
+}
+
+/**
+ * An attached entity is where its parent is: its own origin is an offset, so the root of the chain is the edict that
+ * has the leaves to look up.
+ * @returns The edict at the top of the chain of parents, `edict` itself when it is free-standing.
+ */
+function attachmentRoot(edict: ServerEdict): ServerEdict {
+  let root = edict;
+
+  for (let depth = 0; root[ATTACHMENT].parent !== null && depth < MAX_ATTACHMENT_DEPTH; depth++) {
+    root = root[ATTACHMENT].parent;
+  }
+
+  return root;
+}
+
+/**
  * Mutable server-side wrapper around a game entity instance.
  */
 export class ServerEdict {
@@ -506,6 +572,9 @@ export class ServerEdict {
   leafnums: number[];
   freetime: number;
   entity: BaseEntity | null;
+
+  /** Symbol-keyed like the server, so it stays out of the way of game code and does not make the type nominal. */
+  readonly [ATTACHMENT]: AttachmentState = { parent: null, tagName: null, tagReported: false, children: new Set() };
 
   constructor(num: number, sv: Server) {
     this[SERVER] = sv;
@@ -521,10 +590,118 @@ export class ServerEdict {
    * Clears the currently linked entity instance.
    */
   clear(): void {
+    this.clearAttachment();
+
     if (this.entity) {
       this.entity.free();
       this.entity = null;
     }
+  }
+
+  /**
+   * Attaches this entity to another, to a tag of the parent's model or to the parent's origin, the way DarkPlaces'
+   * `setattachment` does: from now on the clients draw it at the parent's transform times the tag, and this entity's own
+   * `origin` and `angles` are its offset in the tag's space (so a game shifts a holstered gun by changing them). It
+   * is sent whenever its parent is, wherever the offset puts it.
+   *
+   * An attached entity should be `SOLID_NOT` and does not move by itself; the engine asserts the former in development.
+   * It stays attached when the parent changes model (the tag is looked up again, by name), and is let go of, staying
+   * where it was in the world, when the parent is freed. Attaching to itself, or in a loop, is refused with a warning.
+   * An unknown tag attaches to the parent's origin and says so once in developer mode.
+   * @param parent The edict to follow.
+   * @param tagName The name of a tag of the parent's model, such as `tag_weapon`; `null` for the parent's origin.
+   */
+  setAttachment(parent: ServerEdict, tagName: string | null = null): void {
+    console.assert(this.entity?.solid === Defs.solid.SOLID_NOT, 'ServerEdict.setAttachment: an attached entity should be SOLID_NOT', this.entity?.classname);
+
+    if (parent.isFree() || this.isFree()) {
+      this[SERVER].con.PrintWarning(`ServerEdict.setAttachment: ${this} or ${parent} is free, not attaching\n`);
+      return;
+    }
+
+    if (isInChainOf(parent, this)) {
+      this[SERVER].con.PrintWarning(`ServerEdict.setAttachment: ${parent} cannot carry ${this}, it would be a loop, not attaching\n`);
+      return;
+    }
+
+    this.clearAttachment();
+
+    const attachment = this[ATTACHMENT];
+    attachment.parent = parent;
+    attachment.tagName = tagName === '' ? null : tagName;
+    attachment.tagReported = false;
+    parent[ATTACHMENT].children.add(this);
+  }
+
+  /**
+   * Lets go of the parent. The entity's `origin` and `angles`, which were an offset in tag space, are world values
+   * again, so a game that detaches on purpose sets them.
+   *
+   * Note: set the origin with `setOrigin()`, not by assigning `entity.origin`. While attached, the edict was linked
+   * into the world at the offset, and only `setOrigin()` relinks it. With a plain assignment the edict keeps the
+   * leaves of the old offset, so the clients that should see the entity are not sent it.
+   */
+  clearAttachment(): void {
+    const attachment = this[ATTACHMENT];
+
+    attachment.parent?.[ATTACHMENT].children.delete(this);
+    attachment.parent = null;
+    attachment.tagName = null;
+  }
+
+  /**
+   * What a savegame keeps of the attachment.
+   * @returns The parent's edict number and the tag name, `null` when this edict is free-standing.
+   */
+  attachmentSnapshot(): [parent: number, tagName: string | null] | null {
+    const attachment = this[ATTACHMENT];
+
+    return attachment.parent === null ? null : [attachment.parent.num, attachment.tagName];
+  }
+
+  /**
+   * The edict this one is attached to.
+   * @returns The parent, `null` when this edict is free-standing.
+   */
+  get attachmentParent(): ServerEdict | null {
+    return this[ATTACHMENT].parent;
+  }
+
+  /**
+   * The edict at the top of the chain of parents this one hangs on: the one whose place decides where this one is.
+   * @returns The root, this edict itself when it is free-standing.
+   */
+  get attachmentRoot(): ServerEdict {
+    return attachmentRoot(this);
+  }
+
+  /**
+   * The edicts attached to this one.
+   * @returns The children, in no particular order.
+   */
+  get attachedChildren(): ReadonlySet<ServerEdict> {
+    return this[ATTACHMENT].children;
+  }
+
+  /**
+   * The tag of the parent's current model this entity follows, which is what goes on the wire.
+   * @returns The index, -1 for the parent's origin: not attached, no tag name, or a model without that tag.
+   */
+  attachmentTagIndex(): number {
+    const attachment = this[ATTACHMENT];
+
+    if (attachment.parent === null || attachment.tagName === null) {
+      return -1;
+    }
+
+    const index = ServerAttachments.tagIndex(this[SERVER], attachment.parent, attachment.tagName);
+
+    if (index < 0 && !attachment.tagReported) {
+      attachment.tagReported = true;
+      this[SERVER].con.DPrint(`ServerEdict.attachmentTagIndex: ${attachment.parent} has no tag ${attachment.tagName}, ${this} follows its origin\n`);
+    }
+
+    return index;
   }
 
   /**
@@ -704,6 +881,40 @@ export class ServerEdict {
     message.writeByte(entity.effects || 0);
     message.writeByte(Math.floor(entity.alpha * 255.0));
     message.writeByte(entity.solid || 0);
+
+    // Most decorations play no sequence, so the block only names the fields that were set.
+    const sequence = entity.sequence ?? -1;
+    const framerate = entity.framerate ?? 1.0;
+    let fields = 0;
+
+    if (sequence !== -1) {
+      fields |= Protocol.sequenceField.sequence;
+    }
+
+    const animtime = entity.animtime ?? null;
+
+    if (animtime !== null) {
+      fields |= Protocol.sequenceField.animtime;
+    }
+
+    if (framerate !== 1.0) {
+      fields |= Protocol.sequenceField.framerate;
+    }
+
+    message.writeByte(fields);
+
+    if (fields & Protocol.sequenceField.sequence) {
+      message.writeShort(sequence);
+    }
+
+    if (fields & Protocol.sequenceField.animtime) {
+      message.writeFloat(animtime!);
+    }
+
+    if (fields & Protocol.sequenceField.framerate) {
+      message.writeFloat(framerate);
+    }
+
     message.writeAngleVector(entity.angles);
     message.writeCoordVector(entity.origin);
     this.freeEdict();
@@ -787,7 +998,7 @@ export class ServerEdict {
    * @returns True when this entity is in the supplied visibility set.
    */
   isInPXS(pxs: Visibility): boolean {
-    return pxs.areRevealed(this.leafnums);
+    return pxs.areRevealed(attachmentRoot(this).leafnums);
   }
 
   /**
