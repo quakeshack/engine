@@ -45,6 +45,12 @@ export interface GameTrace {
   };
   readonly point: Vector;
   readonly entity: BaseEntity | ClientEdict | null;
+  /**
+   * The joint of the entity's skeletal model that was hit, -1 for none. Only a skeletal entity traced as its triangles
+   * (`SOLID_MESH`) reports one; the index is the model's, as `GetTagIndex` gives it, so a game can look its joints up once
+   * per model (for damage by body part).
+   */
+  readonly joint: number;
 }
 
 /** The result of a trace as the engine's collision code produces it. */
@@ -62,6 +68,8 @@ export interface InternalTraceLike {
   readonly ent: {
     readonly entity: BaseEntity | ClientEdict;
   } | null;
+  /** The skeletal joint hit, set by the server's triangle collision; traces that cannot hit a joint leave it out. */
+  readonly joint?: number;
 }
 
 /**
@@ -86,5 +94,6 @@ export function internalTraceToGameTrace(trace: InternalTraceLike): GameTrace {
     },
     point: trace.endpos,
     entity: trace.ent ? trace.ent.entity : null,
+    joint: trace.joint ?? -1,
   };
 }

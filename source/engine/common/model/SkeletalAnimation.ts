@@ -354,6 +354,48 @@ export class SkeletalAnimation {
   }
 
   /**
+   * Skins the positions of every vertex of a mesh on the CPU, without normals: what tracing against the posed mesh
+   * needs (`SOLID_MESH` on the server). The same blend as `skinMeshInto`.
+   * @param meshData The bind pose mesh.
+   * @param skinningMatrices The skinning matrices of one pose (`computePose`).
+   * @param out Receives `x, y, z` per vertex from `outOffset` on.
+   * @param outOffset Index in `out` of the first vertex.
+   */
+  static skinPositionsInto(meshData: SkeletalMeshData, skinningMatrices: Float32Array, out: Float32Array, outOffset: number): void {
+    const { positions, blendIndexes, blendWeights } = meshData;
+    const vertexCount = positions.length / 3;
+    console.assert(out.length >= outOffset + vertexCount * 3, 'skinned position buffer too small');
+
+    for (let vertex = 0; vertex < vertexCount; vertex++) {
+      const x = positions[vertex * 3];
+      const y = positions[vertex * 3 + 1];
+      const z = positions[vertex * 3 + 2];
+
+      let skinnedX = 0.0;
+      let skinnedY = 0.0;
+      let skinnedZ = 0.0;
+
+      for (let influence = 0; influence < 4; influence++) {
+        const weight = blendWeights[vertex * 4 + influence];
+
+        if (weight === 0.0) {
+          continue;
+        }
+
+        const matrix = blendIndexes[vertex * 4 + influence] * SkeletalAnimation.MATRIX_FLOATS;
+        skinnedX += weight * (skinningMatrices[matrix] * x + skinningMatrices[matrix + 1] * y + skinningMatrices[matrix + 2] * z + skinningMatrices[matrix + 3]);
+        skinnedY += weight * (skinningMatrices[matrix + 4] * x + skinningMatrices[matrix + 5] * y + skinningMatrices[matrix + 6] * z + skinningMatrices[matrix + 7]);
+        skinnedZ += weight * (skinningMatrices[matrix + 8] * x + skinningMatrices[matrix + 9] * y + skinningMatrices[matrix + 10] * z + skinningMatrices[matrix + 11]);
+      }
+
+      const position = outOffset + vertex * 3;
+      out[position] = skinnedX;
+      out[position + 1] = skinnedY;
+      out[position + 2] = skinnedZ;
+    }
+  }
+
+  /**
    * Skins every vertex of a mesh on the CPU: each position and normal is moved by the skinning matrices of its (up to
    * four) joints and blended by their weights. Normals are moved by the rotation part of the matrices and brought back
    * to unit length, so a joint with scale does not leave them too long or too short (a normal that cancels out becomes +Z).

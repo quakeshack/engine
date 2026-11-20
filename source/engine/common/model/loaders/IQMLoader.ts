@@ -2,6 +2,7 @@ import Vector from '../../../../shared/Vector.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
 import { IQMModel } from '../IQMModel.ts';
 import { ModelLoader } from '../ModelLoader.ts';
+import { DEFAULT_MODEL_LOAD_OPTIONS, type ModelLoadOptions } from '../ModelLoadContext.ts';
 import { SkeletalAnimation } from '../SkeletalAnimation.ts';
 import { SkeletalMaterialLoader } from '../SkeletalMaterialLoader.ts';
 import type { SkeletalMaterial, SkeletalMeshData, SkeletalMeshRange, SkeletalSequence } from '../SkeletalModel.ts';
@@ -151,7 +152,7 @@ export class IQMLoader extends ModelLoader {
     return new TextDecoder('latin1').decode(new Uint8Array(buffer, 0, IQM_MAGIC.length)) === IQM_MAGIC;
   }
 
-  override async load(buffer: ArrayBuffer, name: string): Promise<IQMModel> {
+  override async load(buffer: ArrayBuffer, name: string, options: ModelLoadOptions = DEFAULT_MODEL_LOAD_OPTIONS): Promise<IQMModel> {
     const reader = new IQMReader(buffer, name);
     const header = reader.readHeader();
     const loadmodel = new IQMModel(name);
@@ -189,12 +190,16 @@ export class IQMLoader extends ModelLoader {
     loadmodel._num_verts = header.vertexCount;
     loadmodel._num_tris = header.triangleCount;
 
+    // Without a renderer the mesh is only needed for mesh collision (`SOLID_MESH`).
+    if (this.context.loadRenderData || options.collisionGeometry) {
+      loadmodel.meshData = { ...vertices, triangles } satisfies SkeletalMeshData;
+    }
+
     if (this.context.loadRenderData) {
       const { materials, ranges } = this.#buildMeshRanges(meshes);
 
       loadmodel.materials = materials;
       loadmodel.meshes = ranges;
-      loadmodel.meshData = { ...vertices, triangles } satisfies SkeletalMeshData;
 
       if (this.context.textures !== null) {
         await SkeletalMaterialLoader.load(materials, this.context.textures, this.context.con);

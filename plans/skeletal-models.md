@@ -3,7 +3,7 @@
 ## Status
 
 ✅ Phases 0 to 7d are done (2026-11-15 and 2026-11-16, results below), and the branch `skeletal-models` is ready to merge into `main` apart from two checks under
-"Before the merge" that need a real GPU or a second human player (updated 2026-11-17: the others are done). The protocol is at 45. Phase 8 (IQM view weapons) is done in Hellwave (every view model is IQM, looked at by the maintainer on 2026-11-19); open are the rocket launcher's muzzle flash and id1's first-person flash light in a browser (Phase 8 results, Hellwave half). Not started: Phase 9 (polish, only as measured). Phase 10a (2026-11-20): eleven Hellwave monsters are IQM, checked frame by frame against their MDLs and in a browser on the real GPU; Phase 10b (skeletal mesh collision, Chthon) is open. All questions were settled on 2026-11-13; quaternion handling
+"Before the merge" that need a real GPU or a second human player (updated 2026-11-17: the others are done). The protocol is at 45. Phase 8 (IQM view weapons) is done in Hellwave (every view model is IQM, looked at by the maintainer on 2026-11-19); open are the rocket launcher's muzzle flash and id1's first-person flash light in a browser (Phase 8 results, Hellwave half). Not started: Phase 9 (polish, only as measured). Phase 10a (2026-11-20): eleven Hellwave monsters are IQM, checked frame by frame against their MDLs and in a browser on the real GPU. Phase 10b (2026-11-20): skeletal `SOLID_MESH` collision with the hit joint, Chthon IQM. Phase 10c (the hit joint for box-shaped entities, decision 27) is planned. All questions were settled on 2026-11-13; quaternion handling
 was added on 2026-11-14 (decisions 19–21).
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
@@ -710,6 +710,58 @@ Differences from the plan, and why:
 - **The vore is in** (the plan had it with the others; it turned out to need `--translate` and a one-way check).
 - **Two exporter fixes the plan did not foresee**: uneven scale and Bendy Bones, found by comparing with Blender after the MDL check failed.
 
+### Phase 10b results (2026-11-20)
+
+Shipped (engine, id1, Hellwave; not committed yet): `IQMLoader` keeps `meshData` on a server for `{ meshCollision: true }`, `SkeletalModel.hasCollisionGeometry`,
+`SkeletalAnimation.skinPositionsInto`, `SkeletalCollisionState` and its adapter in `ServerCollisionSupport.ts`, the skeletal branch of
+`ServerCollision._getEntityCollisionState` (bounding box and one warning without geometry, as for an MDL), `CollisionTrace.joint` and `GameTrace.joint`
+(decision 27); id1 `Boss.ts` precaches and sets the class's `_modelDefault` and stays `SOLID_MESH` after `use()` (decision 28); Hellwave's Chthon is
+`progs/boss.iqm`; docs ("Collision" in `docs/skeletal-models.md`, `game-module-contract.md`, `PrecacheModel` JSDoc, Hellwave `docs/monster-models.md`).
+
+- **Geometry**: the first trace skins every frame of the model once (as an MDL keeps every frame's vertices; Chthon: 106 frames) and indexes the
+  triangles in an octree over the bounds of all frames; a trace looks its frame up. Cached per mesh, so scoped views share it. The pose is `frame`,
+  clamped; sequences and client joint rotations are not seen (as for tags on the server).
+- **The hit joint** is the joint with the most weight on the hit triangle's three vertices, worked out once per triangle.
+- **Winding**: one-sided, counter-clockwise front faces, which is IQM's order as stored; a test on the real player model pins it (with the order
+  turned round, the far side would be hit).
+- **Found by the first browser pass, fixed (engine, not new with this phase)**: a monster spawned during play precaches its model again from
+  `_precache`. `PrecacheModel` with `meshCollision` put a new load into the entry even when the model had its geometry, and outside a map load
+  nothing ever replaced that promise with the model, so collision took the entity for its box (and `GetSequenceDuration` and the other queries would
+  have refused it). Fixed: no reload when the geometry is there, and a load during play replaces its entry when it resolves (`#storeLoadingModel`).
+  The same pass found `Edict.setModel` on a model that is still loading overwriting, when it arrived, the `setSize` a game made right after
+  (`use()` of Chthon: its box grew to the model's bounds); it now keeps a size set since.
+- **Tests**: 4 in `server-collision.test.ts` (a two-joint wall whose upper half moves in frame 1: the hit point follows the frame and the hit reports
+  `torso` or `legs`; a clamped frame and a miss with joint -1; no geometry gives the box and one warning; the real player is hit on the near side), 2 for
+  `PrecacheModel` (a load during play becomes the model; a second precache keeps the loaded entry, one read), 1 for `Edict.setModel` (a later size
+  survives, an entity not sized since gets the model's), id1's boss test (`SOLID_MESH` after `use()`, its model precached with geometry while loading),
+  Hellwave's monster test (the boss too). `npm test` 3,513 pass, typecheck zero, ESLint clean.
+
+**Browser passes** (software GL, Hellwave, `hw_farm`, bosses spawned during play with `SpawnEntity` and woken with `use()`):
+- Chthon draws as the IQM (textured, glow, upright, rises, idles, attacks), `SOLID_MESH` after `use()`, no `meshCollision` warning, 0 GL errors.
+- A grid of traces over the frozen boss maps onto its body as drawn (`Spine.007` head and neck, `Spine.00x` torso, `TentclH*`, `Arm.*`, `Finger.*`).
+  Traces inside the old 256-unit box but beside the body reach the world; the same line hits an arm in one frame and misses in another. Rockets and nails
+  at the body explode on it; beside it, they fly on (one confirmed on the far wall).
+- The second pass, with the fixes and no workaround: the model's entry stays a model through two spawns, both bosses keep their `(-128 -128 -24)` to
+  `(128 128 256)` size, torso traces report `Spine.002`/`Spine.003` from every side. On `hw_farm` the model was already loaded with its geometry, so this
+  pass went through the "no reload" branch; the swap of a load during play and the late size are covered by unit tests only.
+- Not checked: Hellwave's own boss round (`hw_farm` has no `info_boss_marker`), lava-ball hits, a real GPU (nothing here is about frame time).
+
+### Phase 10c: the hit joint for box-shaped entities (planned 2026-11-20, decision 27)
+
+Monsters and players move and are hit as boxes (`SOLID_SLIDEBOX`): that stays, for movement and for everything that is not a shot. What 10c adds is
+a finer test for a trace that a game marks as a shot:
+
+- **API**: a trace option (`Traceline(..., { hitJoints: true })` or a separate `TraceShot`), so movement, line of sight and AI traces keep their cost.
+  When such a trace hits the box of an entity with a skeletal model, the engine traces the same line against the entity's posed triangles (the 10b
+  geometry, so the model needs `{ meshCollision: true }` or a lighter "hit test" precache flag) and either reports the hit on the body with its joint,
+  or, when the line passes beside the body, goes on as if the box were not there (the next entity or the world).
+- **Open in the plan, to settle before work starts**: whether a miss through the box should go on (Half-Life does; it changes what id1's hitscan
+  weapons hit, so a game opts in) or still hit the box with joint -1; the pose of the client's view versus the server's `frame` for a fast animation;
+  players (the server poses the player model by `frame`, the client by the same frame, so they agree; the bend of the spine from look pitch (7b) is
+  client-only and not seen); the cost per shot (one octree query per box hit).
+- **Tests**: a shot at a box-shaped skeletal entity reports the joint where the body is and misses (or not, per the option) beside it; a trace without
+  the option is unchanged; the cost with a horde (`r_speeds`, server time).
+
 ### Decisions (2026-11-12, from the maintainer)
 
 1. **IQM first.** It is the first skeletal format. Half-Life `IDST` v10 follows later as a second
@@ -779,6 +831,14 @@ Differences from the plan, and why:
 24. **The enforcer is skinned with linear blending.** Its rig uses Blender's dual-quaternion skinning ("preserve volume"); linear
     blending moves vertices by up to 2.4 units on the 53-unit model (frame 94, a death frame; the median of the per-frame worst is 0.9).
     The exporter allows it only behind an explicit flag and reports the measured difference; the browser pass judges it.
+
+Decided by the maintainer during 10b (2026-11-20):
+
+27. **The game learns which joint a shot hit**, for damage by body part in later games. As a **joint index** (-1 for none), which a game looks
+    up once per model with `GetTagIndex`; no strings per trace, no model-declared hit groups. A skeletal `SOLID_MESH` entity reports it from its
+    triangles (10b); box-shaped entities (monsters and players, `SOLID_SLIDEBOX`) get it in Phase 10c.
+28. **id1's Chthon stays `SOLID_MESH` after `use()`.** Since the TypeScript port `spawn()` made it `SOLID_MESH` while it had no model, and `use()`
+    (Quake's `boss_awake`) made the risen boss `SOLID_SLIDEBOX`, a 256-unit box: its mesh collision never ran. It stands in the lava and never walks.
 
 Decided by me (no fork):
 
@@ -1407,9 +1467,10 @@ the real-GPU check of "Before the merge" item 2 included. Not needed for the mer
   Hellwave data: soldier, enforcer, dog, zombie, knight, hell knight, scrag, ogre, shambler, vore and fiend exported and checked against their MDLs.
   Hellwave game: the subclasses with `_modelDefault`. *Browser: a wave of each kind on `hw_e1m2` (stand, run, attack, pain, death frames), glow on the enforcer
   and ogre, no GL errors; `r_speeds` counts.* *Exit: every wave monster but the spawn and Chthon is IQM.*
-- **10b: skeletal mesh collision and Chthon.** Engine: loader, adapter, collision branch, tests. id1: `Boss.ts` on `_modelDefault`. Hellwave data and game: the boss.
+- **10b: skeletal mesh collision and Chthon.** **Done 2026-11-20 (see Phase 10b results).** Engine: loader, adapter, collision branch, tests. id1: `Boss.ts` on `_modelDefault`. Hellwave data and game: the boss.
   *Browser: rockets and nails hit Chthon's body where it is drawn and pass beside it, through its rise, attack and death frames.* *Exit: Chthon is IQM and
   as hittable as the MDL.*
+- **10c: the hit joint for box-shaped entities** (decision 27, see "Phase 10c"). Not started.
 
 **Open items kept from Phase 7 (2026-11-16), decided to wait:**
 - **Look pitch precision.** The entity pitch is one byte on the wire (1.4 degrees, so 4.2 degrees of look pitch, interpolated); the bend of the spine looks smooth at slow sweeps and the maintainer is happy with it. If it ever

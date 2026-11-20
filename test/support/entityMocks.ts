@@ -196,6 +196,7 @@ export function createGameTrace(overrides: Partial<GameTrace> = {}): GameTrace {
     contents: { inOpen: true, inWater: false },
     point: new Vector(),
     entity: null,
+    joint: -1,
     ...overrides,
   };
 }

@@ -9,13 +9,16 @@ import { MeshModel } from '../../source/engine/common/model/MeshModel.ts';
 import { DIST_EPSILON, Pmove } from '../../source/engine/common/Pmove.ts';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.ts';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';
-import { AliasCollisionState, CollisionPlane, CollisionTrace, HullCollisionState, MeshCollisionState } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
+import { AliasCollisionState, CollisionPlane, CollisionTrace, HullCollisionState, MeshCollisionState, SkeletalCollisionState } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
+import { IQMLoader } from '../../source/engine/common/model/loaders/IQMLoader.ts';
+import type { IQMModel } from '../../source/engine/common/model/IQMModel.ts';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 
 import { createClipTree, createLegacyHull } from '../support/hulls.ts';
 import { createAxisPlane, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV, mockedCollisionModelSource, createPmoveTrace, type MockEntity } from '../support/fixtures.ts';
 import { assertNear } from '../support/assertions.ts';
-import { createModelLoadContext } from '../support/modelContext.ts';
+import { createDirectoryFiles, createModelLoadContext } from '../support/modelContext.ts';
+import { IDENTITY_POSE, buildIqm, createTwoJointSpec, type IqmPose } from '../support/iqmBuilder.ts';
 import type { Octree } from '../../source/shared/Octree.ts';
 import type { ServerEdict } from '../../source/engine/server/Edict.ts';
 import type { AliasSingleFrame } from '../../source/engine/common/model/AliasModel.ts';
@@ -208,6 +211,85 @@ function assertMonsterTouchUsesMeshHullFallback({
     assert.equal(trace.ent, blockerEdict);
     assert.ok(trace.fraction < 1.0);
   });
+}
+
+/**
+ * Loads an IQM the way a dedicated server does: no render data, the mesh kept only for `{ meshCollision: true }`.
+ * @param buffer The file.
+ * @param collisionGeometry Whether the game precached it with `{ meshCollision: true }`.
+ * @returns The model.
+ */
+async function loadServerIqm(buffer: ArrayBuffer, collisionGeometry: boolean): Promise<IQMModel> {
+  return await new IQMLoader(createModelLoadContext({ loadRenderData: false }))
+    .load(buffer, 'progs/skeletal-wall.iqm', { collisionGeometry, sidecar: true });
+}
+
+/**
+ * A wall at x = 0 facing -X, 32 wide and 64 high, in two parts: the lower half on the joint `legs` (0), the upper half on
+ * `torso` (1). In frame 1 `torso` is 16 units further along +X, so the upper half stands at x = 16.
+ * @returns The file.
+ */
+function buildSkeletalWall(): ArrayBuffer {
+  const pushedBack: IqmPose = [16, 0, 0, 1, 0, 0, 0, 1, 1, 1];
+  // Two quads, each two triangles wound counter-clockwise seen from -X (the face normal is -X).
+  const quad = (bottom: number, top: number): number[] => [0, 0, bottom, 0, 0, top, 0, 32, bottom, 0, 32, top];
+
+  return buildIqm(createTwoJointSpec({
+    joints: [{ name: 'legs', parent: -1, pose: IDENTITY_POSE }, { name: 'torso', parent: -1, pose: IDENTITY_POSE }],
+    frames: [[IDENTITY_POSE, IDENTITY_POSE], [IDENTITY_POSE, pushedBack]],
+    positions: [...quad(0, 32), ...quad(32, 64)],
+    normals: new Array<number>(8).fill(0).flatMap(() => [-1, 0, 0]),
+    texcoords: new Array<number>(16).fill(0),
+    blendIndexes: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    blendWeights: new Array<number>(8).fill(0).flatMap(() => [1, 0, 0, 0]),
+    triangles: [0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7],
+    meshes: [{ name: 'wall', material: 'progs/wall', firstVertex: 0, vertexCount: 8, firstTriangle: 0, triangleCount: 4 }],
+    anims: [{ name: 'push', firstFrame: 0, frameCount: 2, framerate: 10, loop: false }],
+    bounds: null,
+  }));
+}
+
+/**
+ * Runs a callback with a `SOLID_MESH` entity at the origin that has the model, at the given frame, on a server whose
+ * warnings go into `warnings`.
+ */
+function withSkeletalEntity(
+  model: IQMModel,
+  frame: number,
+  warnings: string[],
+  callback: (collision: ServerCollision, edict: ServerEdict) => void,
+): void {
+  const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
+  const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
+  const entity = createMockEntity({ origin: new Vector(), angles: new Vector(), movetype: moveType.MOVETYPE_NONE, solidType: solid.SOLID_MESH });
+  entity.classname = 'monster_test';
+  entity.modelindex = 1;
+  entity.frame = frame;
+  const edict = createMockEdict(entity);
+
+  withMockEngine({
+    ...defaultMockEngine({
+      area: { tree: { queryAABB() { return [].values(); } } },
+      server: { edicts: [worldEdict, edict], worldmodel: null, models: [null, model], time: 0.0 },
+    }),
+    Con: { Print() {}, DPrint() {}, PrintWarning(message: string) { warnings.push(message); } },
+  }, () => {
+    callback(collision, edict);
+  });
+}
+
+/**
+ * Traces a line through a `SOLID_MESH` entity that has the model, at the entity's frame.
+ * @returns The trace and the collision state the entity got.
+ */
+function traceSkeletalEntity(model: IQMModel, frame: number, start: Vector, end: Vector): { trace: CollisionTrace; state: unknown } {
+  let result: { trace: CollisionTrace; state: unknown } | null = null;
+
+  withSkeletalEntity(model, frame, [], (collision, edict) => {
+    result = { state: collision._getEntityCollisionState(edict), trace: collision.clipMoveToEntity(edict, start, Vector.origin, Vector.origin, end) };
+  });
+
+  return result!;
 }
 
 void describe('ServerCollision', () => {
@@ -1094,6 +1176,65 @@ void describe('ServerCollision', () => {
 
         assert.equal(hitTrace.ent, aliasEdict);
         assertNear(hitTrace.fraction, (10.0 - DIST_EPSILON) / 20.0, 0.000001);
+      });
+    });
+
+    void describe('skeletal SOLID_MESH entities', () => {
+      void test('a hit reports the joint of the triangle it hit, in the pose of the entity\'s frame', async () => {
+        const model = await loadServerIqm(buildSkeletalWall(), true);
+        const upper = [new Vector(-32, 16, 48), new Vector(32, 16, 48)] as const;
+        const lower = [new Vector(-32, 16, 16), new Vector(32, 16, 16)] as const;
+
+        const restUpper = traceSkeletalEntity(model, 0, ...upper);
+        assert.ok(restUpper.state instanceof SkeletalCollisionState);
+        assertNear(restUpper.trace.endpos[0], -DIST_EPSILON, 1e-4);
+        assert.equal(restUpper.trace.joint, model.getTagIndex('torso'));
+        assert.deepEqual([...restUpper.trace.plane.normal], [-1, 0, 0]);
+
+        // Frame 1 moves only the upper half: the posed triangles are traced, not the rest pose.
+        const pushedUpper = traceSkeletalEntity(model, 1, ...upper);
+        assertNear(pushedUpper.trace.endpos[0], 16 - DIST_EPSILON, 1e-4);
+        assert.equal(pushedUpper.trace.joint, model.getTagIndex('torso'));
+
+        const pushedLower = traceSkeletalEntity(model, 1, ...lower);
+        assertNear(pushedLower.trace.endpos[0], -DIST_EPSILON, 1e-4);
+        assert.equal(pushedLower.trace.joint, model.getTagIndex('legs'));
+      });
+
+      void test('a frame number past the model holds the last frame, and a miss reports no joint', async () => {
+        const model = await loadServerIqm(buildSkeletalWall(), true);
+        const { trace } = traceSkeletalEntity(model, 7, new Vector(-32, 16, 48), new Vector(32, 16, 48));
+        assertNear(trace.endpos[0], 16 - DIST_EPSILON, 1e-4);
+
+        const miss = traceSkeletalEntity(model, 0, new Vector(-32, 48, 48), new Vector(32, 48, 48)).trace;
+        assert.equal(miss.fraction, 1.0);
+        assert.equal(miss.joint, -1);
+      });
+
+      void test('without { meshCollision: true } a server keeps no mesh, and the entity is its bounding box, said once', async () => {
+        const model = await loadServerIqm(buildSkeletalWall(), false);
+        assert.equal(model.hasCollisionGeometry, false);
+        const warnings: string[] = [];
+
+        withSkeletalEntity(model, 0, warnings, (collision, edict) => {
+          assert.ok(collision._getEntityCollisionState(edict) instanceof HullCollisionState);
+          assert.ok(collision._getEntityCollisionState(edict) instanceof HullCollisionState);
+        });
+
+        assert.equal(warnings.length, 1);
+        assert.match(warnings[0], /monster_test is SOLID_MESH, but progs\/skeletal-wall\.iqm was precached without \{ meshCollision: true \}/);
+      });
+
+      void test('a real model is hit on the side the trace comes from (IQM winding, counter-clockwise from the front)', async () => {
+        // With the winding turned round, the near faces would face away from the trace and the far side would be hit.
+        const file = await createDirectoryFiles(new URL('../fixtures/skeletal/', import.meta.url)).LoadFile('player.iqm');
+        const model = await loadServerIqm(file!, true);
+        const { trace } = traceSkeletalEntity(model, 0, new Vector(-100, 0, 20), new Vector(100, 0, 20));
+
+        assert.ok(trace.fraction < 1.0);
+        assert.ok(trace.endpos[0] < 0, `hit at x = ${trace.endpos[0]}`);
+        assert.ok(trace.plane.normal[0] < 0);
+        assert.ok(trace.joint >= 0 && trace.joint < model.jointCount);
       });
     });
 

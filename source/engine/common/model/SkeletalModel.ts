@@ -185,6 +185,15 @@ export abstract class SkeletalModel extends BaseModel {
   }
 
   /**
+   * A skeletal model can be traced as triangles (`SOLID_MESH`) when its mesh was kept: always with a renderer, on a
+   * server only when the model was precached with `{ meshCollision: true }`.
+   * @returns True when mesh collision can trace against this model.
+   */
+  override get hasCollisionGeometry(): boolean {
+    return this.meshData !== null;
+  }
+
+  /**
    * Number of frames. A model without frames of its own has one: its rest pose.
    * @returns The frame count.
    */

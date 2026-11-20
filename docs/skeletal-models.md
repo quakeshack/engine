@@ -69,7 +69,8 @@ stored in flat typed arrays and does not change after loading, so the client's a
 A realm that draws (the browser client) keeps the mesh: `meshData` (bind pose positions, normals, texture coordinates, joint indexes
 and weights, triangles), `meshes` and `materials` (names only; the renderer resolves textures). A realm that does not draw (the
 dedicated server, the server worker) reads and validates the same data and then keeps none of it: it has joints, poses, sequences
-and bounds, which is what `setModel()` and, later, tags need. Both realms refuse the same files.
+and bounds, which is what `setModel()` and tags need. Only a model precached with `{ meshCollision: true }` keeps `meshData` on the
+server too (see Collision). Both realms refuse the same files.
 
 ## Posing a model: `SkeletalAnimation`
 
@@ -317,6 +318,25 @@ have a compare mode that a plain `sampler2D` rejects, and `brush` binds its `tSp
 world with a deluxemap, so a shadow texture left on one of them fails the next world draw (`GL_INVALID_OPERATION: Mismatch between
 texture format and sampler type`, and the world draws black). That is why the `skeletal` program lists `null` for the units 4 to 9
 and keeps its shadow samplers on the units 10 to 14, where `brush` has its own. The same rule holds for every program (a test in `shader-programs.test.ts` checks that no program but `brush` has a 2D shadow sampler on unit 7 or 8): the `player` program of colored MDL players broke the world for good until its `tPlayer` sampler moved behind the shadow samplers.
+
+## Collision
+
+An entity with a skeletal model is a box for traces, like any other, unless it is solid as `SOLID_MESH`: then it is traced as its
+posed triangles, as an MDL is. Its model has to be precached with `ServerEngineAPI.PrecacheModel(name, { meshCollision: true })`,
+or the server keeps no mesh, traces the bounding box and warns once (`docs/game-module-contract.md`).
+
+- **The pose is the entity's `frame`**, clamped to the model. The server skins every frame of the model once, the first time it is
+  traced (as an MDL keeps every frame's vertices), and indexes the triangles over all frames, so a trace only looks its frame up. A
+  sequence the entity plays (`sequence`, `animtime`) and joint rotations a client game adds are not seen, as for tags on the server.
+- **Winding**: triangles are traced one-sided, front faces counter-clockwise, which is how IQM stores them (the renderer turns them
+  round for its culling, the collision code does not).
+- **The joint that was hit**: a trace that hits such an entity reports the joint of the triangle it hit in `GameTrace.joint` (-1 for
+  anything else): the joint with the most weight on the triangle's three vertices. It is the model's joint index, the one
+  `GetTagIndex(model, name)` gives, so a game looks the joints it cares about up once per model and keeps a table, for damage by body
+  part for example. Exporters may add joints (LibreQuake's shambler has one per Bendy Bone segment, `NAME.segmentN`), so a game that
+  maps joints should map the ones its models have.
+
+*Example (a game's own):* LibreQuake's Chthon is `SOLID_MESH` in id1, so Hellwave's skeletal Chthon is hit where it is drawn.
 
 ## `modelinfo <model>`
 
