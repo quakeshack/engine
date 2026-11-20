@@ -131,6 +131,37 @@ void describe('ServerEdict', () => {
     });
   });
 
+  void test('a model that is still loading sizes the entity when it arrives, unless the entity was sized since', async () => {
+    // A monster spawned during play while its model loads: id1's Chthon calls setSize right after setModel, and the model's
+    // own bounds, arriving later, used to overwrite that size.
+    const model = new BaseModel('progs/boss.iqm');
+    model.mins = new Vector(-187, -264, -196);
+    model.maxs = new Vector(340, 291, 377);
+    let arrive: (loaded: BaseModel) => void = () => {};
+    const loading = new Promise<BaseModel>((resolve) => { arrive = resolve; });
+
+    await withMockEngine(defaultMockEngine({
+      area: { linkEdict() {} },
+      server: { modelPrecache: ['', 'progs/boss.iqm'], models: [null, loading] },
+    }), async () => {
+      const sized = new ServerEdict(1, mockedSV());
+      sized.entity = createTestEntity();
+      const unsized = new ServerEdict(2, mockedSV());
+      unsized.entity = createTestEntity();
+
+      sized.setModel('progs/boss.iqm', false);
+      sized.setMinMaxSize(new Vector(-128, -128, -24), new Vector(128, 128, 256), false);
+      unsized.setModel('progs/boss.iqm', false);
+
+      arrive(model);
+      await loading;
+      await Promise.resolve();
+
+      assert.deepEqual([...sized.entity!.mins, ...sized.entity!.maxs], [-128, -128, -24, 128, 128, 256]);
+      assert.deepEqual([...unsized.entity!.mins, ...unsized.entity!.maxs], [-187, -264, -196, 340, 291, 377]);
+    });
+  });
+
   void describe('makeStatic', () => {
     /**
      * Makes an entity static and returns what was written for the client's signon.

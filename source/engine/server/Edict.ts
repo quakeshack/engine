@@ -811,8 +811,18 @@ export class ServerEdict {
     const mod = this[SERVER].server.models[i];
 
     if (mod instanceof Promise) {
+      // The size of the model once it has loaded, unless the entity has another model or size by then: a game that
+      // sizes the entity right after setModel (setSize) must keep that size. setMinMaxSize stores new vectors, so a
+      // changed `mins` or `maxs` object means the size was set since.
+      const { mins, maxs } = entity;
+
       void mod.then((loadedModel) => {
         console.assert(loadedModel !== null, `Edict.setModel: failed to load model ${model}`);
+
+        if (this.entity !== entity || entity.modelindex !== i || entity.mins !== mins || entity.maxs !== maxs) {
+          return;
+        }
+
         this.setMinMaxSize(loadedModel!.mins, loadedModel!.maxs, touchTriggers);
       });
       return;

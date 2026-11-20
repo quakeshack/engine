@@ -476,8 +476,8 @@ export class ServerEngineAPI {
 
   /**
    * Precaches a model for this map. The server keeps only what it reads from a model (its bounds) unless told
-   * otherwise: an entity that is solid as `SOLID_MESH` is traced against the model's triangles, so whoever
-   * precaches its model has to pass `{ meshCollision: true }`. Precaching a model again with the option reloads
+   * otherwise: an entity that is solid as `SOLID_MESH` is traced against the model's triangles (an MDL's, an OBJ's or
+   * a skeletal model's posed ones), so whoever precaches its model has to pass `{ meshCollision: true }`. Precaching a model again with the option reloads
    * it with its geometry. A `SOLID_MESH` entity whose model was precached without it falls back to its
    * bounding box and the server prints a warning.
    */
@@ -491,21 +491,40 @@ export class ServerEngineAPI {
     if (index === -1) {
       this.#sv.server.modelPrecache.push(modelName);
       this.#sv.server.modelPrecacheFlags[this.#sv.server.modelPrecache.length - 1] = flags;
-      this.#sv.server.models.push(this.#sv.mod.ForNameAsync(modelName, true, ModelScope.server, loadOptions)); // will cause promises in the array
+      this.#storeLoadingModel(this.#sv.server.modelPrecache.length - 1, this.#sv.mod.ForNameAsync(modelName, true, ModelScope.server, loadOptions));
       return;
     }
 
-    // Already precached, possibly without its geometry or without looking for its sidecar: the cache reloads it
-    // only when that is the case, and a later precache that wants more wins over an earlier one that wanted less.
+    // Already precached, possibly without its geometry or without looking for its sidecar: it is loaded again only
+    // when that is the case, and a later precache that wants more wins over an earlier one that wanted less. A model
+    // that is still loading may be loading without what is asked now, so it is asked for again (the cache shares the load).
+    const current = this.#sv.server.models[index];
+    const hasGeometry = current !== null && !(current instanceof Promise) && current.hasCollisionGeometry;
     const hadSidecarSkipped = (this.#sv.server.modelPrecacheFlags[index] & ModelPrecacheFlags.noSidecar) !== 0;
 
-    if (loadOptions.collisionGeometry || (loadOptions.sidecar && hadSidecarSkipped)) {
+    if ((loadOptions.collisionGeometry && !hasGeometry) || (loadOptions.sidecar && hadSidecarSkipped)) {
       if (loadOptions.sidecar) {
         this.#sv.server.modelPrecacheFlags[index] &= ~ModelPrecacheFlags.noSidecar;
       }
 
-      this.#sv.server.models[index] = this.#sv.mod.ForNameAsync(modelName, true, ModelScope.server, loadOptions);
+      this.#storeLoadingModel(index, this.#sv.mod.ForNameAsync(modelName, true, ModelScope.server, loadOptions));
     }
+  }
+
+  /**
+   * Puts a model that is loading into its precache entry. While a map loads, `Server.WaitForPrecachedResources` swaps
+   * every entry for the model it resolves to; a precache during play (an entity spawned later) is swapped here when it
+   * resolves, or the entry would stay a promise and collision, `setModel` and the model queries would never see the model.
+   */
+  #storeLoadingModel(index: number, loading: Promise<BaseModel | null>): void {
+    const models = this.#sv.server.models;
+    models[index] = loading;
+
+    void loading.then((model) => {
+      if (models[index] === loading) {
+        models[index] = model;
+      }
+    });
   }
 
   /**
