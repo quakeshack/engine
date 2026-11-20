@@ -3,7 +3,7 @@
 ## Status
 
 ✅ Phases 0 to 7d are done (2026-11-15 and 2026-11-16, results below), and the branch `skeletal-models` is ready to merge into `main` apart from two checks under
-"Before the merge" that need a real GPU or a second human player (updated 2026-11-17: the others are done). The protocol is at 45. Phase 8 (IQM view weapons) has its engine half; its assets, the games' side and a browser pass are open. Not started: Phase 9 (polish, only as measured). All questions were settled on 2026-11-13; quaternion handling
+"Before the merge" that need a real GPU or a second human player (updated 2026-11-17: the others are done). The protocol is at 45. Phase 8 (IQM view weapons) is done in Hellwave (every view model is IQM, looked at by the maintainer on 2026-11-19); open are the rocket launcher's muzzle flash and id1's first-person flash light in a browser (Phase 8 results, Hellwave half). Not started: Phase 9 (polish, only as measured). Phase 10a (2026-11-20): eleven Hellwave monsters are IQM, checked frame by frame against their MDLs and in a browser on the real GPU; Phase 10b (skeletal mesh collision, Chthon) is open. All questions were settled on 2026-11-13; quaternion handling
 was added on 2026-11-14 (decisions 19–21).
 Reworked on 2026-11-12 from `plans/half-life-studio-models.md` (renamed to this file). The
 format-neutral decisions of that plan carry over. **The focus is IQM.** Half-Life studio models are
@@ -606,7 +606,8 @@ Browser pass (2026-11-17, production build, software GL, Hellwave `hw_e1m2`, cha
 person still starts at the player's origin, a screenshot shows the beam leaving the thunderbolt's prong. **It found a one-frame lag:** the start was worked out in `ClientEntities.think()`, before `emit()` moved the player for the
 frame, so a moving shooter's beam trailed its muzzle by one frame of movement (6.5 to 21.8 units at 3 to 5 FPS in software GL, about 5 units at 60 FPS and 320 u/s). Fixed the same day: the beams' lights and segments are built by `emit()`
 (`#emitBeams`), after the entities and attachments of the frame are placed and before the temp entities are staged; `think()` no longer builds them. A test moves the shooter between frames (`beam-start.test.ts`; it fails with the beams
-built in `think()`). The fix itself is not looked at again in a browser (the two runs after it were the MDL checks).
+built in `think()`). The fix was confirmed in a browser by the maintainer on 2026-11-19.
+**Left for a separate polish round: the beam is not predicted.** It comes from the server's temp entity, so the local player's beam shows up one round trip after the shot; only its start follows the muzzle on the client.
 
 ### Phase 8 results, engine half (2026-11-16)
 
@@ -629,13 +630,10 @@ Shipped: `FrameUniforms.UploadPerspective`, `R.DrawViewModel` for every renderer
   attachments untouched), 3 for the sequence fields in `view-refdef.test.ts` (given, stamped by the engine, forgotten), one for `UploadPerspective`, one for the API.
   Typecheck zero, ESLint clean, `npm test` green.
 
-Not done, and why:
+Not done in this half, and why:
 
-- **No browser pass.** Nothing in this half has been drawn: no game has an IQM view weapon yet, so a pass needs a temporary one (an exported `v_axe`), and the
-  projection and flush order are covered by recorded GL calls only. That is the exit test of this phase.
-- **The assets and the games' side**: `v_axe` and `v_nail2` exported with the Phase 7 exporter (`--tag-on`/`--tag` for `tag_flash`), id1's and Hellwave's client
-  `viewmodel` filling `sequence` (and `animtime` on each shot), the first-person muzzle flash as a sprite on the view model's `tag_flash` in place of the fixed
-  offset, and the weapon table's view model names. All of it is game content and Blender work.
+- **No browser pass.** No game had an IQM view weapon yet. *Done since:* the Hellwave half below drew the shotgun, then all eight view models, in a browser.
+- **The assets and the games' side.** Game content and Blender work. *Done since* for Hellwave (Hellwave half below); id1 keeps its MDL view models.
 - **No shadow of, and no dynamic light from, what hangs on the weapon** (documented). The flash light keeps using `GetMuzzleFlashOrigin(GetViewmodelEntity(), out)`.
 
 ### Phase 8 results, Hellwave half: the shotgun (2026-11-16)
@@ -650,17 +648,67 @@ The first IQM view weapon, with its muzzle flash, checked by the maintainer in a
   sprite on the view model's `tag_flash` when the engine counts a shot of the local player.
 - **Found by a browser run**: the flash was spawned, attached, resolved onto the tag and given a draw call, and still invisible: it was drawn in the weapon's pass before the world, and a blended
   sprite writes no depth, so the world painted over it. Blended attachments now have their own pass after the world (`R.DrawViewModelBlended`, see Phase 8 results, engine half).
-- **The flash light** of id1's first-person handler now sits at the view model's `tag_flash` (`GetMuzzleFlashOrigin(GetViewmodelEntity())`), the fixed place 20 units ahead of the eye for a view model without one (id1 commit after `b2a4b0f`; not looked at in a browser).
+- **The flash light** of id1's first-person handler now sits at the view model's `tag_flash` (`GetMuzzleFlashOrigin(GetViewmodelEntity())`), the fixed place 20 units ahead of the eye for a view model without one (id1 commit after `b2a4b0f`). **Open:** not looked at in a browser.
 - **Every view model is IQM now (2026-11-17)**: the seven guns go through `bake_shape_keys.py`, the axe (a rig of its own) through `export_iqm.py`. Frame by frame against Blender's own result (shape keys and rig
   evaluated, in world space): `v_shot` 0.008 units at worst, `v_shot2` 0.042, `v_rock` 0.52 (the grenade launcher's recoil is a big turn, built with `--max-error 0.6`), `v_rock2` 0, `v_nail` 0,
   `v_light` 0, `v_nail2` 0.0005, `v_axe` 0.008. The script learned three things on the way: **`--split`** (the nailgun's barrels and the thunderbolt's claws move in rigid pieces: pieces are vertices that the same keys
   move and the same groups weight, cut along their edges when they do not move together, one bone each, 7 and 11 joints), **`--drop-group`** and replacing an existing rig (the super nailgun has a spinning barrel *and*
   a shape-key recoil), and **world-space fitting**: a mesh object that is moved or turned (`v_rock2` is, a little) moves differently under the armature modifier than in its own space, which a test with a
   transformed object found (the muzzle of `v_rock2` was first measured in object space and was off by the object's offset). Muzzles are guesses from the end of the barrel (the nailguns and shotguns between
-  their barrels, the thunderbolt at the glow between the claws), looked at on a side-view plot and not in the game. Flash families are those of the held models; the axe has none. Not looked at in a browser.
-- **Open**: the flash scale is per
-  GIF family and shared with third person (`star_shotgun` is 0.15 now); the other view models (`v_shot2` has five shape keys and needs a look; `v_axe` and `v_nail2` are rigged and go through
-  `export_iqm.py`); the "MDL first-person weapon still looks as before" check of the merge list was not done on its own, though the other weapons were drawn in the same runs.
+  their barrels, the thunderbolt at the glow between the claws), looked at on a side-view plot first. Flash families are those of the held models; the axe has none.
+- **Looked at by the maintainer in a browser (2026-11-19)**: every view model and its flash "looks quite good". The flash scales per GIF family (shared with third person, `star_shotgun` is 0.15) are all good; the
+  cone families stay unused.
+- **Open: the rocket launcher's flash (`v_rock2`)** is a bit small or sits too low. Since the scale is shared with third person, the fix is likely the `tag_flash` of `v_rock2` (a muzzle further up or forward), not the family's scale.
+  The MDL first-person check of the merge list is done (item 4 of "Before the merge").
+
+### Phase 10a results (2026-11-20)
+
+Shipped, in three repositories (none committed yet): **qs-tools** (`export_iqm.py`: `--glow`, `--allow-linear-skinning`, `--translate`, the shape-key rule,
+joints moved off unevenly scaled parents, Bendy Bones as segment joints; the new `check_mdl.py`; tests; README); **Hellwave data** (`progs/src/build-models.sh`
+builds and checks eleven monsters, `progs/<monster>.iqm` and their textures); **Hellwave game** (eleven subclasses with `_modelDefault` in `entity/Monsters.ts`,
+registered in `GameAPI.ts`; `gameRoundMonsterMatrix` exported for a test; `docs/monster-models.md`).
+
+- **The MDL check found four problems that a look would have missed or blamed on the renderer.** Every export is compared with the MDL frame by frame
+  (`check_mdl.py`, nearest vertex both ways, and with the frames shifted by up to two):
+  - **Frame ranges**: the zombie, hell knight, ogre and Chthon have keys one frame before their first `$frame`. Exported from frame 0 they have the right frame count
+    and play every animation one pose late; the check says "matches better shifted by -1" (zombie 6.7 against 0.41). From frame 1 they match.
+  - **The paks are older than the sources**: LibreQuake's `pak1.pak` (2025-11) predates the reanimated dog and the fixed fiend; against the MDLs of the same
+    checkout (`lq1/progs/`) the dog matches to 0.54.
+  - **Spline IK lost shear (exporter bug)**: the vore's spine is a Spline IK chain that scales its bones unevenly (0.79 along Y). A child's pose relative to such a parent
+    needs shear, which IQM's channels cannot hold, and the error grew down the chain to 5 units (6.6 mean against Blender itself). Fixed generally: a bone under an unevenly
+    scaled parent is exported under its nearest evenly scaled ancestor (a world matrix has no shear, so this is exact). Vore against Blender: 0.14 mean.
+  - **Bendy Bones were ignored silently (exporter bug)**: the shambler's Rigify deform bones are B-Bones with 8 segments. Blender bends a vertex with the two segment
+    endpoints around it, blended linearly, so each endpoint is now a joint and the weight is split between two (`PoseBone.bbone_segment_index`): 613 joints, 2.5 to
+    1.16 mean against Blender, the rest is weight pruning (up to eight influences on a vertex, four kept).
+- **Results** (mean of the per-frame worst distance to the MDL, units; the MDL's own quantization is about 0.5): soldier 0.62, dog 0.54, knight 0.47, scrag 0.51,
+  zombie 0.41, hell knight 0.72, ogre 0.61, enforcer 1.35 (worst 2.33, the linear blending of decision 24, measured by the exporter as 2.36 in the same frame), fiend 1.05,
+  shambler 1.26, vore 2.8 one-way, Chthon 3.5 (its MDL is 3.5 from its own source too; IQM against Blender 1.27). Every model's shifted comparisons are 6 to 100 times worse.
+- **The vore's source is not what its MDL was made from**: 5.5 units lower (its feet below the hull's bottom, -24), 10 vertices and 12 triangles fewer, and another take
+  of the attack (frames 0 to 10, up to 6.6 units at the arm). Exported raised (`--translate 0,0,5.5`) and checked one-way (`--ignore-mdl-extras`); pain, death and walk are
+  within 2.4. Content, for LibreQuake to settle.
+- **Glow** (decision 25): the enforcer (57 pixels) and ogre (12) get `_glow` textures; Chthon's source skin has 19 fullbright pixels that its MDL (a smaller skin) does not.
+  The palette holds dark red at 76 and 247; LibreQuake's MDL skins always use 76, which "lowest index wins" matches.
+- **Unchanged**: the player and every weapon model came out byte-identical after the exporter changes.
+- **Tests**: qs-tools 191 (82 scene tests for the exporter, new ones for the shape-key rule, world-space offset, linear-skinning report against Blender both ways, glow split and
+  export, B-Bone joints against Blender, the bend the segments add, uneven-scale reparent against Blender and the shear it avoids, translate; 13 for `check_mdl.py` against
+  MDLs written in the tests: frame shift with the right count, count, one bad frame, vertex order and seam copies, groups, truncation, PAK lookup, one-way, `--mdl-frames`).
+  Hellwave: every classname the wave table can spawn resolves to an `.iqm` class, the spawn to its MDL. Typecheck zero, ESLint clean.
+
+**Browser pass on the real GPU** (`browser-ui-verification`, the maintainer allowed one GPU run; Radeon 890M through ANGLE/Vulkan, production build, Hellwave on LibreQuake's
+`dev` map with all twelve kinds spawned by script at the map's own monster places; two runs of about 3 minutes in all, the second a 40 s floor-level look):
+- All eleven draw as their `.iqm` (the spawn as its MDL), solid, textured, upright, at MDL size, feet on the floor (the vore's tail on it), the scrag hovering. Idle frames advance;
+  a hit plays pain, a kill plays death to its last frame and holds it; an overkill gives the MDL heads. Lit by the world and by a dynamic light, shadows on the wall.
+- **Glow**: with the world black (light style 0) the enforcer is a silhouette with its ring of lights and red eyes bright; the ogre keeps a red speck (seen from behind only).
+- **Cost**: 44 monsters in view (four of each kind), 1280×720: skeletal pass 1.1 to 1.3 ms CPU (worst 1.7), 0.45 ms GPU, frame 6.2 to 6.8 ms CPU and 9.3 ms GPU, 60 FPS held; the top-down
+  shadow map costs more than the skeletal pass. The shambler close up: 0.05 ms CPU. Nothing points to Phase 9 (GPU skinning) yet.
+- 0 GL errors (checked after every draw), no page errors, only expected 404s.
+- Not checked: attack animations (the woken monsters only walked and ran), corpses up close, the vore's and fiend's deaths, real waves on `hw_e1m2`, Chthon (10b). Seen on the side:
+  under Hellwave, the monsters LibreQuake's `dev` map places stay inert (no model, no size) and never reach the client; not looked into.
+
+Differences from the plan, and why:
+- **`check_mdl.py` instead of `--match-mdl`**: it needs no Blender, runs in a second, reads PAKs, and compares vertices, not only bounds (bounds would not have shown the vore's spine).
+- **The vore is in** (the plan had it with the others; it turned out to need `--translate` and a one-way check).
+- **Two exporter fixes the plan did not foresee**: uneven scale and Bendy Bones, found by comparing with Blender after the MDL check failed.
 
 ### Decisions (2026-11-12, from the maintainer)
 
@@ -719,6 +767,28 @@ The first IQM view weapon, with its muzzle flash, checked by the maintainer in a
 21. **One quaternion layout: `[w, x, y, z]`**, the order `Quaternion` already uses. Every flat array
     that holds rotations uses it too. Formats that store another order (IQM: `x, y, z, w`) are
     reordered once, in their loader (B, C).
+
+### Decisions (2026-11-20, from the maintainer: Hellwave monsters as IQM)
+
+22. **Chthon gets skeletal mesh collision.** id1 makes `monster_boss` `SOLID_MESH` (shots hit the posed triangles), and
+    `ServerCollision._getEntityCollisionState` has no skeletal path: an IQM boss would be untraceable. The engine learns to trace a
+    skeletal model's posed mesh like an alias model's (M, Phase 10b). This amends the "no triangle collision" carried over below for
+    `SOLID_MESH` only: it brings IQM to what MDL already does, no hitboxes.
+23. **The spawn (`tarbaby`) stays MDL.** Its scream, extending tentacles and pre-explosion swell are three non-rigid shape keys (about 2,
+    4.5 and 6 units), which IQM cannot store and `bake_shape_keys.py` cannot fit. Mixed MDL and IQM waves are fine.
+24. **The enforcer is skinned with linear blending.** Its rig uses Blender's dual-quaternion skinning ("preserve volume"); linear
+    blending moves vertices by up to 2.4 units on the 53-unit model (frame 94, a death frame; the median of the per-frame worst is 0.9).
+    The exporter allows it only behind an explicit flag and reports the measured difference; the browser pass judges it.
+
+Decided by me (no fork):
+
+25. **Fullbright pixels become a `_glow` texture.** The alias renderer leaves palette indices 240 and up unlit
+    (`AliasMDLLoader`'s `fullbrightColorStart`); an IQM shows them lit unless they are in the DarkPlaces `_glow` companion, which the
+    skeletal renderer already adds after lighting. The exporter writes it from the palette, like `--colormap`, and blanks those pixels
+    in the base (DarkPlaces: "original texture without pants/shirt/glow"). Measured in the LibreQuake skins: enforcer 57 pixels, Chthon 19,
+    ogre 12, the rest none.
+26. **A shape key that moves nothing is not a shape key in use.** The dog's `frame17` is at 1 but equals the basis to 1e-4 (all 86 of its
+    keys do: import leftovers). Decision 17 refused keys "above 0"; the exporter now refuses only keys that move a vertex.
 
 ### Decisions carried over from the Half-Life plan (2026-10-03 and 2026-10-23)
 
@@ -876,6 +946,7 @@ exported IQM needs no axis or unit conversion by loading it in FTE next to the M
 7. Hellwave: weapons in the players' hands, the last gun on the back during melee, muzzle flashes at
    the barrel.
 8. Later: IQM view weapons.
+9. Hellwave's wave monsters as IQM (Phase 10), apart from the spawn (decision 23).
 
 ## Non-goals (this pass)
 
@@ -885,7 +956,7 @@ exported IQM needs no axis or unit conversion by loading it in FTE next to the M
 - **GPU skinning**, unless profiling demands it (D).
 - **Splitting the player into legs, torso and head** (Quake 3 style). The LibreQuake animations
   cover the whole body.
-- **Hitbox or triangle collision.**
+- **Hitbox or triangle collision**, apart from `SOLID_MESH` parity with MDL for IQM (decision 22, Phase 10b).
 - **Effects on attached models** (glows, sparks, fumes). They get their own plan; this plan only
   makes sure they are possible (L).
 - **Half-Life maps, WADs, sounds, Source-engine models.** As in the old plan.
@@ -1188,6 +1259,65 @@ size/color/alpha over lifetime, gravity and drag, optional collision) usable fro
 per-entity render effects (emissive glow feeding bloom, rim or shell pass, tint). Neither exists
 today.
 
+### M. Hellwave monsters as IQM (Phase 10)
+
+**What Hellwave spawns** (`GameManager.ts` round matrix and `info_boss_marker`): soldier, enforcer, dog, zombie, knight, hell knight,
+scrag (`wizard`), ogre, shambler, vore (`shalrath`), spawn (`tarbaby`), fiend (`demon`) and Chthon (`boss`). Every one has a source in
+`LibreQuake/lq1/progs/src/<model>.mdl.blend` and a `$frame` list in `LibreQuake/qcsrc/monsters/` (`grunt`, `enforcer`, `rottweiler`, `zombie`,
+`knight`, `hellknight`, `scrag`, `ogre`, `shambler`, `vore`, `fiend`, `chthon`). Heads, gibs and projectiles (`h_*`, `gib*`, `k_spike`, `w_spike`,
+`lavaball`, `laser`) stay MDL: they have no rig.
+
+**Survey** (`export_iqm.py --info`, 2026-11-20; MDL counts from LibreQuake's `pak1.pak`, no model has flags):
+
+| Model | Joints (deforming) | Most influences | MDL frames | Blender keys | Notes |
+|---|---|---|---|---|---|
+| soldier | 31 | 9 | 114 | 0..114 | Done once in Phase 4 (temporary) |
+| enforcer | 44 (40) | 8 | 102 | 0..102 | Dual-quaternion skinning (decision 24); 57 fullbright pixels |
+| dog | 39 | 7 | 86 | 0..87 | A leftover shape key at 1 that moves nothing (decision 26) |
+| zombie | 37 (34) | 9 | 198 | 0..199 | |
+| knight | 34 | 8 | 97 | 0..97 | |
+| hknight | 41 | 4 | 166 | 0..166 | |
+| wizard | 45 | 11 | 54 | 0..55 | Its skin PNG is not palette-exact (truecolor): no masks possible, none needed |
+| ogre | 38 (29) | 5 | 147 | 0..147 | MDL has 2 skins, the source 1 material; 12 fullbright pixels |
+| shambler | 468 (95) | 7 | 94 | 1..94 | Rigify rig: only the 95 deforming bones are exported; 2 materials, MDL 1 skin |
+| shalrath | 51 (47) | 6 | 35 | 1..36 | |
+| demon | 69 | 8 | 69 | 0..69 | |
+| boss | 86 (80) | 6 | 106 | 0..106 | `SOLID_MESH` (decision 22); 2 skins; 19 fullbright pixels |
+| tarbaby | 30 (26) | 9 | 61 | 0..61 | Animated shape keys and a Displace modifier: stays MDL (decision 23) |
+
+The key ranges differ from the MDL counts by one in several files, so **the frame count of every export is checked against the MDL**: id1
+drives monsters by `frame` (`_modelQC`'s `$frame` lines), and one frame of offset plays every animation one pose late without failing.
+
+**Exporter (`qs-tools`)**:
+- `--glow PALETTE.lmp` (decision 25): pixels whose exact palette index is 240 or above go to `<material>_glow.png` and are blanked in the base. The
+  threshold is the engine's `fullbrightColorStart`, not Quake's 224, so the IQM glows where the MDL does.
+- Shape keys are refused only when one moves a vertex by more than 1e-4 in the frames exported (decision 26).
+- `--allow-linear-skinning` (decision 24): without it a dual-quaternion armature modifier is refused as today; with it, the exporter evaluates each
+  frame both ways and prints the worst and median vertex difference.
+- **The MDL check**, a new `--match-mdl FILE.mdl` (or a separate `check_mdl.py`): the IQM must have the MDL's frame count, and each frame's
+  bounds must equal that MDL frame's `bboxmin`/`bboxmax` within the MDL's quantization (a scale step per axis). This is Phase 0's union check
+  per frame; it catches a frame offset, a wrong axis or scale, and a wrong frame range, which a look in the browser easily misses.
+- Skins: `skinnum` is ignored by the IQM path (Phase 4) and no Hellwave code sets a monster's `skin`, so the second skins of the ogre and Chthon
+  are not exported; the shambler's second material is checked (unused or a second mesh) when it is exported.
+
+**Hellwave data**: `progs/src/build-models.sh` gets a `monster` function (source, `$frame` file, loop list, `--glow`) and the 12 lines; the outputs
+go to `progs/<model>.iqm` with their textures, like the player's.
+
+**Hellwave game**: one subclass per monster with the same classname, overriding `static _modelDefault` with the `.iqm` and registered in `GameAPI.ts`
+(the dog, zombie and soldier subclasses exist already; the rest are new). Heads stay `_modelHead`, the MDL.
+**id1**: `Boss.ts` names `'progs/boss.mdl'` in its precache and `spawn()` instead of `_modelDefault`; that becomes `_modelDefault` (no behavior change
+in id1), so Hellwave can swap Chthon the same way.
+
+**Skeletal mesh collision (engine, decision 22)**:
+- `IQMLoader` keeps positions, blend indices and weights and the triangles when `collisionGeometry` is asked for, even without render data, and
+  `SkeletalModel.hasCollisionGeometry` says so (the alias rule).
+- A `SkeletalCollisionState`/`SkeletalCollisionAdapter` in `ServerCollisionSupport.ts`: the frame comes from `entity.frame` (clamped, as in
+  `computePose`), the pose is `SkeletalAnimation.computePose` and the positions `skinMeshInto` without normals, cached per model and frame (a
+  boss is traced many times a frame). Server-side sequences and joint adjustments are ignored, as for tags on the server (Phase 7b).
+- The spatial index is built once from every vertex's bounds over all frames, as `createAliasTriangleSpatialIndex` does.
+- `ServerCollision._getEntityCollisionState` gets a skeletal branch; without collision geometry it warns once and falls back to the hull (the alias rule).
+- No change to the BSP rule: this is triangle collision against a model, which the alias path already does.
+
 ### Later: Half-Life studio models (parked)
 
 Not part of this pass (decision 18). The research is in the old plan,
@@ -1264,18 +1394,29 @@ and melee slots, muzzle flash sprites. Hellwave is its own repository (`submodul
 *Browser: co-op with two players in chase cam, weapon switches, axe with the gun on the back, flashes
 at the barrel.* *Exit: Hellwave players carry their weapons.*
 
-**Phase 8: IQM view weapons.** **Engine half done 2026-11-16 (see Phase 8 results); assets, the games' side and the browser pass are open. Not needed for the merge (decision 3).** `R.DrawViewModel` renderer-agnostic (can ship earlier on its own),
+**Phase 8: IQM view weapons.** **Engine half done 2026-11-16, Hellwave half 2026-11-17, looked at by the maintainer 2026-11-19 (see Phase 8 results); the rocket launcher's flash and id1's first-person flash light in a browser are open. Not needed for the merge (decision 3).** `R.DrawViewModel` renderer-agnostic (can ship earlier on its own),
 `ViewmodelConfig` sequence fields, view model tags and attached entities in the view model pass.
-`v_axe` and `v_nail2` are rigged; the shape-key view weapons stay MDL until reworked in Blender.
+`v_axe` is rigged and goes through `export_iqm.py`; the shape-key view weapons (and `v_nail2`, rigged with a shape-key recoil) are baked to bones by `bake_shape_keys.py` instead of being reworked in Blender.
 
 **Phase 9: polish, as measured.** **Not started; waits for real-GPU numbers (see "Before the merge").** GPU skinning if Phase 4's numbers ask for it; skipping pose updates
 for far entities.
 
+**Phase 10: Hellwave monsters as IQM.** **Planned 2026-11-20 (decisions 22–26, design M).** For a Hellwave test run where everything skinned is IQM,
+the real-GPU check of "Before the merge" item 2 included. Not needed for the merge itself.
+- **10a: exporter and eleven monsters.** **Done 2026-11-20 (see Phase 10a results).** `qs-tools`: `--glow`, the shape-key rule, `--allow-linear-skinning`, the MDL frame check, their tests.
+  Hellwave data: soldier, enforcer, dog, zombie, knight, hell knight, scrag, ogre, shambler, vore and fiend exported and checked against their MDLs.
+  Hellwave game: the subclasses with `_modelDefault`. *Browser: a wave of each kind on `hw_e1m2` (stand, run, attack, pain, death frames), glow on the enforcer
+  and ogre, no GL errors; `r_speeds` counts.* *Exit: every wave monster but the spawn and Chthon is IQM.*
+- **10b: skeletal mesh collision and Chthon.** Engine: loader, adapter, collision branch, tests. id1: `Boss.ts` on `_modelDefault`. Hellwave data and game: the boss.
+  *Browser: rockets and nails hit Chthon's body where it is drawn and pass beside it, through its rise, attack and death frames.* *Exit: Chthon is IQM and
+  as hittable as the MDL.*
+
 **Open items kept from Phase 7 (2026-11-16), decided to wait:**
 - **Look pitch precision.** The entity pitch is one byte on the wire (1.4 degrees, so 4.2 degrees of look pitch, interpolated); the bend of the spine looks smooth at slow sweeps and the maintainer is happy with it. If it ever
   bothers (fast looking, a remote player's head), the fix is the full view pitch on the wire for player entities (a wire change and a protocol bump), or a client-side smoothing of the joint angles. Watch for it in multiplayer.
-- **Muzzle flash sprite scales and cone flashes.** The sprite itself shipped in Phase 7c; what is left is the scale per weapon family (one number in each `.gif.json`, chosen blind) and the three cone families, which no
-  weapon uses yet and which need a client entity placed at the tag with the tag's angles. The nailgun is counted 7 to 10% short in the in-page server's slow frames (Phase 7c).
+- **Muzzle flash sprite scales and cone flashes.** Settled 2026-11-19: the maintainer finds every family's scale good, and the three cone families (which would need a client entity placed at the tag with the tag's angles)
+  are not needed for now. Still noted: the nailgun is counted 7 to 10% short in the in-page server's slow frames (Phase 7c).
+- **Beam prediction.** The lightning beam is not predicted (Phase 7d); a separate polish round.
 
 **Before the merge (checks the plan owes, none of them a known bug).** Done 2026-11-17 unless marked open; all on software GL, production build:
 1. **A colored MDL player in a browser.** Done (id1, `e1m1`, chase view, in-page server): the MDL player drew through the `player` program with `color 4 13`, `13 4` and `1 6` (the tints changed), with shadows on, two injected dynamic
@@ -1305,6 +1446,11 @@ Half-Life studio models are not a phase of this plan (Later: Half-Life studio mo
 | `docs/sprites.md` | `sequence` instead of `frame` for image sprites, renamed queries | S |
 | `docs/shader-chunks.md` | Only if new chunks change the documented set | 4 |
 | `docs/events.md` | No events planned; `event-bus-docs-sync` if one appears | – |
+| `docs/skeletal-models.md` | "Collision": `SOLID_MESH` works for IQM with `meshCollision`; the frame it uses on the server | 10b |
+| `ServerEngineAPI.PrecacheModel` JSDoc | `meshCollision` covers IQM | 10b |
+| `qs-tools` README | `--glow`, `--allow-linear-skinning`, the MDL check, the shape-key rule | 10a |
+| Hellwave `progs/src/build-models.sh` | The monster lines and why the spawn is missing | 10a, 10b |
+| Hellwave `docs/` | Which monsters are IQM and how to add one | 10a |
 | `qs-tools` README | Exporter usage, options, the LibreQuake player and weapon recipes | 1, 7 |
 | Hellwave `docs/` | Player-held weapons, how to add a weapon model | 7 |
 | JSDoc | `SkeletalModel`, `IQMLoader` (byte layout and FTE references), `SkeletalAnimation`, tag and attachment APIs, `ViewmodelConfig` | with each phase |
@@ -1325,6 +1471,11 @@ Half-Life studio models are not a phase of this plan (Later: Half-Life studio mo
   back.
 - Performance: `r_speeds`/`r_bench` numbers before and after Phase 4 with many skinned entities,
   recorded here.
+- Phase 10: `qs-tools` scene tests for `--glow` (a palette-exact skin, the threshold at 240, the base blanked), a shape key at 1 that moves nothing
+  (accepted) and one that moves (refused), the linear-skinning flag and its report, and the MDL check (a one-frame offset is refused). Engine tests
+  for the skeletal collision adapter: a trace hits a triangle where frame A puts it and misses it at frame B, a clamped frame, no geometry without
+  `meshCollision`, the hull fallback and its warning, and a pitched and yawed entity. Hellwave: each monster class resolves to its `.iqm` and its
+  classname, the spawn stays MDL.
 
 ## Open questions
 
