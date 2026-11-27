@@ -12,6 +12,8 @@ import type { ClientEngineAPI } from '../../source/engine/client/ClientEngineAPI
 import { createBoundsModel, createGameModuleStub } from '../support/fixtures.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { withEngineMocks } from '../support/withEngineMocks.ts';
+import { CollisionTrace } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
+import { assertNear } from '../support/assertions.ts';
 
 /**
  * Computes wrapped angular delta in degrees.
@@ -387,5 +389,120 @@ void describe('ClientDlight.think', () => {
 
       assert.equal(dl.radius, 0.0);
     });
+  });
+});
+
+// A game puts the light of a muzzle flash 20 units ahead of the entity, which is farther than a player's hull is wide.
+// Flush against a wall that is inside the wall, and the world's cube shadow swallowed the light: only the shooter was lit,
+// until the shooter walked backwards away from the wall.
+void describe('ClientEntities.emit keeps the light of an entity out of the walls', () => {
+  /**
+   * A world with one wall, the plane x = `wallX`, that blocks a line crossing it from the open side (x below it).
+   * @param wallX where the wall is
+   * @returns a traceStaticWorldLine() mock
+   */
+  function wallAt(wallX: number): (start: Vector, end: Vector) => CollisionTrace {
+    return (start: Vector, end: Vector) => {
+      if (start[0] >= wallX) {
+        return new CollisionTrace(start.copy(), { fraction: 0, allsolid: true, startsolid: true });
+      }
+
+      if (end[0] <= wallX) {
+        return new CollisionTrace(end.copy(), {});
+      }
+
+      const fraction = (wallX - start[0]) / (end[0] - start[0]);
+
+      return new CollisionTrace(start.copy().add(end.copy().subtract(start).multiply(fraction)), { fraction });
+    };
+  }
+
+  /**
+   * Runs the emit pass for a server entity, number 5, at the origin facing +X, with the default handler.
+   * @param trace The world.
+   * @param flashing Whether the entity has `EF_MUZZLEFLASH`, and so makes its own light.
+   * @param before What to do with the registry before the pass.
+   * @returns The registry after the pass.
+   */
+  function emitWorld(trace: (start: Vector, end: Vector) => CollisionTrace, flashing = true, before: (clientEntities: ClientEntities) => void = () => {}): ClientEntities {
+    const clientEntities = new ClientEntities();
+
+    withEngineMocks({
+      CL: {
+        nolerp: { value: 0 },
+        collision: { traceStaticWorldLine: trace },
+        state: { time: 1, clientEntities, worldmodel: { getPvsByPoint: () => ({ areRevealed: () => true }) }, viewentity: 1, clientMessages: { mtime: [0.0], renderTime: 0.0 } },
+      },
+      R: { novis: { value: 0 }, refdef: { vieworg: new Vector() } },
+      Host: { frametime: 0.1 },
+    }, () => {
+      const shooter = clientEntities.getEntity(5);
+
+      shooter.model = createBoundsModel(new Vector(-16, -16, -24), new Vector(16, 16, 32));
+      shooter.updatecount = 1;
+      shooter.origin.setTo(0, 0, 0);
+      shooter.angles.setTo(0, 0, 0);
+      shooter.msg_origins[0].setTo(0, 0, 0);
+      shooter.msg_angles[0].setTo(0, 0, 0);
+      shooter.effects = flashing ? effect.EF_MUZZLEFLASH : 0;
+      shooter.loadHandler();
+      before(clientEntities);
+
+      clientEntities.emit();
+    });
+
+    return clientEntities;
+  }
+
+  /**
+   * @param clientEntities The registry.
+   * @param entity The entity number the light belongs to.
+   * @returns Where its light is, rounded to a hundredth, `null` when it has none.
+   */
+  function lightOf(clientEntities: ClientEntities, entity: number): number[] | null {
+    const light = clientEntities.dlights.find((candidate) => candidate.entity === entity && candidate.die > 0);
+
+    return light === undefined ? null : Array.from(light.origin).map((value) => Math.round(value * 100) / 100);
+  }
+
+  void test('leaves the light where the game put it, 20 ahead and 16 up, when nothing is in the way', () => {
+    assert.deepEqual(lightOf(emitWorld(wallAt(1000)), 5), [20, 0, 16]);
+  });
+
+  void test('pulls a light that is inside a wall back to 4 units before the wall, on the line from the entity', () => {
+    // the wall is 18 ahead, where a player stands when flush against it: the light at 20 is 2 inside. The line from the
+    // origin to (20, 0, 16) meets the wall at 18/20 of the way.
+    const length = Math.hypot(20, 16);
+    const reach = length * (18 / 20) - 4;
+    const [x, y, z] = lightOf(emitWorld(wallAt(18)), 5)!;
+
+    assertNear(x, reach * (20 / length), 0.01);
+    assertNear(y, 0, 0.01);
+    assertNear(z, reach * (16 / length), 0.01);
+    assert.ok(x < 18, 'the light is on this side of the wall');
+  });
+
+  void test('never moves the light behind its entity, however close the wall is', () => {
+    assert.deepEqual(lightOf(emitWorld(wallAt(1)), 5), [0, 0, 0]);
+  });
+
+  void test('leaves the light of an entity whose own origin is in solid alone, as for a player in noclip', () => {
+    assert.deepEqual(lightOf(emitWorld(wallAt(-5)), 5), [20, 0, 16]);
+  });
+
+  void test('leaves a light that belongs to no entity where it is, such as an explosion in a wall', () => {
+    const clientEntities = emitWorld(wallAt(18), false, (registry) => {
+      // slot 0 is the world, whose origin is the origin of the map: a light without an owner must not be traced from it
+      registry.getEntity(0).origin.setTo(0, 0, 0);
+
+      const dl = registry.allocateDynamicLight(0);
+
+      dl.origin = new Vector(30, 0, 0);
+      dl.radius = 300;
+      dl.die = 5;
+    });
+    const explosion = clientEntities.dlights.find((light) => light.die === 5)!;
+
+    assert.deepEqual(Array.from(explosion.origin), [30, 0, 0]);
   });
 });

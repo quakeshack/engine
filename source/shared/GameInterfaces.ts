@@ -87,7 +87,24 @@ export interface ViewmodelConfig {
   /** The model to draw. `null` while the game has none, in which case nothing is drawn. */
   readonly model: BaseModel | null;
 
+  /** The frame a model without sequences shows, and the one a sequenced model shows while `sequence` is -1 or missing. */
   readonly frame: number;
+
+  /**
+   * The sequence of a skeletal model, -1 or missing to follow `frame` instead. Selecting another one restarts the
+   * animation, like `ClientEdict.sequence`.
+   */
+  readonly sequence?: number;
+
+  /**
+   * The client time at which the sequence started. Missing or `null` leaves it to the engine, which stamps its clock
+   * when the model or the sequence changes. A game that wants a sequence to restart on its own sets it to the time of
+   * the event (a shot) and keeps it there until the next one.
+   */
+  readonly animtime?: number | null;
+
+  /** Playback speed multiplier of the sequence, 1 when missing. */
+  readonly framerate?: number;
 }
 
 export type ViewportDimensions = {

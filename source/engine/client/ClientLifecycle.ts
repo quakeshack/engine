@@ -10,6 +10,7 @@ import { eventBus } from '../common/EventBus.ts';
 import type { SerializedParticle } from './renderer/effects/Particles.ts';
 import type { SerializedClientEntity } from './ClientEntities.ts';
 import clientCvars from './ClientCvars.ts';
+import { EntityTagCommand } from './EntityTagCommand.ts';
 import { clientPmove } from './ClientPhysics.ts';
 import Host from '../common/Host.ts';
 
@@ -85,6 +86,7 @@ export default class ClientLifecycle {
         clientRuntimeState.clientEntities.printEntities();
       }
     });
+    Cmd.AddCommand('entitytag', EntityTagCommand);
     Cmd.AddCommand('disconnect', CL.Disconnect);
     Cmd.AddCommand('record', CL.Record_f);
     Cmd.AddCommand('stop', CL.Stop_f);

@@ -2,6 +2,8 @@ import type { Trace as SharedBrushTrace } from '../../common/Pmove.ts';
 import type { AliasCollisionFrame, AliasModel } from '../../common/model/AliasModel.ts';
 import type { BrushModel } from '../../common/model/BSP.ts';
 import type { MeshModel } from '../../common/model/MeshModel.ts';
+import type { SkeletalMeshData, SkeletalModel } from '../../common/model/SkeletalModel.ts';
+import { SkeletalAnimation } from '../../common/model/SkeletalAnimation.ts';
 import type { ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
@@ -29,7 +31,23 @@ interface AliasTriangleSpatialIndexCache extends TriangleSpatialIndexCache {
   readonly vertexCount: number;
 }
 
+/**
+ * What tracing against a skeletal model needs, built once per mesh (scoped views of a model share it): the mesh skinned
+ * in every frame, as an MDL keeps every frame's vertices, triangle bounds that cover every frame, and the joint each
+ * triangle belongs to.
+ */
+interface SkeletalCollisionGeometry {
+  readonly meshData: SkeletalMeshData;
+  readonly vertexCount: number;
+  /** Skinned positions, `x, y, z` per vertex, one frame after the other. */
+  readonly framePositions: Float32Array;
+  /** Per triangle, the joint with the most weight on its three vertices. */
+  readonly triangleJoints: Int32Array;
+  readonly spatialIndex: TriangleSpatialIndex | null;
+}
+
 const meshTriangleSpatialIndexCache = new WeakMap<MeshModel, MeshTriangleSpatialIndexCache>();
+const skeletalCollisionGeometryCache = new WeakMap<SkeletalMeshData, SkeletalCollisionGeometry>();
 const aliasTriangleSpatialIndexCache = new WeakMap<AliasModel, AliasTriangleSpatialIndexCache>();
 
 /**
@@ -333,6 +351,123 @@ function getAliasTriangleSpatialIndex(model: AliasModel): TriangleSpatialIndex |
 }
 
 /**
+ * The joint with the most weight on a triangle's three vertices; the lower index on a tie.
+ * @returns The joint index, or -1 for a triangle without weights.
+ */
+function dominantJoint(meshData: SkeletalMeshData, triangles: Uint32Array, triangleIndex: number, weightByJoint: Map<number, number>): number {
+  weightByJoint.clear();
+
+  for (let corner = 0; corner < 3; corner++) {
+    const vertex = triangles[triangleIndex * 3 + corner];
+
+    for (let influence = 0; influence < 4; influence++) {
+      const weight = meshData.blendWeights[vertex * 4 + influence];
+
+      if (weight > 0.0) {
+        const joint = meshData.blendIndexes[vertex * 4 + influence];
+        weightByJoint.set(joint, (weightByJoint.get(joint) ?? 0.0) + weight);
+      }
+    }
+  }
+
+  let best = -1;
+  let bestWeight = 0.0;
+
+  for (const [joint, weight] of weightByJoint) {
+    if (weight > bestWeight || (weight === bestWeight && joint < best)) {
+      best = joint;
+      bestWeight = weight;
+    }
+  }
+
+  return best;
+}
+
+/**
+ * Skin a skeletal model in every frame and index its triangles over all of them.
+ * @returns The collision geometry, or `null` when the model kept no mesh (precached without `meshCollision`).
+ */
+function createSkeletalCollisionGeometry(model: SkeletalModel): SkeletalCollisionGeometry | null {
+  const meshData = model.meshData;
+
+  if (meshData === null) {
+    return null;
+  }
+
+  const vertexCount = meshData.positions.length / 3;
+  const frameCount = model.frameCount;
+  const framePositions = new Float32Array(frameCount * vertexCount * 3);
+  const jointMatrices = new Float32Array(model.jointCount * SkeletalAnimation.MATRIX_FLOATS);
+  const skinningMatrices = new Float32Array(model.jointCount * SkeletalAnimation.MATRIX_FLOATS);
+  const vertexMins = new Float32Array(vertexCount * 3).fill(Infinity);
+  const vertexMaxs = new Float32Array(vertexCount * 3).fill(-Infinity);
+
+  for (let frame = 0; frame < frameCount; frame++) {
+    const offset = frame * vertexCount * 3;
+    SkeletalAnimation.computePose(model, frame, frame, 0.0, jointMatrices, skinningMatrices);
+    SkeletalAnimation.skinPositionsInto(meshData, skinningMatrices, framePositions, offset);
+
+    for (let index = 0; index < vertexCount * 3; index++) {
+      const value = framePositions[offset + index];
+      vertexMins[index] = Math.min(vertexMins[index], value);
+      vertexMaxs[index] = Math.max(vertexMaxs[index], value);
+    }
+  }
+
+  const triangles = meshData.triangles;
+  const triangleCount = triangles.length / 3;
+  const triangleJoints = new Int32Array(triangleCount);
+  const weightByJoint = new Map<number, number>();
+  const items: TriangleBoundsItem[] = [];
+
+  for (let triangleIndex = 0; triangleIndex < triangleCount; triangleIndex++) {
+    triangleJoints[triangleIndex] = dominantJoint(meshData, triangles, triangleIndex, weightByJoint);
+
+    const mins = new Vector(Infinity, Infinity, Infinity);
+    const maxs = new Vector(-Infinity, -Infinity, -Infinity);
+
+    for (let corner = 0; corner < 3; corner++) {
+      const vertex = triangles[triangleIndex * 3 + corner];
+
+      for (let axis = 0; axis < 3; axis++) {
+        mins[axis] = Math.min(mins[axis], vertexMins[vertex * 3 + axis]);
+        maxs[axis] = Math.max(maxs[axis], vertexMaxs[vertex * 3 + axis]);
+      }
+    }
+
+    if (boundsAreFinite(mins, maxs)) {
+      items.push(new TriangleBoundsItem(triangleIndex, mins, maxs));
+    }
+  }
+
+  return { meshData, vertexCount, framePositions, triangleJoints, spatialIndex: createTriangleSpatialIndex(items) };
+}
+
+/**
+ * Resolve or build the cached collision geometry of a skeletal model.
+ * @returns The geometry, or `null` when the model kept no mesh.
+ */
+function getSkeletalCollisionGeometry(model: SkeletalModel): SkeletalCollisionGeometry | null {
+  if (model.meshData === null) {
+    return null;
+  }
+
+  const cached = skeletalCollisionGeometryCache.get(model.meshData);
+
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const geometry = createSkeletalCollisionGeometry(model);
+
+  if (geometry !== null) {
+    skeletalCollisionGeometryCache.set(model.meshData, geometry);
+  }
+
+  return geometry;
+}
+
+/**
  * Transform a world-space point into the entity's local model space.
  * @returns The point expressed in the entity's local basis.
  */
@@ -467,6 +602,9 @@ interface TriangleCollisionAdapter {
 
   getTriangleVertexIndices(triangleIndex: number): readonly [number, number, number] | null;
 
+  /** The joint of a skeletal model the triangle belongs to, -1 for a model without joints. */
+  getTriangleJoint(triangleIndex: number): number;
+
   getVertexPosition(vertexIndex: number): Vector | null;
 
   getCandidateTriangleIndices(queryMins: Vector, queryMaxs: Vector): IterableIterator<number>;
@@ -514,6 +652,10 @@ class MeshCollisionAdapter implements TriangleCollisionAdapter {
     return readMeshVertex(this.#vertices, vertexIndex);
   }
 
+  getTriangleJoint(_triangleIndex: number): number {
+    return -1;
+  }
+
   getCandidateTriangleIndices(queryMins: Vector, queryMaxs: Vector): IterableIterator<number> {
     if (this.#spatialIndex === null) {
       return this.#queryAllTriangles();
@@ -556,6 +698,10 @@ class AliasCollisionAdapter implements TriangleCollisionAdapter {
     }
 
     return this.#model.getCollisionVertex(this.#frame, vertexIndex);
+  }
+
+  getTriangleJoint(_triangleIndex: number): number {
+    return -1;
   }
 
   getCandidateTriangleIndices(queryMins: Vector, queryMaxs: Vector): IterableIterator<number> {
@@ -624,6 +770,98 @@ export class AliasCollisionState extends TriangleCollisionState {
       serverTime,
       getAliasTriangleSpatialIndex(this.model),
     );
+  }
+}
+
+class SkeletalCollisionAdapter implements TriangleCollisionAdapter {
+  readonly triangleCount: number;
+  readonly #geometry: SkeletalCollisionGeometry;
+  readonly #frameOffset: number;
+
+  constructor(geometry: SkeletalCollisionGeometry, frame: number) {
+    this.#geometry = geometry;
+    this.#frameOffset = frame * geometry.vertexCount * 3;
+    this.triangleCount = geometry.meshData.triangles.length / 3;
+  }
+
+  getTriangleVertexIndices(triangleIndex: number): readonly [number, number, number] | null {
+    if (triangleIndex < 0 || triangleIndex >= this.triangleCount) {
+      return null;
+    }
+
+    const triangles = this.#geometry.meshData.triangles;
+    return [triangles[triangleIndex * 3], triangles[triangleIndex * 3 + 1], triangles[triangleIndex * 3 + 2]];
+  }
+
+  getVertexPosition(vertexIndex: number): Vector | null {
+    if (vertexIndex < 0 || vertexIndex >= this.#geometry.vertexCount) {
+      return null;
+    }
+
+    const positions = this.#geometry.framePositions;
+    const offset = this.#frameOffset + vertexIndex * 3;
+    return new Vector(positions[offset], positions[offset + 1], positions[offset + 2]);
+  }
+
+  getTriangleJoint(triangleIndex: number): number {
+    return this.#geometry.triangleJoints[triangleIndex] ?? -1;
+  }
+
+  getCandidateTriangleIndices(queryMins: Vector, queryMaxs: Vector): IterableIterator<number> {
+    if (this.#geometry.spatialIndex === null) {
+      return this.#queryAllTriangles();
+    }
+
+    return this.#geometry.spatialIndex.queryAABB(queryMins, queryMaxs);
+  }
+
+  *#queryAllTriangles(): IterableIterator<number> {
+    for (let triangleIndex = 0; triangleIndex < this.triangleCount; triangleIndex++) {
+      yield triangleIndex;
+    }
+  }
+}
+
+/**
+ * A skeletal model traced as its posed triangles (`SOLID_MESH`), in the pose of the entity's `frame`. A trace that hits
+ * it reports the joint of the triangle it hit (`CollisionTrace.joint`).
+ *
+ * The server poses by `frame` only: a sequence the entity plays (`sequence`, `animtime`) and the joint rotations a client
+ * game adds are not seen here, as for tags on the server.
+ */
+export class SkeletalCollisionState extends TriangleCollisionState {
+  readonly model: SkeletalModel;
+
+  /**
+   * @param ent Entity being traced against.
+   * @param model Its skeletal model, loaded with its mesh.
+   */
+  constructor(ent: ServerEdict, model: SkeletalModel) {
+    super(ent);
+    this.model = model;
+  }
+
+  override createTriangleAdapter(_serverTime: number): TriangleCollisionAdapter | null {
+    const entity = this.ent.entity;
+    const geometry = getSkeletalCollisionGeometry(this.model);
+
+    if (entity === null || geometry === null) {
+      return null;
+    }
+
+    return new SkeletalCollisionAdapter(geometry, SkeletalCollisionState.frameOf(entity.frame, this.model.frameCount));
+  }
+
+  /**
+   * The frame a pose is taken from: clamped to the model, as `SkeletalAnimation.computePose` does (a frame number comes from game code).
+   * @returns A frame index in `0 .. frameCount - 1`.
+   */
+  static frameOf(frame: number, frameCount: number): number {
+    if (!Number.isFinite(frame)) {
+      return 0;
+    }
+
+    return Math.min(Math.max(Math.trunc(frame), 0), frameCount - 1);
   }
 }
 
@@ -729,6 +967,8 @@ export class CollisionTrace {
   ent: ServerEdict | null;
   inopen: boolean;
   inwater: boolean;
+  /** The joint of a skeletal model whose triangle the trace hit (`SOLID_MESH`), -1 for anything else. */
+  joint = -1;
 
   /**
    * @param endpos Final trace end position.
@@ -917,6 +1157,7 @@ export class TriangleTraceContext {
 }
 
 export class CollisionTriangle {
+  readonly triangleIndex: number;
   readonly v0: Vector;
   readonly v1: Vector;
   readonly v2: Vector;
@@ -929,8 +1170,10 @@ export class CollisionTriangle {
    * @param v2 Third world-space vertex.
    * @param normal Unit face normal.
    * @param planeDist Plane distance from origin.
+   * @param triangleIndex The triangle's index in its model.
    */
-  constructor(v0: Vector, v1: Vector, v2: Vector, normal: Vector, planeDist: number) {
+  constructor(v0: Vector, v1: Vector, v2: Vector, normal: Vector, planeDist: number, triangleIndex: number) {
+    this.triangleIndex = triangleIndex;
     this.v0 = v0;
     this.v1 = v1;
     this.v2 = v2;
@@ -971,7 +1214,7 @@ export class CollisionTriangle {
     }
 
     normal.multiply(1.0 / Math.sqrt(lenSq));
-    return new CollisionTriangle(v0, v1, v2, normal, normal.dot(v0));
+    return new CollisionTriangle(v0, v1, v2, normal, normal.dot(v0), triangleIndex);
   }
 
   /**

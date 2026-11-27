@@ -93,6 +93,7 @@ export default class ClientEntityPhysics {
       contents: { inOpen: trace.inopen, inWater: trace.inwater },
       point: trace.endpos,
       entity: null,
+      joint: trace.joint,
     };
   }
 }

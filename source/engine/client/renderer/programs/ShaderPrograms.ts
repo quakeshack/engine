@@ -42,6 +42,19 @@ class ShaderPrograms {
         ],
         ['tTexture', 'tShadowMap', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2', 'tShadowBlockerMap'])),
 
+      // rendering skeletal models (IQM): vertices skinned on the CPU, lit like mesh models, with a glow layer and player color masks
+      Promise.resolve(GL.CreateProgram('skeletal',
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uAlpha', 'uShirtColor', 'uPantsColor', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix', 'uShadowEnabled', 'uShadowDarkness', 'uShadowMaxDepthNDC', 'uShadowBlockerBiasNDC', 'uShadowLightDir', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uPointShadowBias', 'uPointShadowNormalBias', 'uBloomEmissiveScale'],
+        [
+          ['aPosition', gl.FLOAT, 3],
+          ['aTexCoord', gl.FLOAT, 2],
+          ['aNormal', gl.FLOAT, 3],
+        ],
+        // The shadow samplers sit on the units `brush` gives its own (10 to 14), not right behind the material layers.
+        // A shadow texture has a compare mode a plain sampler2D rejects, and `brush` binds its tSpecular (7) and tNormal (8)
+        // only for a world with a deluxemap, so a shadow texture left on one of them fails the world's draw in the next frame.
+        ['tTexture', 'tGlow', 'tShirt', 'tPants', null, null, null, null, null, null, 'tShadowMap', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2', 'tShadowBlockerMap'])),
+
       // rendering brush models (water is down below)
       Promise.resolve(GL.CreateProgram('brush',
         ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uLightstyleInterpolation', 'uAlpha', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uHaveDeluxemap', 'uLightSpaceMatrix', 'uShadowEnabled', 'uShadowDarkness', 'uShadowMapSize', 'uShadowMaxDepthNDC', 'uShadowBlockerBiasNDC', 'uShadowLightDir', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightColor0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightColor1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointLightColor2', 'uPointShadowEnabled', 'uPointShadowBias', 'uPointShadowNormalBias', 'uBloomEmissiveScale', 'uBloomDlightScale', 'uBloomSpecularScale'],
@@ -86,7 +99,9 @@ class ShaderPrograms {
             ['aNormal', gl.FLOAT, 3],
             ['aTexCoord', gl.FLOAT, 2],
           ],
-          ['tTexture', 'tLuminance', 'tPlayer', 'tShadowMap', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2', 'tShadowBlockerMap'])),
+          // tPlayer comes last, which gives the shadow samplers the units of the alias program. The blocker used to sit on
+          // unit 7, brush's tSpecular, and a colored player turned the world black (see the skeletal program below).
+          ['tTexture', 'tLuminance', 'tShadowMap', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2', 'tShadowBlockerMap', 'tPlayer'])),
 
       // for rendering sprites (usually effects)
       Promise.resolve(GL.CreateProgram('sprite',

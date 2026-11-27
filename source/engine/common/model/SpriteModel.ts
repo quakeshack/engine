@@ -25,6 +25,12 @@ export class SpriteModel extends BaseModel {
   /** Whether the sprite casts a shadow; light passes through its transparent pixels. */
   castsShadow = false;
 
+  /**
+   * Which entity member selects one of the frames: an image sprite is played by `sequence` (and `animtime`), a Quake
+   * or Half-Life `.spr` keeps `frame`, which there is the number of an image or group, as it always was.
+   */
+  selectsBySequence = false;
+
   /** Bounding sphere radius. */
   boundingradius = 0;
 
@@ -47,6 +53,18 @@ export class SpriteModel extends BaseModel {
   }
 
   /**
+   * The frame an entity shows, whichever of its members this model is played by.
+   * @param frame The entity's `frame`.
+   * @param sequence The entity's `sequence`, -1 for none, which selects the first.
+   * @returns An index into {@link SpriteModel.frames}, 0 when the entity selects none that exists.
+   */
+  selectedFrame(frame: number, sequence: number): number {
+    const selected = this.selectsBySequence ? sequence : frame;
+
+    return selected >= 0 && selected < this.frames.length ? selected : 0;
+  }
+
+  /**
    * @returns The number of frames an entity's `frame` can select.
    */
   get numframes(): number {
@@ -54,21 +72,21 @@ export class SpriteModel extends BaseModel {
   }
 
   /**
-   * How long the sequence an entity's `frame` selects plays, as far as its repeat count goes. A game that spawns an
-   * effect for one play uses it to schedule the removal. A `frame` out of range selects the first, as the renderer does.
-   * @param frame The entity's `frame`.
+   * How long the sequence plays, as far as its repeat count goes. A game that spawns an effect for one play uses it to
+   * schedule the removal. A number out of range selects the first, as the renderer does.
+   * @param sequence The entity's `sequence` for an image sprite, its `frame` for a `.spr`.
    * @returns Seconds, `Infinity` for a sequence that repeats forever, 0 for a single picture (it has nothing to play).
    */
-  sequenceDuration(frame: number): number {
-    return this.asset?.sequenceDuration(frame) ?? 0;
+  override sequenceDuration(sequence: number): number {
+    return this.asset?.sequenceDuration(sequence) ?? 0;
   }
 
   /**
-   * Finds a named sequence (a sequence of the sidecar, later a tag of an Aseprite file).
+   * Finds a named sequence (a sequence of the sidecar, a tag of an Aseprite file). A `.spr` has no names.
    * @param name The name the sidecar gave it.
-   * @returns The `frame` that selects it, -1 when there is none of that name.
+   * @returns The `sequence` that selects it, -1 when there is none of that name.
    */
-  sequenceIndex(name: string): number {
+  override sequenceIndex(name: string): number {
     return this.asset?.sequenceIndex(name) ?? -1;
   }
 
@@ -79,6 +97,7 @@ export class SpriteModel extends BaseModel {
     this.phase = SpritePhase.global;
     this.lit = false;
     this.castsShadow = false;
+    this.selectsBySequence = false;
     this.boundingradius = 0;
     this.width = 0;
     this.height = 0;

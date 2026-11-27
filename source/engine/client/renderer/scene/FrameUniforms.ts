@@ -23,6 +23,23 @@ const DEFAULT_FOG_COLOR = '128 128 128';
  */
 class FrameUniforms {
   /**
+   * Writes the current projection matrix to every program that declares it, for a pass that draws with a projection of
+   * its own (the view model, with its narrower field of view) whatever program its models use. Run it again with the
+   * frame's projection restored when the pass is over.
+   */
+  static UploadPerspective(): void {
+    GL.UnbindProgram();
+    for (const program of GL.programs) {
+      if (program.uPerspective === undefined) {
+        continue;
+      }
+
+      gl.useProgram(program.program);
+      gl.uniformMatrix4fv(program.uPerspective, false, Camera.perspective);
+    }
+  }
+
+  /**
    * Writes the frame's uniforms to every program that declares them. Run after `Camera.UpdateMatrices()` and after
    * the shadow passes of the frame have chosen their lights.
    */

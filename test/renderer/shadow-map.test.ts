@@ -6,7 +6,11 @@ import { publishGlReady } from '../support/glEvents.ts';
 
 import GL from '../../source/engine/client/GL.ts';
 import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts';
-import type { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
+import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
+import { modelRendererRegistry } from '../../source/engine/client/renderer/models/ModelRendererRegistry.ts';
+import type { ModelRenderer } from '../../source/engine/client/renderer/models/ModelRenderer.ts';
+import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
+import type Cvar from '../../source/engine/common/Cvar.ts';
 import { AliasModel } from '../../source/engine/common/model/AliasModel.ts';
 import type { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
 import { BrushModel } from '../../source/engine/common/model/BSP.ts';
@@ -49,6 +53,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     const previousPointLightOrigins = ShadowMap.pointLightOrigins;
     const previousPointLightRadii = ShadowMap.pointLightRadii;
     const previousPointLightActiveCount = ShadowMap.pointLightActiveCount;
+    const previousPointLightOwners = Int32Array.from(ShadowMap.pointLightOwners);
 
     const renderEntitiesCalls: unknown[][] = [];
     const pointLightOrigin = new Vector(128, -64, 32);
@@ -106,6 +111,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     ShadowMap.pointLightOrigins = [pointLightOrigin];
     ShadowMap.pointLightRadii = [pointLightRadius];
     ShadowMap.pointLightActiveCount = 1;
+    ShadowMap.pointLightOwners[0] = 42;
 
     try {
       ShadowMap.renderPointLightShadow();
@@ -118,6 +124,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       ShadowMap.pointLightOrigins = previousPointLightOrigins;
       ShadowMap.pointLightRadii = previousPointLightRadii;
       ShadowMap.pointLightActiveCount = previousPointLightActiveCount;
+      ShadowMap.pointLightOwners.set(previousPointLightOwners);
 
       GL.gl = previousGL;
       if (previousGL) {
@@ -135,6 +142,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       assert.equal(call[1], true);
       assert.equal(call[2], pointLightOrigin);
       assert.equal(call[3], pointLightRadius * pointLightRadius);
+      assert.equal(call[4], 42, 'the entity the light belongs to is told to the caster pass');
     }
   });
 
@@ -493,11 +501,12 @@ void describe('ShadowMap.selectPointLights', () => {
    * @param color
    * @returns A mock ClientDlight-like light.
    */
-  function createMockDlight(origin: Vector, radius: number, color: Vector = new Vector(1, 1, 1)): object {
+  function createMockDlight(origin: Vector, radius: number, color: Vector = new Vector(1, 1, 1), entity = 0): object {
     return {
       origin,
       radius,
       color,
+      entity,
       isFree: () => radius <= 0,
     };
   }
@@ -558,6 +567,30 @@ void describe('ShadowMap.selectPointLights', () => {
         assert.equal(ShadowMap.pointLightRadii[0], 300);
       });
     } finally {
+      ShadowMap.pointLightActiveCount = previousActiveCount;
+      ShadowMap.pointLightDlightIndices.set(previousIndices);
+    }
+  });
+
+  void test('remembers which entity each selected light belongs to, and 0 for the slots without a light', () => {
+    const previousOwners = Int32Array.from(ShadowMap.pointLightOwners);
+    const previousActiveCount = ShadowMap.pointLightActiveCount;
+    const previousIndices = Int32Array.from(ShadowMap.pointLightDlightIndices);
+    const dlights = [
+      createMockDlight(new Vector(0, 0, 50), 300, new Vector(1, 1, 1), 17),
+      createMockDlight(new Vector(0, 0, 400), 300),
+    ];
+
+    ShadowMap.pointLightOwners.fill(99);
+
+    try {
+      withMockDlightRegistry(dlights, () => {
+        ShadowMap.selectPointLights(new Vector(0, 0, 0));
+
+        assert.deepEqual(Array.from(ShadowMap.pointLightOwners), [17, 0, 0]);
+      });
+    } finally {
+      ShadowMap.pointLightOwners.set(previousOwners);
       ShadowMap.pointLightActiveCount = previousActiveCount;
       ShadowMap.pointLightDlightIndices.set(previousIndices);
     }
@@ -1152,5 +1185,83 @@ void describe('ShadowMap.computeTopDownFootprint', () => {
     assert.ok(atEdge[1] === 0 || atEdge[3] === 2048, `y ${atEdge[1]}..${atEdge[3]}`);
 
     assert.equal(ShadowMap.computeTopDownFootprint(createCaster(model, new Vector(2000, 0, 0))), null);
+  });
+});
+
+// A muzzle flash light sits at the weapon of its entity, 20 units ahead and 16 up. In the poses of shooting and running an arm
+// or the weapon covers a large part of the light, and the model casts again once the flash flag, which keeps the entity out
+// of the shadow passes, is gone after a frame while the light fades for another fraction of a second: the flash was blocked
+// by the shooter's own model in some frames, and showed in others. Measured: the lit floor beside the player lost up to a
+// third of its light in the attack frames of the player model.
+void describe('ShadowMap.renderEntitiesShadow light owner', () => {
+  const previousDrawEntities = rendererCvars.drawentities;
+  let drawn: number[] = [];
+  let restoreEngineMocks: () => void = () => {};
+
+  /**
+   * @param num The entity's number.
+   * @param attachedTo The entity it is attached to.
+   * @returns A server entity with a model, standing at the light.
+   */
+  function createCaster(num: number, attachedTo: ClientEdict | null = null): ClientEdict {
+    const entity = new ClientEdict(num);
+    const model = new AliasModel('progs/soldier.mdl');
+
+    model.mins = new Vector(-16, -16, -24);
+    model.maxs = new Vector(16, 16, 40);
+    entity.model = model;
+    entity.origin.setTo(0, 0, 0);
+    entity.angles.setTo(0, 0, 0);
+    entity.attachmentParent = attachedTo;
+
+    return entity;
+  }
+
+  /**
+   * Runs the caster pass of a point light for the entities that are on screen.
+   * @param entities The entities on screen.
+   * @param lightOwner The entity number the light belongs to.
+   * @returns The numbers of the entities that were drawn as casters.
+   */
+  function cast(entities: ClientEdict[], lightOwner?: number): number[] {
+    restoreEngineMocks = installEngineMocks({ CL: { state: { clientEntities: { getVisibleEntities: () => entities } } } });
+    drawn = [];
+
+    ShadowMap.renderEntitiesShadow(new Float64Array(16), true, new Vector(0, 0, 0), 192 * 192, lightOwner);
+
+    return drawn;
+  }
+
+  beforeEach(() => {
+    rendererCvars.drawentities = { value: 1 } as unknown as Cvar;
+    modelRendererRegistry.register({
+      getModelClass: () => AliasModel,
+      renderShadow: (_model: BaseModel, entity: ClientEdict) => { drawn.push(entity.num); },
+    } as unknown as ModelRenderer);
+  });
+
+  afterEach(() => {
+    rendererCvars.drawentities = previousDrawEntities;
+    modelRendererRegistry.clear();
+    restoreEngineMocks();
+  });
+
+  void test('draws every caster for a light that belongs to no entity', () => {
+    assert.deepEqual(cast([createCaster(5), createCaster(6)]), [5, 6]);
+    assert.deepEqual(cast([createCaster(5), createCaster(6)], 0), [5, 6]);
+  });
+
+  void test('leaves out the entity the light belongs to and draws the others', () => {
+    assert.deepEqual(cast([createCaster(5), createCaster(6), createCaster(7)], 6), [5, 7]);
+  });
+
+  void test('leaves out what is attached to the owner, a weapon and a flash on it, and not what is attached to something else', () => {
+    const owner = createCaster(5);
+    const weapon = createCaster(6, owner);
+    const flash = createCaster(7, weapon);
+    const bystander = createCaster(8);
+    const bystandersHat = createCaster(9, bystander);
+
+    assert.deepEqual(cast([owner, weapon, flash, bystander, bystandersHat], 5), [8, 9]);
   });
 });

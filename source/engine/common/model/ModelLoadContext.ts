@@ -1,3 +1,4 @@
+import type { GLTexture } from '../../client/GL.ts';
 import type { ConsoleOutput } from '../Services.ts';
 import type { SpriteImageDecoding } from './sprite/SpriteImageDecoding.ts';
 
@@ -21,6 +22,16 @@ export interface ModelFiles {
   LoadOptionalTextFile(filename: string): Promise<string | null>;
 }
 
+/** Creates the textures of models in a realm that draws. */
+export interface ModelTextures {
+  /**
+   * Reads an image file from the game's search path and uploads it as a texture. Asking again for a file gives
+   * the same texture.
+   * @returns The texture, `null` when the file does not exist. A miss is not reported: callers probe for files.
+   */
+  loadImage(filename: string): Promise<GLTexture | null>;
+}
+
 /**
  * What a model loader gets from the realm it runs in. A realm that never draws anything (the
  * server, a worker) loads without render data: no textures, lightmaps or other GL resources.
@@ -32,6 +43,8 @@ export interface ModelLoadContext {
   readonly loadRenderData: boolean;
   /** Decodes the pixels of image sprites (GIF, PNG, WebP). `null` in a realm that does not draw. */
   readonly spriteImages: SpriteImageDecoding | null;
+  /** Creates the textures of skeletal models. `null` in a realm that does not draw. */
+  readonly textures: ModelTextures | null;
 }
 
 /**

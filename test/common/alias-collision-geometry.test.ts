@@ -357,6 +357,33 @@ void describe('ServerEngineAPI.PrecacheModel', () => {
     assert.equal(reads(), 2);
   });
 
+  void test('a precache during play becomes the model when it has loaded, with no map load to swap it in', async () => {
+    // An entity spawned after the map loaded: its entry stayed a promise, and collision took the entity for a box.
+    const { api, server } = createApi();
+
+    api.PrecacheModel(MODEL_NAME, { meshCollision: true });
+    await server.models[1];
+    await Promise.resolve();
+
+    assert.ok(!(server.models[1] instanceof Promise));
+    assert.equal(asAliasModel(server.models[1]).hasCollisionGeometry, true);
+  });
+
+  void test('precaching again with mesh collision when the model already has its geometry leaves the loaded entry alone', async () => {
+    // The second Chthon a game spawns precaches its model again from _precache: that must not put a new load in its place.
+    const { api, server, reads } = createApi();
+
+    api.PrecacheModel(MODEL_NAME, { meshCollision: true });
+    await server.models[1];
+    await Promise.resolve();
+    const loaded = server.models[1];
+
+    api.PrecacheModel(MODEL_NAME, { meshCollision: true });
+
+    assert.equal(server.models[1], loaded);
+    assert.equal(reads(), 1);
+  });
+
   void test('precaching again without mesh collision leaves the entry alone', async () => {
     const { api, server, reads } = createApi();
 

@@ -1,7 +1,10 @@
 import type { ClientDlight, ClientEdict } from './ClientEntities.ts';
+import { EntityTags } from './EntityTags.ts';
 import { BitmapFont, type BitmapFontConfig } from './BitmapFont.ts';
 import type { GLTexture } from './GL.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
+import { JointAdjustments } from '../common/model/JointAdjustments.ts';
+import { SkeletalModel } from '../common/model/SkeletalModel.ts';
 import type { DiscoveredSession, SessionDiscoveryStatus } from './menu/SessionDiscovery.ts';
 import type { SaveSlotInfo } from './menu/SaveSlots.ts';
 
@@ -24,7 +27,6 @@ import type { ClientGameEventMap, GameEventBus } from '../common/EventBus.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { HostError } from '../common/Errors.ts';
-import { SpriteModel } from '../common/model/SpriteModel.ts';
 import W from '../common/W.ts';
 import PostProcess from './renderer/postprocess/PostProcess.ts';
 import type { PostProcessPulseDescriptor, PostProcessPulseOptions, PostProcessStack, PostProcessStackOptions, ViewInput, ViewResult } from '../../shared/GameInterfaces.ts';
@@ -492,28 +494,126 @@ export class ClientEngineAPI extends CommonEngineAPI {
   }
 
   /**
-   * How long a sprite's sequence plays, for effects that remove themselves when it is over.
+   * How long a sequence of a model plays, for effects that remove themselves when it is over.
    * @param modelName A model the server precached.
-   * @param frame The `frame` that selects the sequence, 0 for a sprite with a single one.
-   * @returns Seconds, `Infinity` when the sequence repeats forever, 0 when the model is no sprite or the frame is a
-   * single picture. See [Sprites](docs/sprites.md).
+   * @param sequence The `sequence` of an entity that plays it (the `frame` for a Quake `.spr`, which has no
+   * sequences), 0 for a model with a single one.
+   * @returns Seconds, `Infinity` when the sequence repeats forever, 0 when it holds a single picture or pose and for a
+   * model that has no sequences. See [Sprites](docs/sprites.md) and [Skeletal models](docs/skeletal-models.md).
    */
-  GetSpriteSequenceDuration(modelName: string, frame = 0): number {
-    const model = this.ModForName(modelName);
-
-    return model instanceof SpriteModel ? model.sequenceDuration(frame) : 0;
+  GetSequenceDuration(modelName: string, sequence = 0): number {
+    return this.ModForName(modelName).sequenceDuration(sequence);
   }
 
   /**
-   * Finds a named sequence of a sprite, so a game does not depend on their order.
+   * Finds a named sequence of a model, so a game does not depend on their order.
    * @param modelName A model the server precached.
-   * @param name The name of the sequence in the sprite's settings file.
-   * @returns The `frame` that selects it, -1 when the model is no sprite or has no sequence of that name.
+   * @param name The name of the sequence in the model's file or settings file.
+   * @returns The `sequence` that selects it, -1 when the model has no sequence of that name.
    */
-  GetSpriteSequenceIndex(modelName: string, name: string): number {
-    const model = this.ModForName(modelName);
+  GetSequenceIndex(modelName: string, name: string): number {
+    return this.ModForName(modelName).sequenceIndex(name);
+  }
 
-    return model instanceof SpriteModel ? model.sequenceIndex(name) : -1;
+  /**
+   * Finds a tag of a model, a named place on it such as the muzzle of a weapon or the hand of a monster. Every joint of
+   * a skeletal model is one. See [Skeletal models](docs/skeletal-models.md#tags).
+   * @param modelName A model the server precached.
+   * @param tagName The name of the tag.
+   * @returns The tag's index, -1 when the model has no tag of that name, and for a model that has no tags.
+   */
+  GetTagIndex(modelName: string, tagName: string): number {
+    return this.ModForName(modelName).getTagIndex(tagName);
+  }
+
+  /**
+   * Where a tag of an entity is in the world right now: its origin and angles as the entity is drawn this frame, the
+   * pose interpolated like the model's vertices, so an effect placed there sits on the weapon, the hand or the muzzle
+   * that is on the screen. The angles are in the convention of an entity's `angles`.
+   * @param entity The entity.
+   * @param tagName The name of the tag.
+   * @param outOrigin Receives the world position.
+   * @param outAngles Receives pitch, yaw and roll in degrees.
+   * @returns `false` when the entity has no model with a tag of that name (only skeletal models have tags), and the outputs are untouched.
+   */
+  GetEntityTag(entity: ClientEdict, tagName: string, outOrigin: Vector, outAngles: Vector): boolean {
+    return EntityTags.resolve(entity, tagName, outOrigin, outAngles);
+  }
+
+  /**
+   * The entity that draws the first-person weapon, for what an entity is asked: its tags (`GetEntityTag`), its joints
+   * (`SetEntityJointAngles`) and what to attach to (`ClientEdict.setAttachment` on an entity from `AllocEntity`). An entity
+   * attached to it is drawn with the weapon, in its narrower field of view and depth range, and only while the weapon is drawn.
+   * The weapon is placed once the frame's view is calculated, so ask from `updateRefDef` or later in the frame; before that
+   * the answer is the previous frame's.
+   * @returns The entity, `null` while no map is loaded. Its `model`, `frame` and `sequence` follow the game's `viewmodel`: do not set them.
+   */
+  GetViewmodelEntity(): ClientEdict | null {
+    return clientRuntimeState.viewent;
+  }
+
+  /**
+   * Turns a joint of an entity's skeletal model on top of its animation, for as long as the game keeps setting it (a spine that bends
+   * with where a player looks). The rotation is in model space and about the joint's own origin; the joint's place stays, and what
+   * hangs below it follows: the vertices skinned to it, the joints under it, and so every tag and every entity attached to them.
+   * Set it every frame from the entity's handler, from values that are already interpolated (`lerp.angles`).
+   * @param entity The entity.
+   * @param jointName The joint's name in the model, which is the name of a tag.
+   * @param angles Pitch, yaw and roll in degrees, in the convention of an entity's `angles`: a positive pitch lifts what points along
+   * the model's X axis. All zero removes the rotation.
+   * @returns `false` when the entity has no skeletal model or the model has no such joint, and nothing was changed.
+   */
+  SetEntityJointAngles(entity: ClientEdict, jointName: string, angles: Vector): boolean {
+    const model = entity.model;
+
+    if (!(model instanceof SkeletalModel)) {
+      return false;
+    }
+
+    const joint = model.getTagIndex(jointName);
+
+    if (joint < 0) {
+      return false;
+    }
+
+    if (entity.jointAdjustments === null || entity.jointAdjustments.jointCount !== model.jointCount) {
+      entity.jointAdjustments = new JointAdjustments(model.jointCount);
+    }
+
+    entity.jointAdjustments.setAngles(joint, angles);
+
+    return true;
+  }
+
+  /**
+   * Removes every rotation that `SetEntityJointAngles` put on an entity.
+   * @param entity The entity.
+   */
+  ClearEntityJointAngles(entity: ClientEdict): void {
+    entity.jointAdjustments = null;
+  }
+
+  /**
+   * Chooses whether an entity's pitch tilts its whole body, as it does for every model by default. A game that bends joints with the
+   * pitch (`SetEntityJointAngles`) turns it off, or the body would tilt as well. It applies to drawing, shadows and the
+   * place of attached entities; `lerp.angles` still holds the pitch.
+   * @param entity The entity.
+   * @param pitchesBody `false` to keep the body upright.
+   */
+  SetEntityPitchesBody(entity: ClientEdict, pitchesBody: boolean): void {
+    entity.bodyPitch = pitchesBody;
+  }
+
+  /**
+   * Where the muzzle flash of an entity that has `EF_MUZZLEFLASH` goes, as the engine puts it: the entity's own `tag_flash`, else
+   * the `tag_flash` of an entity attached to it (the weapon a player holds), as drawn this frame. A game that makes its own flash
+   * light asks here, so that it sits at the barrel and not at a fixed offset.
+   * @param entity The entity.
+   * @param outOrigin Receives the world position.
+   * @returns `false` when neither the entity nor anything attached to it has a `tag_flash`, and the output is untouched.
+   */
+  GetMuzzleFlashOrigin(entity: ClientEdict, outOrigin: Vector): boolean {
+    return EntityTags.resolveMuzzleFlash(entity, outOrigin);
   }
 
   /**

@@ -5,6 +5,7 @@ import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import type { CollisionModelSource } from '../../common/CollisionModelSource.ts';
 import { AliasModel, BrushModel, MeshModel } from '../../common/Mod.ts';
+import { SkeletalModel } from '../../common/model/SkeletalModel.ts';
 import { BrushTrace, DIST_EPSILON, Trace as SharedTrace } from '../../common/Pmove.ts';
 import {
   AliasCollisionState,
@@ -15,6 +16,7 @@ import {
   HullCollisionState,
   MeshCollisionState,
   MoveClip,
+  SkeletalCollisionState,
   TriangleCollisionState,
   TriangleTraceContext,
 } from './ServerCollisionSupport.ts';
@@ -23,7 +25,7 @@ import type { Octree } from '../../../shared/Octree.ts';
 import { EntityHulls } from '../../common/collision/EntityHulls.ts';
 import type { ConsoleOutput } from '../../common/Services.ts';
 
-type CollisionModel = BrushModel | MeshModel | AliasModel | object | null;
+type CollisionModel = BrushModel | MeshModel | AliasModel | SkeletalModel | object | null;
 
 interface StaticWorldSource {
   readonly worldEntity: ServerEdict | null;
@@ -99,7 +101,7 @@ export class ServerCollision {
    * Tells the developer, once per model, that a `SOLID_MESH` entity is traced as its bounding box because
    * the game precached the model without `{ meshCollision: true }`.
    */
-  #warnMissingCollisionGeometry(ent: ServerEdict, model: AliasModel): void {
+  #warnMissingCollisionGeometry(ent: ServerEdict, model: AliasModel | SkeletalModel): void {
     if (this.#warnedMissingGeometry.has(model.name)) {
       return;
     }
@@ -129,6 +131,15 @@ export class ServerCollision {
         }
 
         return new AliasCollisionState(ent, model);
+      }
+
+      if (this._isSkeletalModel(model)) {
+        if (!model.hasCollisionGeometry) {
+          this.#warnMissingCollisionGeometry(ent, model);
+          return new HullCollisionState(ent);
+        }
+
+        return new SkeletalCollisionState(ent, model);
       }
 
       return null;
@@ -214,6 +225,14 @@ export class ServerCollision {
    */
   _isAliasModel(model: CollisionModel): model is AliasModel {
     return model instanceof AliasModel;
+  }
+
+  /**
+   * Returns true when the provided model is a skeletal model (IQM).
+   * @returns True when the model is a skeletal model.
+   */
+  _isSkeletalModel(model: CollisionModel): model is SkeletalModel {
+    return model instanceof SkeletalModel;
   }
 
   /**
@@ -658,6 +677,7 @@ export class ServerCollision {
     trace.plane.normal = triangle.normal.copy();
     trace.plane.dist = triangle.planeDist;
     trace.ent = triangleTrace.ent;
+    trace.joint = triangleTrace.adapter.getTriangleJoint(triangle.triangleIndex);
   }
 
   /**

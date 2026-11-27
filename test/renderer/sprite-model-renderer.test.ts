@@ -13,7 +13,7 @@ import type Cvar from '../../source/engine/common/Cvar.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { SpriteModel } from '../../source/engine/common/model/SpriteModel.ts';
 import { SpriteAsset } from '../../source/engine/common/model/sprite/SpriteAsset.ts';
-import { SpriteDirection, SpriteOrientation, type SpriteImage, type SpriteSequence } from '../../source/engine/common/model/sprite/SpriteTypes.ts';
+import { SpriteDirection, SpriteOrientation, SpritePhase, type SpriteImage, type SpriteSequence } from '../../source/engine/common/model/sprite/SpriteTypes.ts';
 import { patchMembers } from '../support/clientState.ts';
 import { publishGlReady } from '../support/glEvents.ts';
 import { createRecordingContext, type RecordingContext } from '../support/recordingContext.ts';
@@ -124,8 +124,8 @@ void describe('SpriteModelRenderer', () => {
   /**
    * @returns An entity at `origin`, turned by `yaw`.
    */
-  function entityAt(origin: Vector, yaw: number): ClientEdict {
-    return { origin, angles: new Vector(0, yaw, 0), frame: 0, alpha: 1, effects: 0, syncbase: 0, animationStartTime: 0 } as unknown as ClientEdict;
+  function entityAt(origin: Vector, yaw: number, extra: Record<string, unknown> = {}): ClientEdict {
+    return { origin, worldOrigin: origin, angles: new Vector(0, yaw, 0), frame: 0, sequence: -1, animtime: 0, framerate: 1, alpha: 1, effects: 0, syncbase: 0, ...extra } as unknown as ClientEdict;
   }
 
   /**
@@ -315,6 +315,74 @@ void describe('SpriteModelRenderer', () => {
       cast(model, entityAt(new Vector(), 0), pointLight(new Vector(0, 100, 0)));
 
       assert.equal(streamedLayer(), 4);
+    });
+  });
+
+  void describe('which sequence is shown, and when', () => {
+    /**
+     * @param layers The layers of the images, each shown for one second.
+     * @returns A sequence that loops over them.
+     */
+    function sequenceOf(...layers: number[]): SpriteSequence {
+      return {
+        name: 'seq',
+        images: layers.map(image),
+        views: [layers.map(image)],
+        endTimes: Float32Array.from(layers, (_layer, index) => index + 1),
+        direction: SpriteDirection.forward,
+        repeat: 0,
+      };
+    }
+
+    /**
+     * Draws an entity with a model of two sequences, the first of the layers 0 and 1, the second of 2 and 3.
+     * @param options What the model and the entity are like.
+     * @returns The layer the quad shows.
+     */
+    function drawTwoSequences(options: { bySequence: boolean; phase?: SpritePhase; entity?: Record<string, unknown> }): number {
+      const model = spriteModel(sequenceOf(0, 1), SpriteOrientation.parallelUpright);
+
+      model.asset = new SpriteAsset({ frames: [sequenceOf(0, 1), sequenceOf(2, 3)], texture: { bind() { return this; } } as unknown as GLTextureArray });
+      model.selectsBySequence = options.bySequence;
+      model.phase = options.phase ?? SpritePhase.global;
+      Camera.refdef.vieworg.setTo(100, 0, 0);
+      GL.streamArrayPosition = 0;
+      GL.streamArrayVertexCount = 0;
+      renderer.setupRenderState(1);
+      renderer.render(model, entityAt(new Vector(), 0, options.entity), 1);
+
+      return streamedLayer();
+    }
+
+    void test('an image sprite plays the sequence the entity selects, and ignores its frame', () => {
+      assert.equal(drawTwoSequences({ bySequence: true, entity: { sequence: 1, frame: 0 } }), 2);
+      assert.equal(drawTwoSequences({ bySequence: true, entity: { sequence: 0, frame: 1 } }), 0);
+    });
+
+    void test('an image sprite whose entity selects none plays the first sequence', () => {
+      assert.equal(drawTwoSequences({ bySequence: true, entity: { sequence: -1, frame: 1 } }), 0);
+      assert.equal(drawTwoSequences({ bySequence: true, entity: { sequence: 9 } }), 0, 'a number out of range, like the frame it replaces');
+    });
+
+    void test('a Quake sprite keeps selecting by frame and ignores the sequence', () => {
+      assert.equal(drawTwoSequences({ bySequence: false, entity: { frame: 1, sequence: 0 } }), 2);
+      assert.equal(drawTwoSequences({ bySequence: false, entity: { frame: 0, sequence: 1 } }), 0);
+    });
+
+    void test('a sprite on the spawn clock shows the point the entity\'s animtime puts it at', () => {
+      // the client clock reads 0.5: started at 0 it is half a second in, still on the first image of a second each
+      assert.equal(drawTwoSequences({ bySequence: true, phase: SpritePhase.spawn, entity: { sequence: 1, animtime: 0 } }), 2);
+      // started at -0.8, the clock at 0.5 is 1.3 s in: on the second image
+      assert.equal(drawTwoSequences({ bySequence: true, phase: SpritePhase.spawn, entity: { sequence: 1, animtime: -0.8 } }), 3);
+    });
+
+    void test('the framerate scales the speed, and 0 holds the first image', () => {
+      assert.equal(drawTwoSequences({ bySequence: true, phase: SpritePhase.spawn, entity: { sequence: 1, framerate: 3 } }), 3, '0.5 s at three times the speed is 1.5 s in');
+      assert.equal(drawTwoSequences({ bySequence: true, phase: SpritePhase.spawn, entity: { sequence: 1, animtime: -9, framerate: 0 } }), 2);
+    });
+
+    void test('a sprite on the global clock does not look at animtime', () => {
+      assert.equal(drawTwoSequences({ bySequence: true, phase: SpritePhase.global, entity: { sequence: 1, animtime: -0.8 } }), 2);
     });
   });
 });

@@ -133,10 +133,12 @@ class GL {
    * @param {string} identifier unique program identifier
    * @param {string[]} uniforms uniform names
    * @param {Array<[string, number, number, boolean?]>} attribs attribute parameters
-   * @param {string[]} textures texture names
+   * @param {Array<string | null>} textures sampler names: each gets the texture unit of its index. `null` leaves a unit
+   * empty, to keep a sampler on the unit other programs give theirs (texture units are shared by all programs, and what
+   * one leaves on a unit is what the next one finds there).
    * @returns {GLProgramInfo} the program object
    */
-  static CreateProgram(identifier: string, uniforms: string[], attribs: Array<[string, number, number, boolean?]>, textures: string[]): GLProgramInfo {
+  static CreateProgram(identifier: string, uniforms: string[], attribs: Array<[string, number, number, boolean?]>, textures: Array<string | null>): GLProgramInfo {
     const p = requireValue(gl.createProgram(), 'Failed to create WebGL program');
     const program = {
       identifier,
@@ -212,6 +214,11 @@ class GL {
 
     for (let i = 0; i < textures.length; i++) {
       const textureName = textures[i];
+
+      if (textureName === null) {
+        continue;
+      }
+
       program[textureName] = i;
       gl.uniform1i(gl.getUniformLocation(p, textureName), i);
     }
@@ -1000,7 +1007,7 @@ export class GLTexture {
   /**
    * Allocates a new texture from an image file or returns an existing one from the cache.
    * @param {string} filename filename an any image
-   * @param {boolean} ignoreMissing whether to ignore missing files
+   * @param {boolean} ignoreMissing whether the file may well not exist: a miss then returns `null` and prints nothing
    * @returns {Promise<GLTexture | null>} texture instance
    */
   static async FromImageFile(filename: string, ignoreMissing = false): Promise<GLTexture | null> {
@@ -1010,7 +1017,7 @@ export class GLTexture {
       return cachedTexture;
     }
 
-    const data = await com.LoadFile(filename);
+    const data = ignoreMissing ? await com.LoadOptionalFile(filename) : await com.LoadFile(filename);
 
     if (data === null) {
       if (ignoreMissing) {

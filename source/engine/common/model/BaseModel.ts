@@ -3,6 +3,7 @@ import { eventBus } from '../EventBus.ts';
 import Vector from '../../../shared/Vector.ts';
 import type { ModelType } from '../Mod.ts';
 import { modelFlags } from '../../../shared/Defs.ts';
+import type { JointAdjustments } from './JointAdjustments.ts';
 
 let gl: WebGL2RenderingContext | null = null;
 
@@ -201,6 +202,59 @@ export class BaseModel {
     this.name = name;
     this.type = null;
     this.reset();
+  }
+
+  /**
+   * Finds a tag: a named place on the model that something else can follow, such as the muzzle of a weapon or the hand
+   * of a monster. A model without tags has none.
+   * @param _name The name of the tag.
+   * @returns The index that `sampleTag` takes, -1 when there is none of that name.
+   */
+  getTagIndex(_name: string): number {
+    return -1;
+  }
+
+  /**
+   * Where a tag is on the model for a pose between two frames. The transform is rigid, with no scale, and in the model's
+   * own space: apply the entity's origin and angles to it to get the world.
+   * @param _index A tag index from `getTagIndex`.
+   * @param _frameA First frame.
+   * @param _frameB Second frame.
+   * @param _blend Weight of `frameB`, 0 to 1. The pose of a tag is interpolated like the model's vertices, so the two
+   * are at the same place.
+   * @param _out Receives the origin `x, y, z` and the rotation as a quaternion `w, x, y, z`, 7 numbers.
+   * @param _adjustments Rotations a game put on joints of the entity, `null` for none.
+   * @returns `false` when the model has no such tag, and `out` untouched.
+   */
+  sampleTag(
+    _index: number,
+    _frameA: number,
+    _frameB: number,
+    _blend: number,
+    _out: Float32Array | Float64Array | number[],
+    _adjustments: JointAdjustments | null = null,
+  ): boolean {
+    return false;
+  }
+
+  /**
+   * Finds a named sequence, so a game does not depend on their order. A model without named sequences has none.
+   * What the number selects depends on the format: see `SpriteModel` and `SkeletalModel`.
+   * @param _name The name of the sequence.
+   * @returns The number that selects it, -1 when there is none of that name.
+   */
+  sequenceIndex(_name: string): number {
+    return -1;
+  }
+
+  /**
+   * How long a sequence plays, for effects that remove themselves when it is over.
+   * @param _sequence The sequence number.
+   * @returns Seconds, `Infinity` for a sequence that repeats forever, 0 for a model without sequences and for one that
+   * holds a single pose or picture.
+   */
+  sequenceDuration(_sequence: number): number {
+    return 0;
   }
 
   reset(): void {

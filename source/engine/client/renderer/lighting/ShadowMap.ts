@@ -220,6 +220,13 @@ export default class ShadowMap {
    */
   static pointLightDlightIndices: Int32Array = Int32Array.from([-1, -1, -1]);
 
+  /**
+   * The entity number each active point-light slot's light belongs to, 0 for a light that belongs to no entity. The
+   * owner, and what is attached to it, does not cast into the light's own shadow: a muzzle flash sits at the owner's
+   * weapon, where an arm or the weapon itself covers much of the light in some poses.
+   */
+  static pointLightOwners: Int32Array = Int32Array.from([0, 0, 0]);
+
   /** Enable point light shadow mapping (0 = off, 1 = on). */
   static pointEnabled: Cvar | null = null;
 
@@ -609,7 +616,8 @@ export default class ShadowMap {
     let centerY = origin[1];
     let centerZ = origin[2];
     let radius: number;
-    if (model instanceof BrushModel && angles[0] === 0 && angles[1] === 0 && angles[2] === 0) {
+    // an attached entity turns with its parent, whatever its own angles say
+    if (model instanceof BrushModel && !entity.attachmentResolved && angles[0] === 0 && angles[1] === 0 && angles[2] === 0) {
       centerX += (mins[0] + maxs[0]) * 0.5;
       centerY += (mins[1] + maxs[1]) * 0.5;
       centerZ += (mins[2] + maxs[2]) * 0.5;
@@ -674,6 +682,8 @@ export default class ShadowMap {
   /**
    * Render visible entities (brush submodels, alias models, mesh models)
    * into the active shadow map.
+   * @param lightOwner The entity number the light belongs to, 0 for none. That entity, and what is attached to it, is
+   * left out: the light sits on it, at its weapon, and the model would cover part of the light in some poses.
    * @returns How many entities were drawn as casters.
    */
   static renderEntitiesShadow(
@@ -681,6 +691,7 @@ export default class ShadowMap {
     isPointLight: boolean,
     cutoffOrigin: Vector,
     cutoffDistSq: number,
+    lightOwner = 0,
   ): number {
     if (rendererCvars.drawentities.value === 0) {
       return 0;
@@ -688,6 +699,10 @@ export default class ShadowMap {
     let casterCount = 0;
     for (const entity of clientRuntimeState.clientEntities.getVisibleEntities()) {
       if (!ShadowMap._isShadowCasterEntity(entity)) {
+        continue;
+      }
+
+      if (lightOwner !== 0 && entity.attachmentRoot.num === lightOwner) {
         continue;
       }
 
@@ -817,6 +832,7 @@ export default class ShadowMap {
   static selectPointLights(viewOrigin: Vector): number {
     ShadowMap.pointLightActiveCount = 0;
     ShadowMap.pointLightDlightIndices.fill(-1);
+    ShadowMap.pointLightOwners.fill(0);
 
     if (!ShadowMap.pointEnabled!.value) {
       return 0;
@@ -848,6 +864,7 @@ export default class ShadowMap {
       const l = dlights[index];
 
       ShadowMap.pointLightDlightIndices[slot] = index;
+      ShadowMap.pointLightOwners[slot] = l.entity;
 
       const origin = ShadowMap.pointLightOrigins[slot];
       origin[0] = l.origin[0];
@@ -1126,6 +1143,7 @@ export default class ShadowMap {
         true,
         pointLightOrigin,
         pointCasterCutoffDistSq,
+        ShadowMap.pointLightOwners[slot],
       );
 
       GL.BindVAO(worldmodel.opaqueVAO!);

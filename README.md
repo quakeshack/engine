@@ -1,49 +1,41 @@
 # QuakeShack Engine
 
-This is a modern TypeScript port of Quake 1 with some features sprinkled on top.
+QuakeShack is a TypeScript port of the Quake 1 engine that runs in the browser (WebGL, Web Audio) and as a dedicated server in Node.js, with plenty of features added on top. It is meant to be extensible and fun to work with, made for boomer shooter enthusiasts.
+
+Play it in your browser at https://play.quakeshack.dev/.
+
+This is an educational and recreational project. The vision is an id tech 2 based game engine running in the browser for fun multiplayer projects.
+
+Work on this project is supported by LLMs. Please read [LLM.md](./LLM.md) for more on this.
+
+## Features
 
 Added features include, but are not limited to:
 
-* **Modern Environments**: Dedicated Node.js server, WebGL-based browser client, multithreading, and optimized networking.
-* **Enhanced Visuals**: 32-bit textures, WAD3 support, colored static and dynamic lighting (`.lit` files), [PBR materials](./docs/qsmat-format.md), smooth model animations, semi-transparent water/lava/slime surfaces, and screen-space [refraction](./docs/refraction.md) of translucent liquids and glass.
-* **Advanced Map Features**: BSP2 format for large maps, Quake II BSP (BSP38) map loading, high-resolution lightmaps (`LMSCALE`), static skyboxes, and [volumetric fog](./docs/volumetric-fog.md).
-* **Modern Geometry Details**: BSPX lump support across both Quake 1 and Quake II map formats (including per-pixel lighting from `LIGHTINGDIR`, dynamic lighting through `LIGHTGRID_OCTREE`, etc. — see [BSPX Support](./docs/bspx.md) for what's covered per format).
-* **Modern Sprites**: animated sprites from GIF, PNG/APNG, WebP and Aseprite files next to Quake's `.spr` and Half-Life's, with blend modes, scale and origin, named sequences, Doom-style rotations and optional per-sprite settings; the same files also draw as animated HUD elements, sprite sheet regions and screen effects, see [Sprites](./docs/sprites.md).
-* **Multiplayer Enhancements**: Built-in peer-to-peer multiplayer using [WebRTC](./docs/webrtc.md) and client-side game code.
-* **Gameplay & Audio**: Navigation meshes for smarter NPCs and area portals for dynamic sound and culling.
+* **Platforms**: WebGL browser client, dedicated Node.js server, the browser game's server running in its own [Web Worker](./docs/server-worker.md), and path searches in a [worker](./docs/workers.md) as well.
+* **Networking**: client-side prediction, peer-to-peer multiplayer over [WebRTC](./docs/webrtc.md) with invites, and game code that runs on the client as well.
+* **Rendering**: 32-bit textures, colored static and dynamic lighting (`.lit` files), [PBR materials](./docs/qsmat-format.md), per-pixel lighting from deluxemaps, shadows from point lights and a top-down shadow map, smooth model animations, semi-transparent water, lava and slime, screen-space [refraction](./docs/refraction.md) of translucent liquids and glass, and game-controlled [post-process effects](./docs/post-process-effects.md) such as color grading and [color shifts](./docs/color-shifts.md).
+* **Maps**: BSP2 for large maps, Quake II maps (BSP38, including collision, visibility and area portals), [BSPX lumps](./docs/bspx.md) for both formats, high-resolution lightmaps (`LMSCALE`), WAD3 textures compiled into the map, static skyboxes, and [volumetric fog](./docs/volumetric-fog.md).
+* **Skeletal models**: rigged [Inter-Quake Models](./docs/skeletal-models.md) (`.iqm`), skinned on the CPU, animated by frame number like MDL, lit and shadowed like any model, with player colors on truecolor skins, tags, and attachments (an entity that follows a tag of another, such as a weapon in a hand).
+* **Sprites**: animated [sprites](./docs/sprites.md) from GIF, PNG/APNG, WebP and Aseprite files next to Quake's and Half-Life's `.spr`, with blend modes, scale and origin, named sequences, Doom-style rotations and optional per-sprite settings. The same files also draw as animated HUD elements, sprite sheet regions and screen effects.
+* **Game code**: a typed [contract](./docs/game-module-contract.md) between engine and game, [navigation graphs](./docs/navigation.md) that account for monster sizes, a widget-based [menu system](./docs/menu-system.md), [client-only entities](./docs/client-entities.md) such as gibs and debris, and an [event bus](./docs/events.md).
+* **Tooling**: [frame profiling](./docs/frame-profiling.md) with `r_speeds` and `r_bench` for the CPU and GPU time of every part of a frame.
 
-For more detailed information over the engine architecture, features, and implementations, please refer to the [comprehensive documentation](./docs/README.md).
+## Roadmap
 
-Yet, there is still plenty to do.
+There is still plenty to do. Some features on the roadmap:
 
-Some features on the roadmap:
-
-* Proper WAD3 support when maps refer them, loading them from external WAD, if not compiled in.
-* Better network code with client-side prediction.
-* More flexible rendering subsystem, making it easier to reuse model rendering etc.
+* Loading WAD3 textures from external WAD files when a map refers to them instead of having them compiled in.
+* A more flexible rendering subsystem, making it easier to reuse model rendering and the like.
 * HLBSP/BSP30 support.
-* Full Quake 2 gameplay support (md2 models, `baseq2` game logic, monster AI, etc.) — map loading
-  (BSP38, including collision, visibility, area portals, and BSPX/`.wal` textures) is already
-  supported.
+* Full Quake II gameplay support (MD2 models, `baseq2` game logic, monster AI and more). Loading Quake II maps is already supported.
 
-This is an educational and recreational project.
-Though the vision is to provide an id tech 2 based game engine running in the browser for fun multiplayer projects.
-The engine is supposed to be extensible and fun to work with. Made for boomer shooter enthusiasts.
+## Quick start with Docker
 
-Work on this project is supported by LLMs. Please read [LLM.md](./LLM.md) for more information on this matter.
-
-## Documentation
-
-QuakeShack provides a detailed set of documentation files within the [docs](./docs/README.md) directory. Ensure to read them to understand the structure of the engine, the format specifications, event bus use cases, networking implementations, and more.
-
-### Turn-key ready build and deploy
-
-The Dockerfile used in CI/CD installs dependencies with `npm ci`, builds both `dist/browser/` and `dist/dedicated/`, runs tests in a dedicated stage, and starts the compiled dedicated server in the final image.
-
-You can reproduce that locally with Docker:
+The Dockerfile used in CI/CD installs dependencies with `npm ci`, builds both `dist/browser/` and `dist/dedicated/`, runs the tests in a stage of its own, and starts the compiled dedicated server in the final image.
 
 ```sh
-# make sure that the game repo is also cloned
+# the game code is a submodule
 git submodule update --init
 
 # build the container image
@@ -55,25 +47,20 @@ docker run --rm -ti -p 3000:3000 quakeshack:latest
 
 Open http://localhost:3000/ and enjoy the game.
 
-This repository comes with the Quake 1 shareware game assets and computed navigation graphs for the first episode.
+This repository comes with the Quake 1 shareware game assets and precomputed navigation graphs for the first episode.
 
-### Development environment
+## Development
 
-The current toolchain targets Node.js 24, matching the Docker image and the `engines` field in `package.json`.
+The toolchain targets Node.js 24, matching the Docker image and the `engines` field in `package.json`.
 
-Firstly, install the dependencies and tools exactly like CI/CD does:
+Install the dependencies exactly like CI/CD does and fetch the game code:
 
 ```sh
 npm ci
-```
-
-Also, make sure that the game repo is cloned:
-
-```sh
 git submodule update --init
 ```
 
-For local development you need a browser build, a dedicated build, and the actual dedicated server process:
+For local development you need a browser build, a dedicated build, and the dedicated server process:
 
 ```sh
 # terminal 1: build the browser bundle in watch mode
@@ -83,16 +70,41 @@ npm run dev
 npm run dedicated:dev
 
 # terminal 3: once dist/dedicated/dedicated.mjs exists, start the server
-npm run dedicated:start
+npm run dedicated:watch
 ```
 
-`npm run dedicated:start` serves `dist/browser/`, the virtual Quake filesystem, and the networking endpoints. It does not compile TypeScript on the fly, so one of the dedicated build commands must run first.
+The dedicated server serves `dist/browser/`, the virtual Quake filesystem, and the networking endpoints. It does not compile TypeScript on the fly, so one of the dedicated build commands must run first. `npm run dedicated:watch` restarts the server whenever the dedicated bundle is rebuilt; `npm run dedicated:start` runs it once.
 
 Open http://localhost:3000/ and enjoy hacking.
 
-### Production environment
+Before committing, make sure these pass. The Docker image and the Cloudflare deployment run the tests and the type check and fail on any error:
 
-For a production build, generate both the browser and dedicated bundles before starting the server:
+```sh
+npm test            # all unit tests (test:engine, test:game, test:common, test:physics and test:renderer run a part)
+npm run typecheck   # the only type check: the build strips types without checking them
+npm run lint        # ESLint, fixing what it can
+```
+
+### Layout
+
+| Directory | Description |
+| - | - |
+| `source/engine/client` | client code: rendering, input, audio, menus |
+| `source/engine/server` | server code |
+| `source/engine/common` | code used by both client and server |
+| `source/engine/network` | protocols, messages and network drivers |
+| `source/shared` | code used by both engine and game code |
+| `source/game/id1` | the Quake game code (a submodule) |
+| `source/cloudflare` | Cloudflare Worker entry point used by `wrangler.toml` |
+| `data/id1` | game assets such as pak files, configs and navigation graphs |
+| `docs` | engine documentation |
+| `test` | engine unit tests |
+
+The two build entry points are at the repository root: `index.html` for the browser build and `dedicated.ts` for the dedicated build. They import the launchers in `source/engine/main-browser.ts` and `source/engine/main-dedicated.ts`.
+
+## Building and deploying
+
+For a production build, generate both bundles before starting the server:
 
 ```sh
 npm run build:production
@@ -100,46 +112,47 @@ npm run dedicated:build:production
 npm run dedicated:start
 ```
 
-`npm run dedicated:start` always launches the compiled bundle from `dist/dedicated/dedicated.mjs`. The difference between development and production is which build command produced that bundle.
+`npm run dedicated:start` always launches the compiled bundle from `dist/dedicated/dedicated.mjs`. Development and production differ only in which build command produced it.
 
-You can override the default base game directory at build time when you want the engine to start from something other than `id1`:
+### Build variables
+
+These environment variables are read at build time. The Dockerfile takes them as build arguments of the same name (`--build-arg`).
+
+| Variable | Description |
+| - | - |
+| `VITE_BASE_DIR` | Base game directory used when no `-basedir` argument is given. Defaults to `id1`. |
+| `VITE_GAME_DIR` | Boots straight into this game directory, mounted on top of the base directory. |
+| `VITE_CDN_URL_PATTERN` | Where the browser loads game assets from, see below. Defaults to `/qfs/{filename}` on the same host. |
+| `VITE_SIGNALING_URL` | Master server for WebRTC signaling and the public server list. Without it, there are no peer-to-peer sessions and no server browser. |
+
+For example, to start from another base game:
 
 ```sh
 VITE_BASE_DIR="lq1" npm run build:production
 VITE_BASE_DIR="lq1" npm run dedicated:build:production
 ```
 
-This replaces the fallback used when no `-basedir` argument is supplied. `VITE_GAME_DIR` still remains the hard single-game override for builds that should boot straight into one game directory.
+### Deploying to a CDN
 
-When both variables are set, the engine mounts `VITE_BASE_DIR` first and then mounts `VITE_GAME_DIR` as the active game directory on top of it.
-
-The same variables are wired through the Dockerfile, so container builds can pass them as Docker build arguments as well.
-
-### Deploy to a CDN
-
-You can deploy the built frontend code to a CDN such as Cloudflare and skip the virtual Quake filesystem by providing the URL where to get the game assets (basically everything extracted from the pak files) from.
-
-You can set a custom URL to serve the assets like this:
+The browser build can be served from a static web server or a CDN without the dedicated server's virtual Quake filesystem. In that case, the game assets (everything extracted from the pak files) are loaded from the URL given by `VITE_CDN_URL_PATTERN`:
 
 ```sh
-VITE_CDN_URL_PATTERN="https://cdn{shard}.example.net/{gameDir}/{filename}"
+VITE_CDN_URL_PATTERN="https://cdn{shard}.example.net/{gameDir}/{filename}" npm run build:production
 ```
 
-When building through Docker or CI/CD, pass `VITE_CDN_URL_PATTERN` and `VITE_SIGNALING_URL` as `--build-arg` values with the same names.
+`{gameDir}` can be left out if you serve only one game, such as the original game (`id1`). `{shard}` is optional too, but recommended because it speeds up fetching assets.
 
-However, it’s not necessary to provide a different URL, per default it will try to load files from `/qfs/{filename}`. You can skip the `{gameDir}` part, if you only want to serve one mod or the original game (`id1`).
+Upload everything in `dist/browser/` to your web server or CDN provider.
 
-Also `{shard}` is not required, but highly recommended to speed up fetching assets.
+**Tip**: keep the max-age of `/index.html` as low as possible so you can quickly roll out a new version. Every other file gets a new hash with each build, which busts the cache.
 
-Next run `npm run build:production` to build for production.
+### Cloudflare
 
-In `dist/browser/` you’ll have everything you need to upload to your static web server or CDN provider.
+`wrangler.toml` deploys the browser build as a Cloudflare Worker with static assets. Its build command, `npm run build:wrangler`, runs the type check and all tests before the production build, so a type error or failing test stops the deployment.
 
-**Tip**: Make sure to set the max-age as low as possible for `/index.html` so you can quickly rollout a new version. Each update will produce a different hash for cache busting.
+## Multiplayer
 
-### Launching a multiplayer session
-
-It’s straight forward like back in WinQuake, start the dedicated server and type in:
+It's as straightforward as back in WinQuake. Start the dedicated server and type into its console:
 
 ```
 maxplayers 8
@@ -147,19 +160,15 @@ coop 1
 map e1m1
 ```
 
-In your browser’s game console you can type in:
+Then type into the game console in your browser:
 
 ```
 connect self
 ```
 
-The `connect self` command will connect to the same webserver hosting the game frontend.
+`connect self` connects to the same web server that hosts the game. The [dedicated server documentation](./docs/dedicated.md) has more details.
 
-Check the [dedicated server documentation](./docs/dedicated.md) for more details.
-
-However, there’s no need for a dedicated server as the game can also establish a peer-to-peer session.
-
-You can start a P2P game session by typing in the following console commands:
+A dedicated server is not required, since the game can also host a peer-to-peer session in the browser. Type these console commands:
 
 ```
 maxplayers 4
@@ -168,38 +177,20 @@ coop 1
 map start
 ```
 
-Using the `invite` command will allow you to invite friends.
+The `invite` command copies a link to the session to your clipboard, ready to send to your friends.
 
+## Documentation
 
-### Extending and hacking
-
-These are the important directory structures:
-
-| Directory | Description |
-| - | - |
-| data/id1 | game assets like pak files etc. |
-| source/game/id1 | game code for id1 |
-| source/engine/client | anything client-code related |
-| source/engine/server | anything server-code related |
-| source/engine/common | everything used in both client and server code |
-| source/engine/network | networking code |
-| source/cloudflare | Cloudflare Worker entrypoint used by `wrangler.toml` |
-| source/shared | code that is used in both engine and game code |
-
-
-There are two build entrypoints at the repository root:
-
-| File | Description |
-| - | - |
-| index.html | browser build entrypoint; imports `source/engine/main-browser.ts` |
-| dedicated.ts | dedicated build entrypoint; imports `source/engine/main-dedicated.ts` |
-
-The engine launchers themselves live in `source/engine/main-browser.ts` and `source/engine/main-dedicated.ts`.
+The [docs](./docs/README.md) directory covers the engine's architecture, file formats, the event bus, networking and more.
 
 ## Based on the work of
 
 * https://github.com/lrusso/Quake1 (original port to the browser)
-* https://github.com/id-Software/Quake (QuakeWorld)
-* https://github.com/id-Software/Quake-2 (Quake 2)
+* https://github.com/id-Software/Quake (WinQuake and QuakeWorld)
+* https://github.com/id-Software/Quake-2 (Quake II)
 * https://github.com/andrei-drexler/ironwail (implementation details of some new features)
 * https://github.com/fte-team/fteqw (understanding the BSPX features in detail)
+
+## License
+
+The engine is licensed under the GNU General Public License version 2, see [LICENSE](./LICENSE). The Quake shareware assets in `data/id1/pak0.pak` are id Software's and are covered by the shareware license that came with them, not by the GPL.

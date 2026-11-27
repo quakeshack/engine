@@ -17,7 +17,6 @@ import type { ModelLoadOptions } from '../common/model/ModelLoadContext.ts';
 import { ModelPrecacheFlags } from '../../shared/ModelPrecacheFlags.ts';
 import { HostError } from '../common/Errors.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
-import { SpriteModel } from '../common/model/SpriteModel.ts';
 import { type BaseEntity, ServerEdict } from './Edict.ts';
 import { Navigation, type NavigationBox } from './Navigation.ts';
 
@@ -477,8 +476,8 @@ export class ServerEngineAPI {
 
   /**
    * Precaches a model for this map. The server keeps only what it reads from a model (its bounds) unless told
-   * otherwise: an entity that is solid as `SOLID_MESH` is traced against the model's triangles, so whoever
-   * precaches its model has to pass `{ meshCollision: true }`. Precaching a model again with the option reloads
+   * otherwise: an entity that is solid as `SOLID_MESH` is traced against the model's triangles (an MDL's, an OBJ's or
+   * a skeletal model's posed ones), so whoever precaches its model has to pass `{ meshCollision: true }`. Precaching a model again with the option reloads
    * it with its geometry. A `SOLID_MESH` entity whose model was precached without it falls back to its
    * bounding box and the server prints a warning.
    */
@@ -492,49 +491,76 @@ export class ServerEngineAPI {
     if (index === -1) {
       this.#sv.server.modelPrecache.push(modelName);
       this.#sv.server.modelPrecacheFlags[this.#sv.server.modelPrecache.length - 1] = flags;
-      this.#sv.server.models.push(this.#sv.mod.ForNameAsync(modelName, true, ModelScope.server, loadOptions)); // will cause promises in the array
+      this.#storeLoadingModel(this.#sv.server.modelPrecache.length - 1, this.#sv.mod.ForNameAsync(modelName, true, ModelScope.server, loadOptions));
       return;
     }
 
-    // Already precached, possibly without its geometry or without looking for its sidecar: the cache reloads it
-    // only when that is the case, and a later precache that wants more wins over an earlier one that wanted less.
+    // Already precached, possibly without its geometry or without looking for its sidecar: it is loaded again only
+    // when that is the case, and a later precache that wants more wins over an earlier one that wanted less. A model
+    // that is still loading may be loading without what is asked now, so it is asked for again (the cache shares the load).
+    const current = this.#sv.server.models[index];
+    const hasGeometry = current !== null && !(current instanceof Promise) && current.hasCollisionGeometry;
     const hadSidecarSkipped = (this.#sv.server.modelPrecacheFlags[index] & ModelPrecacheFlags.noSidecar) !== 0;
 
-    if (loadOptions.collisionGeometry || (loadOptions.sidecar && hadSidecarSkipped)) {
+    if ((loadOptions.collisionGeometry && !hasGeometry) || (loadOptions.sidecar && hadSidecarSkipped)) {
       if (loadOptions.sidecar) {
         this.#sv.server.modelPrecacheFlags[index] &= ~ModelPrecacheFlags.noSidecar;
       }
 
-      this.#sv.server.models[index] = this.#sv.mod.ForNameAsync(modelName, true, ModelScope.server, loadOptions);
+      this.#storeLoadingModel(index, this.#sv.mod.ForNameAsync(modelName, true, ModelScope.server, loadOptions));
     }
   }
 
   /**
-   * How long a sprite's sequence plays, for effects that remove themselves when it is over.
-   * @param modelName A model that was precached and has finished loading.
-   * @param frame The `frame` that selects the sequence, 0 for a sprite with a single one.
-   * @returns Seconds, `Infinity` when the sequence repeats forever, 0 when the model is no sprite or the frame is a
-   * single picture. See [Sprites](docs/sprites.md).
+   * Puts a model that is loading into its precache entry. While a map loads, `Server.WaitForPrecachedResources` swaps
+   * every entry for the model it resolves to; a precache during play (an entity spawned later) is swapped here when it
+   * resolves, or the entry would stay a promise and collision, `setModel` and the model queries would never see the model.
    */
-  GetSpriteSequenceDuration(modelName: string, frame = 0): number {
-    const model = this.#findLoadedModel(modelName, 'GetSpriteSequenceDuration');
+  #storeLoadingModel(index: number, loading: Promise<BaseModel | null>): void {
+    const models = this.#sv.server.models;
+    models[index] = loading;
 
-    return model instanceof SpriteModel ? model.sequenceDuration(frame) : 0;
+    void loading.then((model) => {
+      if (models[index] === loading) {
+        models[index] = model;
+      }
+    });
   }
 
   /**
-   * Finds a named sequence of a sprite, so a game does not depend on their order.
+   * How long a sequence of a model plays, for effects that remove themselves when it is over.
    * @param modelName A model that was precached and has finished loading.
-   * @param name The name of the sequence in the sprite's settings file.
-   * @returns The `frame` that selects it, -1 when the model is no sprite or has no sequence of that name.
+   * @param sequence The `sequence` of an entity that plays it (the `frame` for a Quake `.spr`, which has no
+   * sequences), 0 for a model with a single one.
+   * @returns Seconds, `Infinity` when the sequence repeats forever, 0 when it holds a single picture or pose and for a
+   * model that has no sequences. See [Sprites](docs/sprites.md) and [Skeletal models](docs/skeletal-models.md).
    */
-  GetSpriteSequenceIndex(modelName: string, name: string): number {
-    const model = this.#findLoadedModel(modelName, 'GetSpriteSequenceIndex');
-
-    return model instanceof SpriteModel ? model.sequenceIndex(name) : -1;
+  GetSequenceDuration(modelName: string, sequence = 0): number {
+    return this.#findLoadedModel(modelName, 'GetSequenceDuration').sequenceDuration(sequence);
   }
 
-  #findLoadedModel(modelName: string, caller: string): BaseModel | null {
+  /**
+   * Finds a named sequence of a model, so a game does not depend on their order.
+   * @param modelName A model that was precached and has finished loading.
+   * @param name The name of the sequence in the model's file or settings file.
+   * @returns The `sequence` that selects it, -1 when the model has no sequence of that name.
+   */
+  GetSequenceIndex(modelName: string, name: string): number {
+    return this.#findLoadedModel(modelName, 'GetSequenceIndex').sequenceIndex(name);
+  }
+
+  /**
+   * Finds a tag of a model, a named place on it such as the muzzle of a weapon or the hand of a monster. Every joint of
+   * a skeletal model is one. See [Skeletal models](docs/skeletal-models.md#tags).
+   * @param modelName A model that was precached and has finished loading.
+   * @param tagName The name of the tag.
+   * @returns The tag's index, -1 when the model has no tag of that name, and for a model that has no tags.
+   */
+  GetTagIndex(modelName: string, tagName: string): number {
+    return this.#findLoadedModel(modelName, 'GetTagIndex').getTagIndex(tagName);
+  }
+
+  #findLoadedModel(modelName: string, caller: string): BaseModel {
     if (!this.#sv.server.modelPrecache.includes(modelName)) {
       throw new HostError(`ServerEngineAPI.${caller}: ${modelName} not precached`);
     }

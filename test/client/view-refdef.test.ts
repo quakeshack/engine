@@ -389,6 +389,58 @@ void describe('FirstPersonView', () => {
         assert.equal(viewent.frameTime, 0);
       });
 
+      void test('plays the sequence the game asks for, from the time it gives', () => {
+        const model = new BaseModel('models/v_axe.iqm');
+        clientRuntimeState.time = 12;
+        clientRuntimeState.gameAPI = {
+          viewmodel: { model, frame: 0, visible: true, sequence: 3, animtime: 10.5, framerate: 2 },
+          updateRefDef() {},
+        } as unknown as ClientGameInterface;
+
+        FirstPersonView.CalcRefdef();
+
+        assert.equal(viewent.sequence, 3);
+        assert.equal(viewent.animtime, 10.5);
+        assert.equal(viewent.framerate, 2);
+      });
+
+      void test('leaves the clock to the engine when the game gives no animtime, and restarts only on a new sequence', () => {
+        const model = new BaseModel('models/v_axe.iqm');
+        const viewmodel = { model, frame: 0, visible: true, sequence: 1 };
+        clientRuntimeState.gameAPI = { viewmodel, updateRefDef() {} } as unknown as ClientGameInterface;
+
+        clientRuntimeState.time = 5;
+        FirstPersonView.CalcRefdef();
+        assert.equal(viewent.animtime, 5, 'stamped when the model and the sequence arrived');
+        assert.equal(viewent.framerate, 1);
+
+        clientRuntimeState.time = 6;
+        FirstPersonView.CalcRefdef();
+        assert.equal(viewent.animtime, 5, 'the same sequence keeps running');
+
+        viewmodel.sequence = 2;
+        clientRuntimeState.time = 7;
+        FirstPersonView.CalcRefdef();
+        assert.equal(viewent.animtime, 7, 'another sequence restarts');
+      });
+
+      void test('follows the frame without a sequence, and forgets the sequence when the game has no viewmodel', () => {
+        const model = new BaseModel('models/v_axe.iqm');
+        clientRuntimeState.gameAPI = {
+          viewmodel: { model, frame: 6, visible: true },
+          updateRefDef() {},
+        } as unknown as ClientGameInterface;
+
+        FirstPersonView.CalcRefdef();
+        assert.equal(viewent.sequence, -1);
+        assert.equal(viewent.frame, 6);
+
+        viewent.sequence = 4;
+        clientRuntimeState.gameAPI = { viewmodel: null, updateRefDef() {} } as unknown as ClientGameInterface;
+        FirstPersonView.CalcRefdef();
+        assert.equal(viewent.sequence, -1);
+      });
+
       void test('shows nothing without a game viewmodel', () => {
         viewent.model = new BaseModel('models/v_axe.mdl');
         viewent.frame = 5;
